@@ -40,6 +40,7 @@ M: Announce current map.
 H: In battle, announce character hp, mp, status effects.
 I: In configuration  menu accessible from tab menu and jobs menu, read description of highlighted setting or job. In shop menus, reads description of highlighted item. . In item menu with equipment highlighted, reads which characters can equip
 V: Announce active vehicle state.
+Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
 
 When on a character's status screen:
 

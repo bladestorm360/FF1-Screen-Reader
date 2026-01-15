@@ -23,6 +23,12 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static bool IsActive { get; set; } = false;
 
+        /// <summary>
+        /// The last selected command index (0=Attack, 1=Magic, 2=Items, 3=Defend/Run).
+        /// Used to detect stale callbacks from magic/item menus after backing out.
+        /// </summary>
+        public static int LastSelectedCommandIndex { get; set; } = -1;
+
         private static string lastAnnouncement = "";
         private static float lastAnnouncementTime = 0f;
 
@@ -55,6 +61,7 @@ namespace FFI_ScreenReader.Patches
         public static void ClearState()
         {
             IsActive = false;
+            LastSelectedCommandIndex = -1;
             lastAnnouncement = "";
             lastAnnouncementTime = 0f;
         }

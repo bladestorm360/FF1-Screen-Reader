@@ -159,6 +159,7 @@ ff1-screen-reader/
 | G | Current gil |
 | 0 | Reset to All category |
 | =/- | Next/prev category |
+| Ctrl+Arrow | Teleport to direction of selected entity |
 
 ## FF1-Specific Considerations
 

@@ -81,7 +81,8 @@ Each menu type has a state class with `ShouldSuppress()` to prevent `MenuTextDis
 - [x] Pathfinding integration - TESTED
 - [x] Map name (M key), wall bumps - TESTED
 - [x] Focus preservation, chest opened/unopened state - TESTED
-- [ ] Vehicle state announcements (ship, canoe, airship) - PORTED, UNTESTED
+- [x] Teleportation (Ctrl+Arrow to selected entity) - TESTED
+- [x] Vehicle state announcements (ship, canoe, airship) - TESTED (V key, GetOn patches)
 - [ ] Landing zone detection ("Can land") - PORTED, UNTESTED
 
 ### Phase 5: Battle - COMPLETE

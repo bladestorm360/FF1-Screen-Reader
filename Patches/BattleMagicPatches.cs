@@ -113,6 +113,11 @@ namespace FFI_ScreenReader.Patches
                 if (!controller.gameObject.activeInHierarchy)
                     return;
 
+                // If command menu is active but user didn't select "Magic" (index 1),
+                // this is a stale callback from exiting the magic menu - ignore it
+                if (BattleCommandState.IsActive && BattleCommandState.LastSelectedCommandIndex != 1)
+                    return;
+
                 int index = cursor.Index;
                 MelonLogger.Msg($"[Battle Magic] SetCursor called, cursor index: {index}");
 

@@ -329,6 +329,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
+                BattleCommandState.LastSelectedCommandIndex = -1;
                 BattleMagicMenuState.IsActive = false;
                 BattleItemMenuState.IsActive = false;
 
@@ -419,6 +420,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
+                BattleCommandState.LastSelectedCommandIndex = index;
                 BattleMagicMenuState.IsActive = false;
                 BattleItemMenuState.IsActive = false;
 

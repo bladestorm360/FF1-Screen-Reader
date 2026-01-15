@@ -81,6 +81,31 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         private void HandleFieldInput()
         {
+            // Hotkey: Ctrl+Arrow to teleport to direction of selected entity
+            if (IsCtrlHeld())
+            {
+                if (Input.GetKeyDown(KeyCode.UpArrow))
+                {
+                    mod.TeleportInDirection(new Vector2(0, 16)); // North
+                    return;
+                }
+                else if (Input.GetKeyDown(KeyCode.DownArrow))
+                {
+                    mod.TeleportInDirection(new Vector2(0, -16)); // South
+                    return;
+                }
+                else if (Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    mod.TeleportInDirection(new Vector2(-16, 0)); // West
+                    return;
+                }
+                else if (Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    mod.TeleportInDirection(new Vector2(16, 0)); // East
+                    return;
+                }
+            }
+
             // Hotkey: J or [ to cycle backwards
             if (Input.GetKeyDown(KeyCode.J) || Input.GetKeyDown(KeyCode.LeftBracket))
             {
@@ -198,6 +223,30 @@ namespace FFI_ScreenReader.Core
             if (Input.GetKeyDown(KeyCode.I))
             {
                 HandleItemDetailsKey();
+            }
+
+            // Hotkey: V to announce current vehicle/movement mode
+            if (Input.GetKeyDown(KeyCode.V))
+            {
+                AnnounceCurrentVehicle();
+            }
+        }
+
+        /// <summary>
+        /// Announces the current vehicle/movement mode.
+        /// </summary>
+        private void AnnounceCurrentVehicle()
+        {
+            try
+            {
+                int moveState = FFI_ScreenReader.Utils.MoveStateHelper.GetCurrentMoveState();
+                string stateName = FFI_ScreenReader.Utils.MoveStateHelper.GetMoveStateName(moveState);
+                MelonLogger.Msg($"[Vehicle] Current movement mode: {stateName}");
+                FFI_ScreenReaderMod.SpeakText(stateName);
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"Error announcing vehicle state: {ex.Message}");
             }
         }
 

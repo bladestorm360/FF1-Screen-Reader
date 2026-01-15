@@ -518,7 +518,7 @@ public static class InputManager
 | Shift+M | Toggle map exit filter |
 | H | Party HP/MP status |
 | G | Current gil |
-| Ctrl+Arrow | Teleport 16 tiles |
+| Ctrl+Arrow | Teleport to direction of selected entity |
 
 ---
 

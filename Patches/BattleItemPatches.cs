@@ -99,6 +99,11 @@ namespace FFI_ScreenReader.Patches
                 if (controller == null)
                     return;
 
+                // If command menu is active but user didn't select "Items" (index 2),
+                // this is a stale callback from exiting the item menu - ignore it
+                if (BattleCommandState.IsActive && BattleCommandState.LastSelectedCommandIndex != 2)
+                    return;
+
                 // NOTE: Do NOT set IsActive here - wait until AFTER validation succeeds
                 // Setting it early causes suppression during menu transitions
 

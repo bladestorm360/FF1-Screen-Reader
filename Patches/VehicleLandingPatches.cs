@@ -7,7 +7,7 @@ using UnityEngine;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Core;
 
-// FF1 types - may need adjustment
+// FF1 types
 using Il2CppLast.Map;
 using Il2CppLast.Entity.Field;
 using MapUIManager = Il2CppLast.Map.MapUIManager;
@@ -18,8 +18,6 @@ namespace FFI_ScreenReader.Patches
     /// Announces when player enters a zone where vehicle can land.
     /// Patches MapUIManager.SwitchLandable which is called by the game
     /// when the landing state changes based on terrain under the vehicle.
-    /// Ported from FF3 screen reader.
-    /// NOTE: May require debugging - FF1 class names/offsets may differ.
     /// </summary>
     public static class VehicleLandingPatches
     {
@@ -127,17 +125,29 @@ namespace FFI_ScreenReader.Patches
     }
 
     /// <summary>
-    /// Patches FieldPlayer.ChangeMoveState to announce when entering/exiting vehicles.
-    /// Ported from FF3 screen reader.
-    /// NOTE: May require debugging - FF1 class names/offsets may differ.
+    /// Patches FieldPlayer.GetOn/GetOff to announce when entering/exiting vehicles.
+    /// FF1 vehicles: Ship, Canoe, Airship.
+    /// Uses manual Harmony patching for IL2CPP compatibility.
     /// </summary>
     public static class MovementSpeechPatches
     {
         private static bool isPatched = false;
-        private static int lastMoveState = -1;
+
+        // TransportationType enum values (from MapConstants.TransportationType in dump.cs)
+        private const int TRANSPORT_NONE = 0;
+        private const int TRANSPORT_PLAYER = 1;
+        private const int TRANSPORT_SHIP = 2;
+        private const int TRANSPORT_PLANE = 3;       // Airship
+        private const int TRANSPORT_SYMBOL = 4;
+        private const int TRANSPORT_CONTENT = 5;     // Likely Canoe in FF1
+        private const int TRANSPORT_SUBMARINE = 6;
+        private const int TRANSPORT_LOWFLYING = 7;
+        private const int TRANSPORT_SPECIALPLANE = 8;
+        private const int TRANSPORT_YELLOWCHOCOBO = 9;
+        private const int TRANSPORT_BLACKCHOCOBO = 10;
 
         /// <summary>
-        /// Apply manual Harmony patches for movement state changes.
+        /// Apply manual Harmony patches for vehicle boarding/disembarking.
         /// Called from FFI_ScreenReaderMod initialization.
         /// </summary>
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
@@ -147,7 +157,8 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                TryPatchChangeMoveState(harmony);
+                TryPatchGetOn(harmony);
+                TryPatchGetOff(harmony);
                 isPatched = true;
             }
             catch (Exception ex)
@@ -157,26 +168,25 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Patch ChangeMoveState - called when player changes movement mode (walk, ship, airship, etc.)
+        /// Patch GetOn - called when player boards a vehicle.
+        /// FF1 Signature: public void GetOn(int typeId, bool isBackground = False)
         /// </summary>
-        private static void TryPatchChangeMoveState(HarmonyLib.Harmony harmony)
+        private static void TryPatchGetOn(HarmonyLib.Harmony harmony)
         {
             try
             {
                 Type fieldPlayerType = typeof(FieldPlayer);
-
-                // Find ChangeMoveState(FieldPlayerConstants.MoveState, bool)
-                var methods = fieldPlayerType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
                 MethodInfo targetMethod = null;
 
-                foreach (var method in methods)
+                foreach (var method in fieldPlayerType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    if (method.Name == "ChangeMoveState")
+                    if (method.Name == "GetOn")
                     {
                         var parameters = method.GetParameters();
-                        if (parameters.Length >= 1)
+                        // FF1: GetOn(int typeId, bool isBackground = False) - 2 params
+                        if (parameters.Length >= 1 && parameters[0].ParameterType == typeof(int))
                         {
-                            MelonLogger.Msg($"[MoveState] Found ChangeMoveState with {parameters.Length} params");
+                            MelonLogger.Msg($"[MoveState] Found GetOn with {parameters.Length} params");
                             targetMethod = method;
                             break;
                         }
@@ -185,50 +195,153 @@ namespace FFI_ScreenReader.Patches
 
                 if (targetMethod != null)
                 {
-                    var postfix = typeof(MovementSpeechPatches).GetMethod(nameof(ChangeMoveState_Postfix),
+                    var postfix = typeof(MovementSpeechPatches).GetMethod(nameof(GetOn_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[MoveState] Patched ChangeMoveState successfully");
+                    MelonLogger.Msg("[MoveState] Patched GetOn successfully");
                 }
                 else
                 {
-                    MelonLogger.Warning("[MoveState] Could not find ChangeMoveState method");
+                    MelonLogger.Warning("[MoveState] Could not find GetOn method");
                 }
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[MoveState] Error patching ChangeMoveState: {ex.Message}");
+                MelonLogger.Warning($"[MoveState] Error patching GetOn: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Postfix for ChangeMoveState - announces vehicle state changes.
+        /// Patch GetOff - called when player disembarks a vehicle.
+        /// FF1 Signature: public void GetOff(int typeId, int layer = -1)
         /// </summary>
-        public static void ChangeMoveState_Postfix(object __instance)
+        private static void TryPatchGetOff(HarmonyLib.Harmony harmony)
         {
             try
             {
-                if (__instance == null)
-                    return;
+                Type fieldPlayerType = typeof(FieldPlayer);
+                MethodInfo targetMethod = null;
 
-                var fieldPlayer = __instance as FieldPlayer;
-                if (fieldPlayer == null)
-                    return;
-
-                int currentMoveState = (int)fieldPlayer.moveState;
-
-                // Only announce if state actually changed
-                if (currentMoveState != lastMoveState)
+                foreach (var method in fieldPlayerType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    // Update cached state in MoveStateHelper (this will also announce the change)
-                    MoveStateHelper.UpdateCachedMoveState(currentMoveState);
-                    lastMoveState = currentMoveState;
+                    if (method.Name == "GetOff")
+                    {
+                        var parameters = method.GetParameters();
+                        // FF1: GetOff(int typeId, int layer = -1) - 2 params
+                        if (parameters.Length >= 1 && parameters[0].ParameterType == typeof(int))
+                        {
+                            MelonLogger.Msg($"[MoveState] Found GetOff with {parameters.Length} params");
+                            targetMethod = method;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetMethod != null)
+                {
+                    var postfix = typeof(MovementSpeechPatches).GetMethod(nameof(GetOff_Postfix),
+                        BindingFlags.Public | BindingFlags.Static);
+
+                    harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
+                    MelonLogger.Msg("[MoveState] Patched GetOff successfully");
+                }
+                else
+                {
+                    MelonLogger.Warning("[MoveState] Could not find GetOff method");
                 }
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"[MoveState] Error in ChangeMoveState patch: {ex.Message}");
+                MelonLogger.Warning($"[MoveState] Error patching GetOff: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Postfix for GetOn - announces vehicle boarding AND disembarking.
+        /// FF1 uses GetOn for both: GetOn(vehicleType) to board, GetOn(1/Player) to disembark.
+        /// </summary>
+        public static void GetOn_Postfix(int typeId)
+        {
+            try
+            {
+                MelonLogger.Msg($"[MoveState] GetOn called with typeId={typeId}");
+
+                // typeId=1 (TRANSPORT_PLAYER) means returning to walking
+                // FF1 uses this instead of GetOff when disembarking
+                if (typeId == TRANSPORT_PLAYER)
+                {
+                    // Only announce if we were previously in a vehicle
+                    if (!MoveStateHelper.IsOnFoot())
+                    {
+                        MoveStateHelper.SetOnFoot();
+                        FFI_ScreenReaderMod.SpeakText("On foot", interrupt: true);
+                        MelonLogger.Msg("[MoveState] Announced: On foot (disembarked via GetOn)");
+                    }
+                    return;
+                }
+
+                string vehicleName = GetTransportationName(typeId);
+                if (!string.IsNullOrEmpty(vehicleName))
+                {
+                    string announcement = $"On {vehicleName}";
+                    MoveStateHelper.SetVehicleState(typeId);
+                    FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                    MelonLogger.Msg($"[MoveState] Announced: {announcement}");
+                }
+                else
+                {
+                    MelonLogger.Msg($"[MoveState] Unknown vehicle typeId={typeId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[MoveState] Error in GetOn patch: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Postfix for GetOff - announces vehicle disembarking.
+        /// </summary>
+        public static void GetOff_Postfix(int typeId)
+        {
+            try
+            {
+                MelonLogger.Msg($"[MoveState] GetOff called with typeId={typeId}");
+
+                string vehicleName = GetTransportationName(typeId);
+                MoveStateHelper.SetOnFoot();
+
+                // Only announce "On foot" if we were on a known vehicle
+                if (!string.IsNullOrEmpty(vehicleName))
+                {
+                    FFI_ScreenReaderMod.SpeakText("On foot", interrupt: true);
+                    MelonLogger.Msg("[MoveState] Announced: On foot");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[MoveState] Error in GetOff patch: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get human-readable name for TransportationType.
+        /// FF1 vehicles: Ship, Canoe, Airship.
+        /// </summary>
+        private static string GetTransportationName(int typeId)
+        {
+            switch (typeId)
+            {
+                case TRANSPORT_SHIP: return "ship";
+                case TRANSPORT_PLANE: return "airship";
+                case TRANSPORT_CONTENT: return "canoe";           // FF1: Canoe uses Content slot
+                case TRANSPORT_SUBMARINE: return "submarine";     // May not exist in FF1, but included for completeness
+                case TRANSPORT_LOWFLYING: return "airship";       // Low flying mode of airship
+                case TRANSPORT_SPECIALPLANE: return "airship";    // Special airship variant
+                case TRANSPORT_YELLOWCHOCOBO: return "chocobo";   // May not exist in FF1
+                case TRANSPORT_BLACKCHOCOBO: return "chocobo";    // May not exist in FF1
+                default: return null;
             }
         }
 
@@ -237,76 +350,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            lastMoveState = -1;
             MoveStateHelper.ResetState();
-        }
-    }
-
-    /// <summary>
-    /// Proactive state monitoring for world map contexts (where ships/vehicles are available).
-    /// Uses coroutine to check state every 0.5 seconds, announcing changes immediately.
-    /// </summary>
-    public static class MoveStateMonitor
-    {
-        private static object stateMonitorCoroutine = null;
-        private static int lastKnownState = -1;
-        private const float STATE_CHECK_INTERVAL = 0.5f;
-
-        /// <summary>
-        /// Coroutine that monitors move state changes every 0.5 seconds.
-        /// Only runs when on world map (where ships/vehicles are available).
-        /// </summary>
-        private static IEnumerator MonitorMoveStateChanges()
-        {
-            while (true)
-            {
-                yield return new WaitForSeconds(STATE_CHECK_INTERVAL);
-
-                try
-                {
-                    // Read current state and detect changes
-                    int currentState = MoveStateHelper.GetCurrentMoveState();
-
-                    // Only announce if state actually changed (skip initial -1 state)
-                    if (currentState != lastKnownState && lastKnownState != -1)
-                    {
-                        MoveStateHelper.AnnounceStateChange(lastKnownState, currentState);
-                    }
-
-                    lastKnownState = currentState;
-                }
-                catch (Exception ex)
-                {
-                    MelonLogger.Warning($"[MoveState] Error in state monitoring coroutine: {ex.Message}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Start state monitoring coroutine when entering world map.
-        /// </summary>
-        public static void StartStateMonitoring()
-        {
-            if (stateMonitorCoroutine == null)
-            {
-                lastKnownState = -1; // Reset state tracking
-                stateMonitorCoroutine = MelonCoroutines.Start(MonitorMoveStateChanges());
-                MelonLogger.Msg("[MoveState] Started state monitoring coroutine");
-            }
-        }
-
-        /// <summary>
-        /// Stop state monitoring coroutine when leaving world map.
-        /// </summary>
-        public static void StopStateMonitoring()
-        {
-            if (stateMonitorCoroutine != null)
-            {
-                MelonCoroutines.Stop(stateMonitorCoroutine);
-                stateMonitorCoroutine = null;
-                lastKnownState = -1;
-                MelonLogger.Msg("[MoveState] Stopped state monitoring coroutine");
-            }
         }
     }
 }

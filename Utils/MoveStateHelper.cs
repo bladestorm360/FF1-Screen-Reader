@@ -7,49 +7,73 @@ namespace FFI_ScreenReader.Utils
 {
     /// <summary>
     /// Helper for tracking and announcing player movement state (walking, ship, airship, canoe, etc.)
-    /// Ported from FF3 screen reader. FF1 vehicles: Ship, Canoe, Airship.
-    /// NOTE: May require debugging - FF1 class names/offsets may differ from FF3.
+    /// FF1 vehicles: Ship, Canoe, Airship.
     /// </summary>
     public static class MoveStateHelper
     {
         // MoveState enum values (from FieldPlayerConstants.MoveState)
-        // TODO: Verify these values match FF1's enum
         public const int MOVE_STATE_WALK = 0;
         public const int MOVE_STATE_DUSH = 1;    // Dash
         public const int MOVE_STATE_AIRSHIP = 2;
         public const int MOVE_STATE_SHIP = 3;
         public const int MOVE_STATE_LOWFLYING = 4;
-        public const int MOVE_STATE_CANOE = 5;   // FF1 has Canoe instead of Chocobo
+        public const int MOVE_STATE_CANOE = 5;   // FF1 has Canoe (uses Chocobo slot in enum)
         public const int MOVE_STATE_GIMMICK = 6;
         public const int MOVE_STATE_UNIQUE = 7;
 
-        // Cached state tracking (workaround for unreliable moveState field)
+        // TransportationType enum values (from MapConstants.TransportationType)
+        private const int TRANSPORT_SHIP = 2;
+        private const int TRANSPORT_PLANE = 3;       // Airship
+        private const int TRANSPORT_CONTENT = 5;     // Canoe in FF1
+        private const int TRANSPORT_SUBMARINE = 6;
+        private const int TRANSPORT_LOWFLYING = 7;
+        private const int TRANSPORT_SPECIALPLANE = 8;
+        private const int TRANSPORT_YELLOWCHOCOBO = 9;
+        private const int TRANSPORT_BLACKCHOCOBO = 10;
+
+        // Cached state tracking (set by GetOn/GetOff patches)
         private static int cachedMoveState = MOVE_STATE_WALK;
-        private static bool useCachedState = false;
+        private static int cachedTransportationType = 0;
         private static int lastAnnouncedState = -1;
-        private static float lastVehicleStateSeenTime = 0f;
-        private const float VEHICLE_STATE_TIMEOUT_SECONDS = 1.0f;
 
         /// <summary>
-        /// Update the cached move state (called from MovementSpeechPatches when state changes)
-        /// This is the "reliable" update path from ChangeMoveState event
+        /// Set vehicle state when boarding (called from GetOn patch).
+        /// Maps TransportationType to MoveState.
         /// </summary>
-        public static void UpdateCachedMoveState(int newState)
+        public static void SetVehicleState(int transportationType)
         {
-            int previousState = cachedMoveState;
-            cachedMoveState = newState;
-            useCachedState = true;
+            cachedTransportationType = transportationType;
+            cachedMoveState = TransportTypeToMoveState(transportationType);
+            MelonLogger.Msg($"[MoveState] SetVehicleState: transport={transportationType} -> moveState={cachedMoveState}");
+        }
 
-            // If this is a vehicle state, update the timestamp
-            if (IsVehicleState(newState))
-            {
-                lastVehicleStateSeenTime = UnityEngine.Time.time;
-            }
+        /// <summary>
+        /// Set on-foot state when disembarking (called from GetOff patch).
+        /// </summary>
+        public static void SetOnFoot()
+        {
+            cachedTransportationType = 0;
+            cachedMoveState = MOVE_STATE_WALK;
+            MelonLogger.Msg("[MoveState] SetOnFoot: now walking");
+        }
 
-            // Announce state changes that weren't already announced
-            if (newState != lastAnnouncedState)
+        /// <summary>
+        /// Convert TransportationType to MoveState for compatibility with existing code.
+        /// FF1 specific mapping.
+        /// </summary>
+        private static int TransportTypeToMoveState(int transportationType)
+        {
+            switch (transportationType)
             {
-                AnnounceStateChange(previousState, newState);
+                case TRANSPORT_SHIP: return MOVE_STATE_SHIP;
+                case TRANSPORT_PLANE: return MOVE_STATE_AIRSHIP;
+                case TRANSPORT_CONTENT: return MOVE_STATE_CANOE;      // FF1: Canoe uses Content slot
+                case TRANSPORT_SUBMARINE: return MOVE_STATE_SHIP;     // Treat submarine like ship (if exists)
+                case TRANSPORT_LOWFLYING: return MOVE_STATE_LOWFLYING;
+                case TRANSPORT_SPECIALPLANE: return MOVE_STATE_AIRSHIP;
+                case TRANSPORT_YELLOWCHOCOBO:
+                case TRANSPORT_BLACKCHOCOBO: return MOVE_STATE_CANOE; // Map any chocobo to canoe (unlikely in FF1)
+                default: return MOVE_STATE_WALK;
             }
         }
 
@@ -63,8 +87,8 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Announce movement state changes
-        /// Public so coroutine can call it from MovementSpeechPatches
+        /// Announce movement state changes.
+        /// Public so it can be called for backup state monitoring if needed.
         /// </summary>
         public static void AnnounceStateChange(int previousState, int newState)
         {
@@ -97,58 +121,12 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Get current MoveState from FieldPlayer
+        /// Get current MoveState - uses cached state from GetOn/GetOff patches.
         /// </summary>
         public static int GetCurrentMoveState()
         {
-            var controller = GameObjectCache.Get<FieldPlayerController>();
-            if (controller?.fieldPlayer == null)
-                return useCachedState ? cachedMoveState : MOVE_STATE_WALK;
-
-            // Read actual state from game
-            int actualState = (int)controller.fieldPlayer.moveState;
-            float currentTime = UnityEngine.Time.time;
-
-            // BUG WORKAROUND: moveState field unreliably reverts to Walking even when on vehicles
-            // Vehicle states (ship, canoe, airship) are "sticky" - once detected, we don't revert
-            // to Walking unless ChangeMoveState explicitly fires OR we timeout
-
-            // If actual state shows a vehicle, update timestamp
-            if (IsVehicleState(actualState))
-            {
-                lastVehicleStateSeenTime = currentTime;
-
-                // If this is a new vehicle state, cache it (coroutine will announce)
-                if (actualState != cachedMoveState)
-                {
-                    cachedMoveState = actualState;
-                    useCachedState = true;
-                }
-            }
-
-            // If we have a cached vehicle state but actual shows Walking
-            if (useCachedState && IsVehicleState(cachedMoveState) && actualState == MOVE_STATE_WALK)
-            {
-                // Check if we've timed out (haven't seen vehicle state in actual for too long)
-                float timeSinceLastSeen = currentTime - lastVehicleStateSeenTime;
-                if (timeSinceLastSeen > VEHICLE_STATE_TIMEOUT_SECONDS)
-                {
-                    // Timeout: assume player disembarked without ChangeMoveState firing
-                    cachedMoveState = actualState;
-                    return actualState;
-                }
-
-                // Still within timeout: trust cached vehicle state
-                return cachedMoveState;
-            }
-
-            // For non-vehicle states when not cached as vehicle, update cache normally
-            if (!IsVehicleState(actualState) && actualState != cachedMoveState && !IsVehicleState(cachedMoveState))
-            {
-                cachedMoveState = actualState;
-            }
-
-            return useCachedState && IsVehicleState(cachedMoveState) ? cachedMoveState : actualState;
+            // Return cached state (set by GetOn/GetOff patches)
+            return cachedMoveState;
         }
 
         /// <summary>
@@ -246,9 +224,8 @@ namespace FFI_ScreenReader.Utils
         public static void ResetState()
         {
             cachedMoveState = MOVE_STATE_WALK;
-            useCachedState = false;
+            cachedTransportationType = 0;
             lastAnnouncedState = -1;
-            lastVehicleStateSeenTime = 0f;
         }
     }
 }

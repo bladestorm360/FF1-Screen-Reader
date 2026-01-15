@@ -156,33 +156,9 @@ namespace FFI_ScreenReader.Core
         {
             try
             {
-                LoggerInstance.Msg("Searching for Cursor type...");
-
-                // Find the Cursor type
-                Type cursorType = null;
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    try
-                    {
-                        foreach (var type in assembly.GetTypes())
-                        {
-                            if (type.FullName == "Il2CppLast.UI.Cursor")
-                            {
-                                LoggerInstance.Msg($"Found Cursor type: {type.FullName}");
-                                cursorType = type;
-                                break;
-                            }
-                        }
-                        if (cursorType != null) break;
-                    }
-                    catch { }
-                }
-
-                if (cursorType == null)
-                {
-                    LoggerInstance.Warning("Cursor type not found");
-                    return;
-                }
+                // Use typeof() directly - much faster than assembly scanning
+                Type cursorType = typeof(GameCursor);
+                LoggerInstance.Msg($"Found Cursor type: {cursorType.FullName}");
 
                 // Get postfix method
                 var cursorPostfix = typeof(ManualPatches).GetMethod("CursorNavigation_Postfix", BindingFlags.Public | BindingFlags.Static);
@@ -592,6 +568,89 @@ namespace FFI_ScreenReader.Core
 
             string status = filterMapExits ? "on" : "off";
             SpeakText($"Map exit filter {status}");
+        }
+
+        #endregion
+
+        #region Teleportation
+
+        /// <summary>
+        /// Gets the FieldPlayer from the FieldPlayerController.
+        /// Uses direct IL2CPP access (not reflection, which doesn't work on IL2CPP types).
+        /// </summary>
+        private Il2CppLast.Entity.Field.FieldPlayer GetFieldPlayer()
+        {
+            try
+            {
+                // Use FieldPlayerController - same pattern used in GetPlayerPosition() and pathfinding
+                var playerController = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
+                if (playerController?.fieldPlayer != null)
+                {
+                    return playerController.fieldPlayer;
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error getting field player: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Teleports the player to a position relative to the currently selected entity.
+        /// </summary>
+        /// <param name="offset">The offset from the entity position (16 units = 1 tile)</param>
+        internal void TeleportInDirection(Vector2 offset)
+        {
+            try
+            {
+                var player = GetFieldPlayer();
+                if (player == null)
+                {
+                    SpeakText("Not on field map", true);
+                    return;
+                }
+
+                // Get the currently selected entity
+                var entity = entityScanner.CurrentEntity;
+                if (entity == null)
+                {
+                    SpeakText("No entity selected", true);
+                    return;
+                }
+
+                // Calculate target position: entity position + offset
+                Vector3 entityPos = entity.Position;
+                Vector3 targetPos = entityPos + new Vector3(offset.x, offset.y, 0);
+
+                // Teleport player to target position
+                player.transform.localPosition = targetPos;
+
+                // Announce with direction relative to entity and entity name
+                string direction = GetDirectionFromOffset(offset);
+                string entityName = entity.Name;
+                SpeakText($"Teleported to {direction} of {entityName}", true);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error teleporting: {ex.Message}");
+                SpeakText("Teleport failed", true);
+            }
+        }
+
+        /// <summary>
+        /// Converts an offset vector to a cardinal direction string.
+        /// </summary>
+        private string GetDirectionFromOffset(Vector2 offset)
+        {
+            if (Math.Abs(offset.x) > Math.Abs(offset.y))
+            {
+                return offset.x > 0 ? "east" : "west";
+            }
+            else
+            {
+                return offset.y > 0 ? "north" : "south";
+            }
         }
 
         #endregion
