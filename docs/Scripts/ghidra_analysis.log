@@ -1,0 +1,346 @@
+[01/12/2026 Mon  4:18:36.14] Starting Ghidra analysis 
+Script: mapexits 
+Mode: import 
+ 
+INFO  Using log config file: jar:file:/D:/Games/Dev/ghidra/Ghidra/Framework/Generic/lib/Generic.jar!/generic.log4j.xml (LoggingInitialization)  
+INFO  Using log file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\application.log (LoggingInitialization)  
+INFO  Loading user preferences: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\preferences (Preferences)  
+INFO  Searching for classes... (ClassSearcher)  
+INFO  Class search complete (1490 ms) (ClassSearcher)  
+INFO  Initializing SSL Context (SSLContextInitializer)  
+INFO  Initializing Random Number Generator... (SecureRandomFactory)  
+INFO  Random Number Generator initialization complete: SHA1PRNG (SecureRandomFactory)  
+INFO  Trust manager disabled, cacerts have not been set (ApplicationTrustManagerFactory)  
+INFO  Starting cache cleanup: C:\Users\pmoen\AppData\Local\ghidra\fscache2 (FileCacheMaintenanceDaemon)  
+INFO  Finished cache cleanup, estimated storage used: 0 (FileCacheMaintenanceDaemon)  
+INFO  Headless startup complete (10435 ms) (AnalyzeHeadless)  
+INFO  Class searcher loaded 57 extension points (18 false positives) (ClassSearcher)  
+INFO  HEADLESS Script Paths:
+    D:\Games\Dev\ghidra\Ghidra\Features\Base\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Debug\Debugger\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Debug\Debugger-rmi-trace\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Processors\DATA\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\WildcardAssembler\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\VersionTracking\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Processors\Atmel\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\MicrosoftCodeAnalyzer\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Processors\JVM\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Processors\8051\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Processors\PIC\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Debug\Debugger-agent-dbgmodel-traceloader\ghidra_scripts
+    D:\Games\Dev\Unity\FFPR\ff1\ff1-screen-reader\docs\Scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\SwiftDemangler\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\BSim\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\SystemEmulation\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\PDB\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\BytePatterns\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\FileFormats\ghidra_scripts
+    C:\Users\pmoen\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\FunctionID\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Debug\Debugger-agent-frida\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\GnuDemangler\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\Jython\ghidra_scripts
+    D:\Games\Dev\ghidra\Ghidra\Features\Decompiler\ghidra_scripts (HeadlessAnalyzer)  
+INFO  HEADLESS: execution starts (HeadlessAnalyzer)  
+INFO  Opening existing project: D:\Games\Dev\ghidra\projects\FF1_Analysis (HeadlessAnalyzer)  
+INFO  Opening project: D:\Games\Dev\ghidra\projects\FF1_Analysis (HeadlessProject)  
+INFO  REPORT: Processing input files:  (HeadlessAnalyzer)  
+INFO       project: D:\Games\Dev\ghidra\projects\FF1_Analysis (HeadlessAnalyzer)  
+INFO  IMPORTING: file:///D:/Games/SteamLibrary/steamapps/common/FINAL FANTASY PR/GameAssembly.dll (HeadlessAnalyzer)  
+INFO  Using Loader: Portable Executable (PE) (AutoImporter)  
+INFO  Using Language/Compiler: x86:LE:64:default:windows (AutoImporter)  
+INFO  Using Library Search Path: [., C:\WINDOWS\SysWOW64, C:\Program Files\Java\jdk-21\bin, C:\WINDOWS\Sun\Java\bin, C:\WINDOWS\system32, C:\WINDOWS, C:\Program Files\Common Files\Oracle\Java\javapath, C:\Python314\Scripts\, C:\Python314\, C:\Program Files (x86)\VMware\VMware Workstation\bin\, C:\Program Files (x86)\Razer Chroma SDK\bin, C:\Program Files\Razer Chroma SDK\bin, C:\Program Files (x86)\Razer\ChromaBroadcast\bin, C:\Program Files\Razer\ChromaBroadcast\bin, C:\Windows\system32, C:\Windows, C:\Windows\System32\Wbem, C:\Windows\System32\WindowsPowerShell\v1.0\, C:\Windows\System32\OpenSSH\, C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common, C:\Program Files\dotnet\, C:\WINDOWS\System32\Wbem, C:\WINDOWS\System32\WindowsPowerShell\v1.0\, C:\WINDOWS\System32\OpenSSH\, C:\Users\pmoen\AppData\Local\Microsoft\WindowsApps, C:\Users\pmoen\.dotnet\tools, C:\WINDOWS\system32\config\systemprofile\AppData\Local\Microsoft\WindowsApps, C:\Users\pmoen\AppData\Local\Programs\Microsoft VS Code\bin, C:\Program Files\Git\cmd, C:\Program Files\nodejs\, C:\ProgramData\chocolatey\bin, C:\Program Files\Microsoft SQL Server\170\Tools\Binn\, C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\, C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\, C:\Users\pmoen\.cargo\bin, C:\Users\pmoen\AppData\Local\Programs\Python\Python313\Scripts\, C:\Users\pmoen\AppData\Local\Programs\Python\Python313\, C:\Users\pmoen\AppData\Roaming\npm, C:\Users\pmoen\AppData\Local\Programs\Antigravity\bin, C:\Users\pmoen\.local\bin, C:\Users\pmoen\AppData\roaming\\Python\Python314\Scripts\] (AutoImporter)  
+INFO  TLS callbacks at 18155c8d8 (TLSDirectory)  
+INFO  TLS callbacks at 1800e2880 (TLSDirectory)  
+INFO  TLS callbacks at 1800ac9c8 (TLSDirectory)  
+WARN  Invalid or missing function at 1800c0348 (ExportDataDirectory)  
+INFO  TLS callbacks at 1805fae20 (TLSDirectory)  
+WARN  Invalid or missing function at 1806d8e38 (ExportDataDirectory)  
+WARN  Invalid or missing function at 1800be6a8 (ExportDataDirectory)  
+WARN  Invalid or missing function at 180056554 (ExportDataDirectory)  
+INFO  Additional info:
+Loading file:///D:/Games/SteamLibrary/steamapps/common/FINAL FANTASY PR/GameAssembly.dll?MD5=2076bedf95288680cff5b05e9341f1a2...
+------------------------------------------------
+
+Searching 34 paths for library ADVAPI32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/advapi32.dll
+Loading file:///C:/Windows/System32/advapi32.dll?MD5=e0778151cdd89e9fdb9f63d3c5bba4ea...
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\advapi32.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library IPHLPAPI.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/IPHLPAPI.DLL
+Loading file:///C:/Windows/System32/IPHLPAPI.DLL?MD5=83e32f427f3f9d175179988bef3cda8c...
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\iphlpapi.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library KERNEL32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/kernel32.dll
+Loading file:///C:/Windows/System32/kernel32.dll?MD5=8302602f5925ee9a3316e40a1d364e0e...
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\kernel32.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library OLE32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/ole32.dll
+Loading file:///C:/Windows/System32/ole32.dll?MD5=7f1b04de0b0645eb11edd3f7a6754a94...
+[ole32.dll]: failed to create WEVTResource at 180181740: Failed to resolve data length for WEVTResource
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\ole32.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library OLEAUT32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/oleaut32.dll
+Loading file:///C:/Windows/System32/oleaut32.dll?MD5=d047be70dae6c14bc48c4b20133928cb...
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\oleaut32.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library SHELL32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/shell32.dll
+Loading file:///C:/Windows/System32/shell32.dll?MD5=4bba7b15055780f7155499023c4b3c12...
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\shell32.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library USER32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/user32.dll
+Loading file:///C:/Windows/System32/user32.dll?MD5=a391b8970f50628c6f900fcd9eca26ce...
+[user32.dll]: failed to create WEVTResource at 1800dda70: Failed to resolve data length for WEVTResource
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\user32.exports
+WARNING: Existing exports file may not be an exact match.
+------------------------------------------------
+
+Searching 34 paths for library WS2_32.DLL...
+Skipping library which is the wrong architecture: file:///C:/Windows/SysWOW64/ws2_32.dll
+Loading file:///C:/Windows/System32/ws2_32.dll?MD5=a32cf2f0e79082da833845ce0c8a6f1a...
+[ws2_32.dll]: failed to create WEVTResource at 18005f4b8: Failed to resolve data length for WEVTResource
+Using existing exports file: C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\ws2_32.exports
+------------------------------------------------
+
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\kernel32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\user32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\advapi32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\ole32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\oleaut32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\shell32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\ws2_32.exports
+Applying C:\Users\pmoen\AppData\Roaming\ghidra\ghidra_11.2.1_PUBLIC\symbols\win64\iphlpapi.exports
+Linking the External Programs of 'GameAssembly.dll' to imported libraries...
+  [KERNEL32.DLL] -> not found in project
+  [USER32.DLL] -> not found in project
+  [ADVAPI32.DLL] -> not found in project
+  [OLE32.DLL] -> not found in project
+  [OLEAUT32.DLL] -> not found in project
+  [SHELL32.DLL] -> not found in project
+  [WS2_32.DLL] -> not found in project
+  [IPHLPAPI.DLL] -> not found in project
+------------------------------------------------
+
+ (AutoImporter)  
+INFO  IMPORTING: Loaded 0 additional files (HeadlessAnalyzer)  
+INFO  /GameAssembly.dll: file deleted (pmoen) (LocalFileSystem)  
+INFO  Deleted local file GameAssembly.dll (GhidraFileData)  
+WARN  REPORT: Removed conflicting program file from project: /GameAssembly.dll (HeadlessAnalyzer)  
+INFO  ANALYZING all memory and code: file:///D:/Games/SteamLibrary/steamapps/common/FINAL FANTASY PR/GameAssembly.dll (HeadlessAnalyzer)  
+INFO  Skipping PDB processing: failed to locate PDB file in configured locations (PdbUniversalAnalyzer)  
+INFO  Use a script to set the PDB file location. I.e.,
+    PdbAnalyzer.setPdbFileOption(currentProgram, new File("/path/to/pdb/file.pdb")); or
+    PdbUniversalAnalyzer.setPdbFileOption(currentProgram, new File("/path/to/pdb/file.pdb"));
+Or set the symbol server search configuration using:    PdbPlugin.saveSymbolServerServiceConfig(...);
+ This must be done using a pre-script (prior to analysis). (PdbUniversalAnalyzer)  
+INFO  Packed database cache: C:\Users\pmoen\AppData\Local\ghidra\packed-db-cache (PackedDatabaseCache)  
+WARN  Decompiling 1801f8e20, pcode error at 1801f90a9: Unable to resolve constructor at 1801f90a9 (DecompileCallback)  
+INFO  Evicting 29 filesystems from cache (FileSystemInstanceManager)  
+INFO  Applied data type archive: windows_vs12_64 (ApplyDataArchiveAnalyzer)  
+INFO  Applied data type archive: windows_vs12_64 (ApplyDataArchiveAnalyzer)  
+INFO  -----------------------------------------------------
+    ASCII Strings                              2.774 secs
+    Apply Data Archives                        0.597 secs
+    Call Convention ID                         0.972 secs
+    Call-Fixup Installer                      21.723 secs
+    Create Address Tables                     10.986 secs
+    Create Address Tables - One Time          53.213 secs
+    Create Function                           21.728 secs
+    Data Reference                            35.624 secs
+    Decompiler Switch Analysis               180.064 secs
+    Demangler Microsoft                        0.248 secs
+    Disassemble                               88.223 secs
+    Disassemble Entry Points                   3.716 secs
+    Disassemble Entry Points - One Time        0.063 secs
+    Embedded Media                             0.281 secs
+    External Entry References                  0.000 secs
+    Function ID                               39.683 secs
+    Function Start Search                      0.925 secs
+    Non-Returning Functions - Discovered      27.529 secs
+    Non-Returning Functions - Known            0.021 secs
+    PDB Universal                              0.020 secs
+    Reference                                 46.993 secs
+    Scalar Operand References                 43.414 secs
+    Shared Return Calls                       22.863 secs
+    Stack                                    225.367 secs
+    Subroutine References                     40.394 secs
+    Subroutine References - One Time           0.006 secs
+    Windows x86 PE Exception Handling          3.264 secs
+    Windows x86 PE RTTI Analyzer               5.343 secs
+    Windows x86 Thread Environment Block (TEB) Analyzer     0.017 secs
+    WindowsResourceReference                   0.972 secs
+    x86 Constant Reference Analyzer          260.539 secs
+-----------------------------------------------------
+     Total Time   1137 secs
+-----------------------------------------------------
+ (AutoAnalysisManager)  
+INFO  REPORT: Analysis succeeded for file: file:///D:/Games/SteamLibrary/steamapps/common/FINAL FANTASY PR/GameAssembly.dll (HeadlessAnalyzer)  
+INFO  SCRIPT: D:\Games\Dev\Unity\FFPR\ff1\ff1-screen-reader\docs\Scripts\decompile_mapexits.py (HeadlessAnalyzer)  
+======================================================================
+FF1 Map Exit & Entity Resolution Decompiler
+======================================================================
+Program: GameAssembly.dll
+Image Base: 0x180000000
+Output: D:\Games\Dev\Unity\FFPR\ff1\ff1-screen-reader\docs\Scripts\decompiled_mapexits.c
+
+----------------------------------------------------------------------
+STEP 1: Parsing IL2CPP type definitions
+----------------------------------------------------------------------
+Parsing IL2CPP header: D:\Games\Dev\Unity\FFPR\ff1\il2cpp_ghidra.h
+This may take a few minutes for large headers...
+Reading header file...
+Header size: 29749512 bytes
+Starting C parser...
+Parsing completed, applying types to program...
+Data type manager now has 650 types
+Type parsing completed successfully
+
+----------------------------------------------------------------------
+STEP 2: Applying IL2CPP symbol names
+----------------------------------------------------------------------
+Loading IL2CPP symbols from: D:\Games\Dev\Unity\FFPR\ff1\script.json
+Applied 0 IL2CPP symbols
+
+----------------------------------------------------------------------
+STEP 3: Decompiling target functions
+----------------------------------------------------------------------
+Initializing decompiler...
+
+Decompiling: FieldMapProvisionInformation$$SetFreeSaveArea
+  RVA: 0x957F30 -> Absolute: 0x180957F30
+  SUCCESS
+
+Decompiling: FieldMapProvisionInformation$$get_CurrentMapId
+  RVA: 0x268180 -> Absolute: 0x180268180
+  SUCCESS
+
+Decompiling: FieldMapProvisionInformation$$get_FieldMapPos
+  RVA: 0x958010 -> Absolute: 0x180958010
+    Creating function at 0x180958010...
+  SUCCESS
+
+Decompiling: FieldMapProvisionInformation$$get_Instance
+  RVA: 0x958030 -> Absolute: 0x180958030
+  SUCCESS
+
+Decompiling: FieldMapProvisionInformation$$set_CurrentMapId
+  RVA: 0x269340 -> Absolute: 0x180269340
+  SUCCESS
+
+Decompiling: GotoMapEventEntity$$CanEnter
+  RVA: 0xF6A350 -> Absolute: 0x180F6A350
+  SUCCESS
+
+Decompiling: GotoMapEventEntity$$SetProperty
+  RVA: 0xF6A470 -> Absolute: 0x180F6A470
+    Creating function at 0x180F6A470...
+  SUCCESS
+
+Decompiling: MapLoadProcessor$$GetMapManager
+  RVA: 0x2BF5C0 -> Absolute: 0x1802BF5C0
+  SUCCESS
+
+Decompiling: MapLoadProcessor$$get_Instance
+  RVA: 0x2BFE80 -> Absolute: 0x1802BFE80
+  SUCCESS
+
+Decompiling: MapManager$$SearchEntity
+  RVA: 0x2CB600 -> Absolute: 0x1802CB600
+  SUCCESS
+
+Decompiling: MapManager$$SetCurrentMap
+  RVA: 0x272010 -> Absolute: 0x180272010
+  SUCCESS
+
+Decompiling: MapManager$$get_CashGotoMapProperty
+  RVA: 0x2CE540 -> Absolute: 0x1802CE540
+    Creating function at 0x1802CE540...
+  SUCCESS
+
+Decompiling: MapManager$$get_CurrentMapModel
+  RVA: 0x2CE550 -> Absolute: 0x1802CE550
+  SUCCESS
+
+Decompiling: MapModel$$GetAreaId
+  RVA: 0x300310 -> Absolute: 0x180300310
+  SUCCESS
+
+Decompiling: MapModel$$GetAreaNameId
+  RVA: 0x300330 -> Absolute: 0x180300330
+  SUCCESS
+
+Decompiling: MapModel$$GetId
+  RVA: 0x2B9790 -> Absolute: 0x1802B9790
+  SUCCESS
+
+Decompiling: MapModel$$GetMapName
+  RVA: 0x300960 -> Absolute: 0x180300960
+  SUCCESS
+
+Decompiling: MapModel$$GetTitleId
+  RVA: 0x300AD0 -> Absolute: 0x180300AD0
+  SUCCESS
+
+Decompiling: MapModel$$ctor
+  RVA: 0x301420 -> Absolute: 0x180301420
+  SUCCESS
+
+Decompiling: MapModel$$get_IsAreaTypeWorld
+  RVA: 0x3016B0 -> Absolute: 0x1803016B0
+    Creating function at 0x1803016B0...
+  SUCCESS
+
+Decompiling: PropertyEntity$$ConvertPropertyToData
+  RVA: 0x52FF30 -> Absolute: 0x18052FF30
+  SUCCESS
+
+Decompiling: PropertyGotoMap$$ConvertPropertyToData
+  RVA: 0x530910 -> Absolute: 0x180530910
+  SUCCESS
+
+Decompiling: PropertyGotoMap$$ctor
+  RVA: 0x5307B0 -> Absolute: 0x1805307B0
+  SUCCESS
+
+Decompiling: PropertyGotoMap$$get_AssetName
+  RVA: 0x2BA5A0 -> Absolute: 0x1802BA5A0
+    Creating function at 0x1802BA5A0...
+  SUCCESS
+
+Decompiling: PropertyGotoMap$$get_MapId
+  RVA: 0x311160 -> Absolute: 0x180311160
+  SUCCESS
+
+Decompiling: PropertyGotoMap$$set_MapId
+  RVA: 0x3111A0 -> Absolute: 0x1803111A0
+    Creating function at 0x1803111A0...
+  SUCCESS
+
+======================================================================
+Decompilation complete!
+  Success: 26
+  Failed:  0
+  Output:  D:\Games\Dev\Unity\FFPR\ff1\ff1-screen-reader\docs\Scripts\decompiled_mapexits.c
+======================================================================
+INFO  ANALYZING changes made by post scripts: file:///D:/Games/SteamLibrary/steamapps/common/FINAL FANTASY PR/GameAssembly.dll (HeadlessAnalyzer)  
+INFO  REPORT: Post-analysis succeeded for file: file:///D:/Games/SteamLibrary/steamapps/common/FINAL FANTASY PR/GameAssembly.dll (HeadlessAnalyzer)  
+INFO  REPORT: Save succeeded for: /GameAssembly.dll (FF1_Analysis:/GameAssembly.dll) (HeadlessAnalyzer)  
+INFO  REPORT: Import succeeded (HeadlessAnalyzer)  

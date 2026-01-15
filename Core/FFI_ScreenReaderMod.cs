@@ -1,0 +1,854 @@
+using MelonLoader;
+using FFI_ScreenReader.Utils;
+using FFI_ScreenReader.Menus;
+using FFI_ScreenReader.Patches;
+using FFI_ScreenReader.Field;
+using UnityEngine;
+using HarmonyLib;
+using System;
+using System.Reflection;
+using GameCursor = Il2CppLast.UI.Cursor;
+
+[assembly: MelonInfo(typeof(FFI_ScreenReader.Core.FFI_ScreenReaderMod), "FFI Screen Reader", "1.0.0", "Author")]
+[assembly: MelonGame("SQUARE ENIX, Inc.", "FINAL FANTASY")]
+
+namespace FFI_ScreenReader.Core
+{
+    /// <summary>
+    /// Entity category for filtering navigation targets.
+    /// </summary>
+    public enum EntityCategory
+    {
+        All = 0,
+        Chests = 1,
+        NPCs = 2,
+        MapExits = 3,
+        Events = 4,
+        Vehicles = 5
+    }
+
+    /// <summary>
+    /// Main mod class for FFI Screen Reader.
+    /// Provides screen reader accessibility support for Final Fantasy I Pixel Remaster.
+    /// </summary>
+    public class FFI_ScreenReaderMod : MelonMod
+    {
+        private static TolkWrapper tolk;
+        private static FFI_ScreenReaderMod instance;
+        private InputManager inputManager;
+        private EntityScanner entityScanner;
+
+        // Entity scanning interval - only rescan if this many seconds have passed
+        private const float ENTITY_SCAN_INTERVAL = 5f;
+
+        // Track last entity scan time for throttling
+        private float lastEntityScanTime = 0f;
+
+        // Track last scanned map ID to detect map changes
+        private int lastScannedMapId = -1;
+
+        // Category count derived from enum for safe cycling
+        private static readonly int CategoryCount = System.Enum.GetValues(typeof(EntityCategory)).Length;
+
+        // Current category
+        private EntityCategory currentCategory = EntityCategory.All;
+
+        // Pathfinding filter toggle
+        private bool filterByPathfinding = false;
+
+        // Map exit filter toggle
+        private bool filterMapExits = false;
+
+        // Preferences
+        private static MelonPreferences_Category prefsCategory;
+        private static MelonPreferences_Entry<bool> prefPathfindingFilter;
+        private static MelonPreferences_Entry<bool> prefMapExitFilter;
+
+        public override void OnInitializeMelon()
+        {
+            LoggerInstance.Msg("FFI Screen Reader Mod loaded!");
+
+            // Store static reference for callbacks from patches
+            instance = this;
+
+            // Subscribe to scene load events for automatic component caching
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += (UnityEngine.Events.UnityAction<UnityEngine.SceneManagement.Scene, UnityEngine.SceneManagement.LoadSceneMode>)OnSceneLoaded;
+
+            // Initialize preferences
+            prefsCategory = MelonPreferences.CreateCategory("FFI_ScreenReader");
+            prefPathfindingFilter = prefsCategory.CreateEntry<bool>("PathfindingFilter", false, "Pathfinding Filter", "Only show entities with valid paths when cycling");
+            prefMapExitFilter = prefsCategory.CreateEntry<bool>("MapExitFilter", false, "Map Exit Filter", "Filter multiple map exits to the same destination, showing only the closest one");
+
+            // Load saved preferences
+            filterByPathfinding = prefPathfindingFilter.Value;
+            filterMapExits = prefMapExitFilter.Value;
+
+            // Initialize Tolk for screen reader support
+            tolk = new TolkWrapper();
+            tolk.Load();
+
+            // Initialize input manager
+            inputManager = new InputManager(this);
+
+            // Initialize entity scanner for field navigation
+            entityScanner = new EntityScanner();
+            entityScanner.FilterByPathfinding = filterByPathfinding;
+
+            // Try manual patching with error handling
+            TryManualPatching();
+        }
+
+        /// <summary>
+        /// Attempts to manually apply Harmony patches with detailed error logging.
+        /// </summary>
+        private void TryManualPatching()
+        {
+            LoggerInstance.Msg("Attempting manual Harmony patching...");
+
+            var harmony = new HarmonyLib.Harmony("com.ffi.screenreader.manual");
+
+            // Patch cursor navigation methods (menus)
+            TryPatchCursorNavigation(harmony);
+
+            // Patch character creation screen (Light Warrior selection, name/class fields)
+            CharacterCreationPatches.ApplyPatches(harmony);
+
+            // Patch job/class selection screen (FF1-specific job list)
+            JobSelectionPatches.ApplyPatches(harmony);
+
+            // Config menu patches use HarmonyPatch attributes - auto-applied by MelonLoader
+
+            // Dialogue patches (intro text, NPC dialogue, system messages)
+            ScrollMessagePatches.ApplyPatches(harmony);
+            MessageWindowPatches.ApplyPatches(harmony);
+
+            // Shop patches (item list, command menu, quantity)
+            ShopPatches.ApplyPatches(harmony);
+
+            // Main menu patches (Item, Equipment, Magic, Status)
+            MagicMenuPatches.ApplyPatches(harmony);
+            StatusMenuPatches.ApplyPatches(harmony);
+            StatusDetailsPatches.ApplyPatches(harmony);
+            CharacterSelectTransitionPatches.ApplyPatches(harmony);
+
+            // Battle patches
+            BattleMessagePatches.ApplyPatches(harmony);
+            BattleCommandPatches.ApplyPatches(harmony);
+            BattleItemPatches.ApplyPatches(harmony);
+            BattleMagicPatches.ApplyPatches(harmony);
+            BattleResultPatches.ApplyPatches(harmony);
+            BattleStartPatches.ApplyPatches(harmony);
+            BattleControllerPatches.ApplyPatches(harmony); // Clear states on battle end (guarded by IsInBattle)
+            MainMenuControllerPatches.ApplyPatches(harmony); // Clear battle states when returning to field
+
+            // Vehicle/movement patches (ship, canoe, airship landing detection)
+            // NOTE: Ported from FF3 - may require debugging for FF1-specific classes
+            VehicleLandingPatches.ApplyPatches(harmony);
+            MovementSpeechPatches.ApplyPatches(harmony);
+
+            LoggerInstance.Msg("Manual patching complete");
+        }
+
+        /// <summary>
+        /// Patches cursor navigation methods for menu reading.
+        /// </summary>
+        private void TryPatchCursorNavigation(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                LoggerInstance.Msg("Searching for Cursor type...");
+
+                // Find the Cursor type
+                Type cursorType = null;
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        foreach (var type in assembly.GetTypes())
+                        {
+                            if (type.FullName == "Il2CppLast.UI.Cursor")
+                            {
+                                LoggerInstance.Msg($"Found Cursor type: {type.FullName}");
+                                cursorType = type;
+                                break;
+                            }
+                        }
+                        if (cursorType != null) break;
+                    }
+                    catch { }
+                }
+
+                if (cursorType == null)
+                {
+                    LoggerInstance.Warning("Cursor type not found");
+                    return;
+                }
+
+                // Get postfix method
+                var cursorPostfix = typeof(ManualPatches).GetMethod("CursorNavigation_Postfix", BindingFlags.Public | BindingFlags.Static);
+
+                if (cursorPostfix == null)
+                {
+                    LoggerInstance.Error("Could not find CursorNavigation_Postfix method");
+                    return;
+                }
+
+                // Patch NextIndex
+                var nextIndexMethod = cursorType.GetMethod("NextIndex", BindingFlags.Public | BindingFlags.Instance);
+                if (nextIndexMethod != null)
+                {
+                    harmony.Patch(nextIndexMethod, postfix: new HarmonyMethod(cursorPostfix));
+                    LoggerInstance.Msg("Patched NextIndex");
+                }
+
+                // Patch PrevIndex
+                var prevIndexMethod = cursorType.GetMethod("PrevIndex", BindingFlags.Public | BindingFlags.Instance);
+                if (prevIndexMethod != null)
+                {
+                    harmony.Patch(prevIndexMethod, postfix: new HarmonyMethod(cursorPostfix));
+                    LoggerInstance.Msg("Patched PrevIndex");
+                }
+
+                // Patch SkipNextIndex
+                var skipNextMethod = cursorType.GetMethod("SkipNextIndex", BindingFlags.Public | BindingFlags.Instance);
+                if (skipNextMethod != null)
+                {
+                    harmony.Patch(skipNextMethod, postfix: new HarmonyMethod(cursorPostfix));
+                    LoggerInstance.Msg("Patched SkipNextIndex");
+                }
+
+                // Patch SkipPrevIndex
+                var skipPrevMethod = cursorType.GetMethod("SkipPrevIndex", BindingFlags.Public | BindingFlags.Instance);
+                if (skipPrevMethod != null)
+                {
+                    harmony.Patch(skipPrevMethod, postfix: new HarmonyMethod(cursorPostfix));
+                    LoggerInstance.Msg("Patched SkipPrevIndex");
+                }
+
+                LoggerInstance.Msg("Cursor navigation patches applied successfully");
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Error($"Error patching cursor navigation: {ex.Message}");
+                LoggerInstance.Error($"Stack trace: {ex.StackTrace}");
+            }
+        }
+
+        public override void OnDeinitializeMelon()
+        {
+            // Unsubscribe from scene load events
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= (UnityEngine.Events.UnityAction<UnityEngine.SceneManagement.Scene, UnityEngine.SceneManagement.LoadSceneMode>)OnSceneLoaded;
+
+            CoroutineManager.CleanupAll();
+            tolk?.Unload();
+        }
+
+        // Track previous scene for battle exit detection
+        private string previousSceneName = "";
+
+        /// <summary>
+        /// Called when a new scene is loaded.
+        /// Automatically caches commonly-used Unity components to avoid expensive FindObjectOfType calls.
+        /// Also clears battle states when leaving battle.
+        /// </summary>
+        private void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+        {
+            try
+            {
+                LoggerInstance.Msg($"[ComponentCache] Scene loaded: {scene.name}");
+
+                // Check if we're leaving a battle scene
+                bool wasInBattle = previousSceneName.Contains("Battle");
+                bool isInBattle = scene.name.Contains("Battle");
+
+                if (wasInBattle && !isInBattle)
+                {
+                    // Left battle - clear all battle states
+                    LoggerInstance.Msg("[Scene] Left battle scene - clearing all battle states");
+                    BattleStateHelper.TryClearOnBattleEnd();
+                    ClearAllMenuStates();
+                    BattleCommandPatches.ClearCachedTargetController();
+                }
+
+                // Update previous scene name
+                previousSceneName = scene.name;
+
+                // Clear old cache
+                GameObjectCache.ClearAll();
+
+                // Delay entity scan to allow scene to fully initialize
+                CoroutineManager.StartManaged(DelayedInitialScan());
+            }
+            catch (System.Exception ex)
+            {
+                LoggerInstance.Error($"[ComponentCache] Error in OnSceneLoaded: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Coroutine that delays entity scanning to allow scene to fully initialize.
+        /// </summary>
+        private System.Collections.IEnumerator DelayedInitialScan()
+        {
+            // Wait 0.5 seconds for scene to fully initialize and entities to spawn
+            yield return new UnityEngine.WaitForSeconds(0.5f);
+
+            // Scan for field entities
+            try
+            {
+                entityScanner?.ScanEntities();
+                LoggerInstance.Msg("[EntityScanner] Delayed scan complete");
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning($"[EntityScanner] Error during delayed scan: {ex.Message}");
+            }
+        }
+
+        public override void OnUpdate()
+        {
+            // Handle all input
+            inputManager?.Update();
+        }
+
+        #region Entity Navigation
+
+        /// <summary>
+        /// Gets the current map ID from FieldMapProvisionInformation.
+        /// Returns -1 if unable to retrieve.
+        /// </summary>
+        private int GetCurrentMapId()
+        {
+            try
+            {
+                var fieldMapInfo = Il2CppLast.Map.FieldMapProvisionInformation.Instance;
+                if (fieldMapInfo != null)
+                {
+                    return fieldMapInfo.CurrentMapId;
+                }
+            }
+            catch { }
+            return -1;
+        }
+
+        /// <summary>
+        /// Refreshes entities if needed - called on user input (J/K/L keys).
+        /// Uses time-based throttling (5 second interval) like FF3.
+        /// Also detects map changes and forces refresh + cache clear when map ID changes.
+        /// This replaces the problematic MapTransitionPatches approach.
+        /// </summary>
+        private void RefreshEntitiesIfNeeded()
+        {
+            if (entityScanner == null)
+                return;
+
+            int currentMapId = GetCurrentMapId();
+            float currentTime = UnityEngine.Time.time;
+
+            // Check if map changed since last scan (catches FF1 sub-map transitions like entering shops)
+            bool mapChanged = (currentMapId != lastScannedMapId && currentMapId > 0 && lastScannedMapId > 0);
+
+            if (mapChanged)
+            {
+                MelonLogger.Msg($"[RefreshEntities] Map changed: {lastScannedMapId} -> {currentMapId}, clearing cache and rescanning");
+
+                // Clear FieldPlayerController cache to get fresh mapHandle for pathfinding
+                GameObjectCache.Clear<Il2CppLast.Map.FieldPlayerController>();
+
+                // Force rescan
+                entityScanner.ScanEntities();
+                lastScannedMapId = currentMapId;
+                lastEntityScanTime = currentTime;
+            }
+            else if (currentTime - lastEntityScanTime > ENTITY_SCAN_INTERVAL || entityScanner.Entities.Count == 0)
+            {
+                // Time-based refresh or empty entity list
+                MelonLogger.Msg($"[RefreshEntities] Time-based refresh (interval={ENTITY_SCAN_INTERVAL}s) or empty list");
+                entityScanner.ScanEntities();
+                lastEntityScanTime = currentTime;
+
+                // Update tracked map ID if not set
+                if (lastScannedMapId <= 0 && currentMapId > 0)
+                {
+                    lastScannedMapId = currentMapId;
+                }
+            }
+        }
+
+        internal void AnnounceCurrentEntity()
+        {
+            // Refresh entities if map changed or time interval passed
+            RefreshEntitiesIfNeeded();
+
+            var entity = entityScanner?.CurrentEntity;
+            if (entity == null)
+            {
+                SpeakText("No entity selected");
+                return;
+            }
+
+            // Get player position for distance/direction
+            var context = new FilterContext();
+
+            if (context.PlayerPosition == Vector3.zero)
+            {
+                MelonLogger.Msg("[AnnounceEntity] Player position is zero - controller not found");
+                SpeakText("Cannot determine directions");
+                return;
+            }
+
+            // Get pathfinding info
+            var pathInfo = FieldNavigationHelper.FindPathTo(
+                context.PlayerPosition,
+                entity.Position,
+                context.MapHandle,
+                context.FieldPlayer
+            );
+
+            // Only announce directions, not entity name (user requested)
+            string announcement;
+            if (pathInfo.Success && !string.IsNullOrEmpty(pathInfo.Description))
+            {
+                announcement = pathInfo.Description;
+            }
+            else
+            {
+                // Pathfinding failed - say "No path" instead of straight-line distance
+                announcement = "No path";
+            }
+
+            SpeakText(announcement);
+        }
+
+        internal void CycleNext()
+        {
+            if (entityScanner == null)
+            {
+                SpeakText("Entity scanner not available");
+                return;
+            }
+
+            // Refresh entities if map changed or time interval passed
+            RefreshEntitiesIfNeeded();
+
+            entityScanner.NextEntity();
+
+            // Check if pathfinding filter is on but no entities are reachable
+            if (entityScanner.NoReachableEntities())
+            {
+                SpeakText("No reachable entities");
+                return;
+            }
+
+            AnnounceEntityOnly();
+        }
+
+        internal void CyclePrevious()
+        {
+            if (entityScanner == null)
+            {
+                SpeakText("Entity scanner not available");
+                return;
+            }
+
+            // Refresh entities if map changed or time interval passed
+            RefreshEntitiesIfNeeded();
+
+            entityScanner.PreviousEntity();
+
+            // Check if pathfinding filter is on but no entities are reachable
+            if (entityScanner.NoReachableEntities())
+            {
+                SpeakText("No reachable entities");
+                return;
+            }
+
+            AnnounceEntityOnly();
+        }
+
+        internal void AnnounceEntityOnly()
+        {
+            // Refresh entities if map changed or time interval passed
+            RefreshEntitiesIfNeeded();
+
+            var entity = entityScanner?.CurrentEntity;
+            if (entity == null)
+            {
+                string categoryName = GetCategoryName(currentCategory);
+                int count = entityScanner?.Entities?.Count ?? 0;
+                if (count == 0)
+                {
+                    SpeakText($"No {categoryName} found");
+                }
+                else
+                {
+                    SpeakText("No entity selected");
+                }
+                return;
+            }
+
+            // Get player position for distance/direction
+            var context = new FilterContext();
+            string announcement = entity.FormatDescription(context.PlayerPosition);
+
+            // Add index info
+            int index = entityScanner.CurrentIndex + 1;
+            int total = entityScanner.Entities.Count;
+            announcement += $" ({index} of {total})";
+
+            SpeakText(announcement);
+        }
+
+        #endregion
+
+        #region Category Navigation
+
+        internal void CycleNextCategory()
+        {
+            // Cycle to next category
+            int nextCategory = ((int)currentCategory + 1) % CategoryCount;
+            currentCategory = (EntityCategory)nextCategory;
+            if (entityScanner != null)
+                entityScanner.CurrentCategory = currentCategory;
+
+            AnnounceCategoryChange();
+        }
+
+        internal void CyclePreviousCategory()
+        {
+            // Cycle to previous category
+            int prevCategory = (int)currentCategory - 1;
+            if (prevCategory < 0)
+                prevCategory = CategoryCount - 1;
+
+            currentCategory = (EntityCategory)prevCategory;
+            if (entityScanner != null)
+                entityScanner.CurrentCategory = currentCategory;
+
+            AnnounceCategoryChange();
+        }
+
+        internal void ResetToAllCategory()
+        {
+            if (currentCategory == EntityCategory.All)
+            {
+                SpeakText("Already in All category");
+                return;
+            }
+
+            currentCategory = EntityCategory.All;
+            if (entityScanner != null)
+                entityScanner.CurrentCategory = currentCategory;
+            AnnounceCategoryChange();
+        }
+
+        private void AnnounceCategoryChange()
+        {
+            string categoryName = GetCategoryName(currentCategory);
+            string announcement = $"Category: {categoryName}";
+            SpeakText(announcement);
+        }
+
+        public static string GetCategoryName(EntityCategory category)
+        {
+            switch (category)
+            {
+                case EntityCategory.All: return "All";
+                case EntityCategory.Chests: return "Treasure Chests";
+                case EntityCategory.NPCs: return "NPCs";
+                case EntityCategory.MapExits: return "Map Exits";
+                case EntityCategory.Events: return "Events";
+                case EntityCategory.Vehicles: return "Vehicles";
+                default: return "Unknown";
+            }
+        }
+
+        #endregion
+
+        #region Filter Toggles
+
+        internal void TogglePathfindingFilter()
+        {
+            filterByPathfinding = !filterByPathfinding;
+
+            if (entityScanner != null)
+                entityScanner.FilterByPathfinding = filterByPathfinding;
+
+            // Save to preferences
+            prefPathfindingFilter.Value = filterByPathfinding;
+            prefsCategory.SaveToFile(false);
+
+            string status = filterByPathfinding ? "on" : "off";
+            SpeakText($"Pathfinding filter {status}");
+        }
+
+        internal void ToggleMapExitFilter()
+        {
+            filterMapExits = !filterMapExits;
+
+            // Save to preferences
+            prefMapExitFilter.Value = filterMapExits;
+            prefsCategory.SaveToFile(false);
+
+            string status = filterMapExits ? "on" : "off";
+            SpeakText($"Map exit filter {status}");
+        }
+
+        #endregion
+
+        #region Game Information
+
+        internal void AnnounceGilAmount()
+        {
+            try
+            {
+                var userDataManager = Il2CppLast.Management.UserDataManager.Instance();
+                if (userDataManager != null)
+                {
+                    int gil = userDataManager.OwendGil;
+                    SpeakText($"{gil} Gil", true);
+                    return;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[AnnounceGilAmount] Error: {ex.Message}");
+            }
+            SpeakText("Gil not available", true);
+        }
+
+        internal void AnnounceCurrentMap()
+        {
+            try
+            {
+                string mapName = Field.MapNameResolver.GetCurrentMapName();
+                SpeakText(mapName, true);
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[AnnounceCurrentMap] Error: {ex.Message}");
+                SpeakText("Unknown location", true);
+            }
+        }
+
+        internal void AnnounceCharacterStatus()
+        {
+            try
+            {
+                // H key only works in battle
+                if (!Patches.BattleStateHelper.IsInBattle)
+                {
+                    SpeakText("Party status only available in battle", true);
+                    return;
+                }
+
+                var userDataManager = Il2CppLast.Management.UserDataManager.Instance();
+                if (userDataManager == null)
+                {
+                    SpeakText("Character data not available", true);
+                    return;
+                }
+
+                // Get party characters using GetOwnedCharactersClone
+                var partyList = userDataManager.GetOwnedCharactersClone(false);
+                if (partyList == null || partyList.Count == 0)
+                {
+                    SpeakText("No party members", true);
+                    return;
+                }
+
+                var sb = new System.Text.StringBuilder();
+                foreach (var charData in partyList)
+                {
+                    try
+                    {
+                        if (charData != null)
+                        {
+                            string name = charData.Name;
+                            var param = charData.Parameter;
+                            if (param != null)
+                            {
+                                int currentHp = param.CurrentHP;
+                                int maxHp = param.ConfirmedMaxHp();
+
+                                // FF1 uses spell charges per level, not MP
+                                // Just report HP for now as that's most useful in battle
+                                sb.AppendLine($"{name}: {currentHp}/{maxHp} HP");
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                string status = sb.ToString().Trim();
+                if (!string.IsNullOrEmpty(status))
+                {
+                    SpeakText(status, true);
+                }
+                else
+                {
+                    SpeakText("No character status available", true);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[AnnounceCharacterStatus] Error: {ex.Message}");
+                SpeakText("Character status not available", true);
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Speak text through the screen reader.
+        /// Thread-safe: TolkWrapper uses locking to prevent concurrent native calls.
+        /// </summary>
+        /// <param name="text">Text to speak.</param>
+        /// <param name="interrupt">Whether to interrupt current speech (true for user actions, false for game events).</param>
+        public static void SpeakText(string text, bool interrupt = true)
+        {
+            tolk?.Speak(text, interrupt);
+        }
+
+        /// <summary>
+        /// Clears all menu states except the specified one.
+        /// Called by patches when a menu activates to ensure only one menu is active at a time.
+        /// </summary>
+        public static void ClearOtherMenuStates(string exceptMenu)
+        {
+            ManualPatches.ClearOtherMenuStates(exceptMenu);
+        }
+
+        /// <summary>
+        /// Clears all menu state flags.
+        /// </summary>
+        public static void ClearAllMenuStates()
+        {
+            ManualPatches.ClearAllMenuStates();
+        }
+    }
+
+    /// <summary>
+    /// Manual patch methods for Harmony.
+    /// </summary>
+    public static class ManualPatches
+    {
+        /// <summary>
+        /// Postfix for cursor navigation methods (NextIndex, PrevIndex, etc.)
+        /// Reads the menu text at the current cursor position.
+        /// Only suppressed when a specific patch is actively handling that menu.
+        /// </summary>
+        public static void CursorNavigation_Postfix(object __instance)
+        {
+            try
+            {
+                // Cast to the actual Cursor type
+                var cursor = __instance as GameCursor;
+                if (cursor == null)
+                {
+                    return;
+                }
+
+                // Skip if character creation or job selection is handling cursor events
+                if (CharacterCreationPatches.IsHandlingCursor || JobSelectionPatches.IsHandlingCursor)
+                {
+                    // Clear flags to prevent them getting stuck if user navigates away
+                    CharacterCreationPatches.ClearHandlingFlag();
+                    JobSelectionPatches.ClearHandlingFlag();
+                    return;
+                }
+
+                // === ACTIVE STATE CHECKS ===
+                // Only suppress when specific patches are actively handling announcements
+                // ShouldSuppress() validates controller is still active (auto-resets stuck flags)
+
+                // Config menu - needs current setting values
+                if (ConfigMenuState.ShouldSuppress()) return;
+
+                // Battle command menu - SetCursor patch handles command announcements
+                if (BattleCommandState.ShouldSuppress())
+                {
+                    MelonLogger.Msg("[Cursor Nav] SUPPRESSED by BattleCommandState");
+                    return;
+                }
+
+                // Battle target selection - needs target HP/status
+                if (BattleTargetState.ShouldSuppress())
+                {
+                    MelonLogger.Msg("[Cursor Nav] SUPPRESSED by BattleTargetState");
+                    return;
+                }
+
+                // Battle item menu - needs item data in battle
+                if (BattleItemMenuState.ShouldSuppress()) return;
+
+                // Battle magic menu - needs spell data in battle
+                if (BattleMagicMenuState.ShouldSuppress()) return;
+
+                // Shop menu - needs item price/stats
+                if (ShopMenuTracker.ValidateState()) return;
+
+                // Item menu - needs item data in main menu
+                if (ItemMenuState.ShouldSuppress()) return;
+
+                // Equipment menu - needs equipment slot/item data
+                if (EquipMenuState.ShouldSuppress()) return;
+
+                // Magic menu - needs spell data and charges
+                if (MagicMenuState.ShouldSuppress()) return;
+
+                // Status menu (character selection) - needs character status data
+                if (StatusMenuState.ShouldSuppress()) return;
+
+                // Status details (individual character stats) - has its own navigation
+                if (StatusDetailsState.ShouldSuppress()) return;
+
+                // === DEFAULT: Read via MenuTextDiscovery ===
+                // Start coroutine to read after one frame (allows UI to update)
+                CoroutineManager.StartManaged(
+                    MenuTextDiscovery.WaitAndReadCursor(cursor, "Navigate", 0, false)
+                );
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error in CursorNavigation_Postfix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Clears all menu state flags.
+        /// </summary>
+        public static void ClearAllMenuStates()
+        {
+            ConfigMenuState.ResetState();
+            BattleCommandState.ClearState();
+            BattleTargetState.ClearState();
+            BattleItemMenuState.Reset();
+            BattleMagicMenuState.Reset();
+            ShopMenuTracker.ClearState();
+            ItemMenuState.ResetState();
+            EquipMenuState.ResetState();
+            MagicMenuState.ResetState();
+            StatusMenuState.ResetState();
+            StatusDetailsState.ResetState();
+        }
+
+        /// <summary>
+        /// Clears all menu states except the specified one. Called when a menu activates.
+        /// </summary>
+        public static void ClearOtherMenuStates(string exceptMenu)
+        {
+            if (exceptMenu != "Config") ConfigMenuState.ResetState();
+            if (exceptMenu != "BattleCommand") BattleCommandState.ClearState();
+            if (exceptMenu != "BattleTarget") BattleTargetState.ClearState();
+            if (exceptMenu != "BattleItem") BattleItemMenuState.Reset();
+            if (exceptMenu != "BattleMagic") BattleMagicMenuState.Reset();
+            if (exceptMenu != "Shop") ShopMenuTracker.ClearState();
+            if (exceptMenu != "Item") ItemMenuState.ResetState();
+            if (exceptMenu != "Equip") EquipMenuState.ResetState();
+            if (exceptMenu != "Magic") MagicMenuState.ResetState();
+            if (exceptMenu != "Status") StatusMenuState.ResetState();
+            if (exceptMenu != "StatusDetails") StatusDetailsState.ResetState();
+        }
+    }
+}
