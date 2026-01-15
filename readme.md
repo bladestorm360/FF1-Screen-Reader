@@ -10,7 +10,8 @@ Items that can not be purchased due to a lack of gil are not reading, either upo
 Secret passages, even when opened, do not show properly on the pathfinder. Can use wall bumps and estimation to find, usually near the opening mechanism.
 H in battle announces statistics for all characters, not active character.
 Pop-ups are not reading, usually context-sensative yes or no dialogues such as load game or learn spell. Yes or no options read but not the pop-up text.
-Vehicle state and landing detection may not be working properly.
+
+Landing detection may not be working properly.
 Level ups read HP gained, but not other statistics.
 
 ## Install
