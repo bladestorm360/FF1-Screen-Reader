@@ -2,6 +2,10 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
+using FFI_ScreenReader.Core;
+using FFI_ScreenReader.Utils;
+using FFI_ScreenReader.Field;
+using SubSceneManagerMainGame = Il2CppLast.Management.SubSceneManagerMainGame;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -18,6 +22,14 @@ namespace FFI_ScreenReader.Patches
         // Cached reflection members
         private static PropertyInfo instanceProperty;
         private static MethodInfo isFadeFinishMethod;
+
+        // Map transition announcement tracking
+        private static int lastAnnouncedMapId = -1;
+
+        // Field states from SubSceneManagerMainGame.State enum
+        private const int STATE_CHANGE_MAP = 1;
+        private const int STATE_FIELD_READY = 2;
+        private const int STATE_PLAYER = 3;
 
         /// <summary>
         /// True while the screen is fading (fade not finished).
@@ -51,6 +63,7 @@ namespace FFI_ScreenReader.Patches
                 return;
 
             Initialize();
+            ApplyMapTransitionPatch(harmony);
         }
 
         private static void Initialize()
@@ -162,6 +175,115 @@ namespace FFI_ScreenReader.Patches
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Applies Harmony patch on SubSceneManagerMainGame.ChangeState(State)
+        /// to detect actual game state transitions and announce map changes.
+        /// Unlike set_CurrentMapId (which fires during map provisioning/loading),
+        /// ChangeState only fires on real player-driven state transitions.
+        /// </summary>
+        private static void ApplyMapTransitionPatch(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                var changeStateMethod = AccessTools.Method(
+                    typeof(SubSceneManagerMainGame),
+                    "ChangeState",
+                    new Type[] { typeof(SubSceneManagerMainGame.State) }
+                );
+
+                if (changeStateMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(MapTransitionPatches), nameof(ChangeState_Postfix));
+                    harmony.Patch(changeStateMethod, postfix: new HarmonyMethod(postfix));
+                    MelonLogger.Msg("[MapTransition] Patched SubSceneManagerMainGame.ChangeState (event-driven map transitions)");
+                }
+                else
+                {
+                    MelonLogger.Warning("[MapTransition] Could not find SubSceneManagerMainGame.ChangeState — map transition announcements disabled");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[MapTransition] Error patching map transition: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Postfix for SubSceneManagerMainGame.ChangeState.
+        /// Only fires on actual game state transitions (field, battle, menu),
+        /// never during map data loading/provisioning.
+        /// </summary>
+        public static void ChangeState_Postfix(SubSceneManagerMainGame.State state)
+        {
+            try
+            {
+                int stateValue = (int)state;
+
+                // Only check map transitions on field-related states
+                if (stateValue == STATE_CHANGE_MAP || stateValue == STATE_FIELD_READY || stateValue == STATE_PLAYER)
+                {
+                    CheckMapTransition();
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[MapTransition] Error in ChangeState_Postfix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Reads the current map ID from FieldMapProvisionInformation and announces
+        /// map changes. Announces on every transition including load-game.
+        /// </summary>
+        private static void CheckMapTransition()
+        {
+            try
+            {
+                var fieldMapInfo = Il2CppLast.Map.FieldMapProvisionInformation.Instance;
+                if (fieldMapInfo == null)
+                    return;
+
+                int currentMapId = fieldMapInfo.CurrentMapId;
+                if (currentMapId <= 0)
+                    return;
+
+                // Same map — no announcement
+                if (currentMapId == lastAnnouncedMapId)
+                    return;
+
+                lastAnnouncedMapId = currentMapId;
+
+                // Resolve map name
+                string mapName = MapNameResolver.GetCurrentMapName();
+                if (string.IsNullOrEmpty(mapName) || mapName == "Unknown")
+                {
+                    MelonLogger.Msg($"[MapTransition] Map ID {currentMapId} could not be resolved to a name");
+                    return;
+                }
+
+                string announcement = $"Entering {mapName}";
+
+                // Record for dedup (suppresses bare name from FadeMessageManager.Play)
+                LocationMessageTracker.SetLastMapTransition(announcement);
+
+                MelonLogger.Msg($"[MapTransition] {announcement}");
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[MapTransition] Error in CheckMapTransition: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Full reset of map tracking state. Does NOT reset lastAnnouncedMapId
+        /// since battle transitions change scenes without changing maps.
+        /// </summary>
+        public static void ResetMapTracking()
+        {
+            LocationMessageTracker.Reset();
         }
     }
 }

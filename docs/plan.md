@@ -28,6 +28,7 @@ MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Provides scree
 - [x] Entity scanner (chests, NPCs, exits, events)
 - [x] Category filtering (J/K/L navigation)
 - [x] Pathfinding with distance/direction
+- [x] Map transition announcements ("Entering {MapName}" on map change, including load-game)
 - [x] Map name (M key), wall bump sounds (consecutive hit detection, fade suppression)
 - [x] Directional wall proximity tones (N/S/E/W stereo panning, E=220Hz W=200Hz for L/R distinction)
 - [x] Teleportation (Ctrl+Arrow)
@@ -79,25 +80,45 @@ FFI_ScreenReader/
 ├── Field/
 │   ├── EntityScanner.cs
 │   ├── NavigableEntity.cs
-│   └── FieldNavigationHelper.cs
+│   ├── FieldNavigationHelper.cs
+│   ├── MapNameResolver.cs
+│   └── FilterContext.cs
 ├── Menus/
 │   ├── MenuTextDiscovery.cs
-│   └── SaveSlotReader.cs
+│   ├── SaveSlotReader.cs
+│   ├── ConfigMenuReader.cs
+│   ├── ItemDetailsAnnouncer.cs
+│   ├── StatusDetailsReader.cs
+│   └── CharacterSelectionReader.cs
 ├── Patches/
 │   ├── *MenuPatches.cs
 │   ├── Battle*Patches.cs
 │   ├── MessageWindowPatches.cs
+│   ├── ScrollMessagePatches.cs
 │   ├── PopupPatches.cs
 │   ├── BattlePausePatches.cs
 │   ├── MapTransitionPatches.cs
+│   ├── MovementSoundPatches.cs
+│   ├── CursorNavigationPatches.cs
 │   ├── SaveLoadPatches.cs
+│   ├── ShopPatches.cs
+│   ├── VehicleLandingPatches.cs
+│   ├── JobSelectionPatches.cs
 │   └── NewGamePatches.cs
 └── Utils/
     ├── TolkWrapper.cs
+    ├── SpeechHelper.cs
     ├── TextUtils.cs
+    ├── SoundPlayer.cs
     ├── GameObjectCache.cs
     ├── MenuStateRegistry.cs
-    └── EntityTranslator.cs
+    ├── EntityTranslator.cs
+    ├── LocationMessageTracker.cs
+    ├── AnnouncementDeduplicator.cs
+    ├── CoroutineManager.cs
+    ├── MoveStateHelper.cs
+    ├── StateMachineHelper.cs
+    └── IL2CppOffsets.cs
 ```
 
 ---

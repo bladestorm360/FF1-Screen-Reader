@@ -3,6 +3,7 @@ using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
+using FFI_ScreenReader.Utils;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -156,6 +157,13 @@ namespace FFI_ScreenReader.Patches
                     cleanMessage = cleanMessage.Replace("  ", " ");
                 }
                 cleanMessage = cleanMessage.Trim();
+
+                // Check if this message duplicates a map transition announcement
+                if (!LocationMessageTracker.ShouldAnnounceFadeMessage(cleanMessage))
+                {
+                    MelonLogger.Msg($"[Fade Message] Skipped (duplicate of map transition): {cleanMessage}");
+                    return;
+                }
 
                 MelonLogger.Msg($"[Fade Message] {cleanMessage}");
                 FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);

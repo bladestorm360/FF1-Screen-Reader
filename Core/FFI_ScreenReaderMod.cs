@@ -297,6 +297,10 @@ namespace FFI_ScreenReader.Core
                 wallToneSuppressedUntil = Time.time + 1.0f;
                 SoundPlayer.StopWallTone();
 
+                // Reset location message tracker (but NOT lastAnnouncedMapId —
+                // battle transitions change scenes without changing maps)
+                LocationMessageTracker.Reset();
+
                 // Delay entity scan to allow scene to fully initialize
                 CoroutineManager.StartManaged(DelayedInitialScan());
             }

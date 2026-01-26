@@ -191,6 +191,11 @@ Track `LastSelectedCommandIndex` in BattleCommandState. Magic/item patches check
 - When detected, read via `MenuTextDiscovery.WaitAndReadCursor()` directly
 - `BattlePauseState.IsActive` reads memory directly (no patches needed)
 
+### Map Transition Detection
+`MapTransitionPatches` hooks `FieldMapSequenceController.ChangeState()` and checks map ID on field-related states (`ChangeMap`, `FieldReady`, `Player`). Announces "Entering {MapName}" whenever `currentMapId != lastAnnouncedMapId`, including on first run (load-game from title screen). No first-run skip — title screen uses different states so field states only fire on actual player-driven transitions.
+
+`LocationMessageTracker` prevents duplicate announcements: after "Entering Cornelia 1F" is announced, the bare "Cornelia 1F" from `FadeMessageManager.Play` is suppressed via content-based matching. Also suppresses location-like text (1-4 words, no punctuation) when no map transition is active (e.g., opening the menu).
+
 ### Map Transition Fade Detection
 `MapTransitionPatches` suppresses wall tones during screen fades by polling `FadeManager.IsFadeFinish()` via cached reflection. No Harmony patches on FadeManager (avoids IL2CPP trampoline issues with Nullable params).
 
@@ -221,9 +226,10 @@ Uses `TryCast<FieldNonPlayer>()` for type-based validation (not string matching)
 Translates Japanese entity names to English using `UserData/FFI_ScreenReader/FF1_translations.json`.
 - `EntityTranslator.Initialize()` loads translations from JSON at startup
 - `EntityScanner.ConvertToNavigableEntity()` calls `EntityTranslator.Translate(name)` after name resolution
-- Japanese names without translations tracked in `untranslatedNames` HashSet
-- Hotkey `'` dumps untranslated names to `EntityNames.json` for manual translation
-- JSON format: `{"Japanese": "English"}` key-value pairs
+- **Prefix stripping:** Names with `\d+:` or `SC\d+:` prefixes (e.g., `6:村人(おじいさん)`) are stripped before lookup. The base Japanese text is matched against translations, and the prefix is re-attached to the result (e.g., `6: Old Man`). Exact matches are tried first for backward compatibility.
+- Untranslated base names (prefix-stripped, deduplicated) tracked per map in `untranslatedNamesByMap`
+- Hotkey `'` dumps untranslated base names to `EntityNames.json` for manual translation
+- JSON format: `{"Japanese": "English"}` key-value pairs — use base names without numeric prefixes as keys
 
 ### Title Screen ("Press Any Button")
 - `SplashController.InitializeTitle` captures text silently, sets `isTitleScreenTextPending` flag
@@ -271,6 +277,8 @@ Translates Japanese entity names to English using `UserData/FFI_ScreenReader/FF1
 
 ## Version History
 
+- **2026-01-26** - Fixed load-game not announcing map name: removed first-run silent-store branch in `CheckMapTransition()`. Field states only fire on player-driven transitions, so the skip was unnecessary. `MapTransitionPatches.cs`
+- **2026-01-26** - Entity translation prefix stripping: `\d+:` and `SC\d+:` prefixes stripped before lookup, re-attached to translated output. Base names deduplicated in untranslated tracking. `EntityTranslator.cs`
 - **2026-01-26** - East wall tone frequency raised to 220Hz (from 200Hz) for pitch-based L/R distinction. `SoundPlayer.cs`
 - **2026-01-26** - Fixed NewGame grid navigation: changed DecodeGridIndex from row-major to character-major encoding (`cursorIndex / 2`). `NewGamePatches.cs`
 - **2026-01-25** - Fixed inverted FadeManager check: replaced `IsStateFadeOut() || IsStateFadeIn()` with `!IsFadeFinish()`. `MapTransitionPatches.cs`

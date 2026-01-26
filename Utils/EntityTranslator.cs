@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Field;
@@ -19,6 +20,11 @@ namespace FFI_ScreenReader.Utils
 
         // Track untranslated names by map for dumping
         private static Dictionary<string, HashSet<string>> untranslatedNamesByMap = new Dictionary<string, HashSet<string>>();
+
+        // Matches numeric prefix (e.g., "6:") or SC prefix (e.g., "SC01:") at start of entity names
+        private static readonly Regex EntityPrefixRegex = new Regex(
+            @"^((?:SC)?\d+:)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
         /// Initializes the translator by loading translations from JSON file.
@@ -176,21 +182,25 @@ namespace FFI_ScreenReader.Utils
             if (!isInitialized)
                 Initialize();
 
-            // Look up translation
+            // 1. Exact match first (preserves existing behavior)
             if (translations.TryGetValue(japaneseName, out string englishName))
-            {
                 return englishName;
-            }
 
-            // Track untranslated name by current map for potential dump
-            if (ContainsJapanese(japaneseName))
+            // 2. Strip numeric/SC prefix and try base name lookup
+            StripPrefix(japaneseName, out string prefix, out string baseName);
+            if (prefix != null && translations.TryGetValue(baseName, out string baseTranslation))
+                return prefix + " " + baseTranslation;
+
+            // 3. Track untranslated name by current map (use base name to deduplicate)
+            string trackingName = prefix != null ? baseName : japaneseName;
+            if (ContainsJapanese(trackingName))
             {
                 string mapName = MapNameResolver.GetCurrentMapName();
                 if (!string.IsNullOrEmpty(mapName))
                 {
                     if (!untranslatedNamesByMap.ContainsKey(mapName))
                         untranslatedNamesByMap[mapName] = new HashSet<string>();
-                    untranslatedNamesByMap[mapName].Add(japaneseName);
+                    untranslatedNamesByMap[mapName].Add(trackingName);
                 }
             }
 
@@ -219,6 +229,26 @@ namespace FFI_ScreenReader.Utils
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// Strips a numeric or SC prefix from an entity name.
+        /// Returns the prefix (e.g., "6:" or "SC01:") and the base name.
+        /// If no prefix is found, prefix will be null and baseName will equal the input.
+        /// </summary>
+        private static void StripPrefix(string name, out string prefix, out string baseName)
+        {
+            Match match = EntityPrefixRegex.Match(name);
+            if (match.Success)
+            {
+                prefix = match.Groups[1].Value;
+                baseName = name.Substring(prefix.Length);
+            }
+            else
+            {
+                prefix = null;
+                baseName = name;
+            }
         }
 
         /// <summary>
