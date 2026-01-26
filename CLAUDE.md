@@ -10,33 +10,19 @@
 
 ## Coding Rules
 
-### Patching
-- HarmonyPatch attributes for static types; manual patching for runtime discovery
-- Prefix for state tracking, Postfix for announcements
-- Use coroutines for one-frame delays (let game state settle)
+- **Patching:** HarmonyPatch attributes for static types; manual for runtime. Prefix=state tracking, Postfix=announcements. Coroutines for one-frame delays.
+- **IL2CPP:** String params in patches crash — use `__0`/`__1`. Field access fails — use pointer offsets (see debug.md).
+- **Performance:** No polling/per-frame patterns. Exceptions: `InputManager.cs`, `SoundPlayer.cs`, `MapTransitionPatches.cs`, `MovementSoundPatches.cs`.
+- **Screen reader:** `interrupt: true` for hotkeys, `false` for game events. Strip icon markup. Lock TolkWrapper.
 
-### IL2CPP Constraints
-- String parameters in patches crash - use positional params (`__0`, `__1`)
-- Field access often fails - use pointer offsets from dump.cs (see debug.md)
+## Directory Search Boundaries
 
-### Performance
-- **No polling/timer/per-frame patterns** - React to game events via Harmony patches
-- Exceptions (may find hook-based workarounds later):
-  - `InputManager.cs` polls for hotkey input
-  - `SoundPlayer.cs` dedicated audio thread with queue
-  - Wall tone system (periodic proximity polling)
-  - `MapTransitionPatches.cs` polls FadeManager state for fade detection
-  - `MovementSoundPatches.cs` consecutive collision tracking
-- Cache components in GameObjectCache; never use FindObjectOfType in ShouldSuppress()
-- String-only deduplication in ShouldAnnounce() - no Time.time
-
-### Screen Reader Output
-- `interrupt: true` for hotkeys, `interrupt: false` for game events
-- Strip icon markup before speaking
-- Lock TolkWrapper for all calls
+- Do not search above one directory back from working directory without explicit permission
+- Do not search game installation directory or parent directories without being explicitly asked
+- Do not reference ff3 unless explicitly porting code from that mod
 
 ## References
 
 - **FF3 Reference:** `D:\Games\Dev\Unity\FFPR\ff3\ff3-screen-reader`
 - **Game Assemblies:** `Final Fantasy PR\MelonLoader\Il2CppAssemblies\`
-- **Documentation:** See `docs/plan.md` (features), `docs/debug.md` (technical)
+- **Documentation:** See `docs/plan.md` (features/structure), `docs/debug.md` (architecture/offsets/changelog)

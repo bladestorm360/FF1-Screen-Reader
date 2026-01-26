@@ -1060,11 +1060,11 @@ namespace FFI_ScreenReader.Core
                     return;
                 }
 
-                // Skip if character creation or job selection is handling cursor events
-                if (CharacterCreationPatches.IsHandlingCursor || JobSelectionPatches.IsHandlingCursor)
+                // Skip if new game or job selection is handling cursor events
+                if (NewGamePatches.IsHandlingCursor || JobSelectionPatches.IsHandlingCursor)
                 {
                     // Clear flags to prevent them getting stuck if user navigates away
-                    CharacterCreationPatches.ClearHandlingFlag();
+                    NewGamePatches.ClearHandlingFlag();
                     JobSelectionPatches.ClearHandlingFlag();
                     return;
                 }

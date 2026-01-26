@@ -155,11 +155,11 @@ namespace FFI_ScreenReader.Utils
             if (initialized) return;
 
             // Pre-generate wall bump tone: deep "thud" with soft attack
-            byte[] wallBumpMono = GenerateThudTone(frequency: 27, durationMs: 60, volume: 0.405f);
+            byte[] wallBumpMono = GenerateThudTone(frequency: 27, durationMs: 60, volume: 0.506f);
             wallBumpWav = MonoToStereo(wallBumpMono);
 
             // Footstep: light click simulating 8/16-bit character steps
-            byte[] footstepMono = GenerateClickTone(frequency: 500, durationMs: 25, volume: 0.27f);
+            byte[] footstepMono = GenerateClickTone(frequency: 500, durationMs: 25, volume: 0.338f);
             footstepWav = MonoToStereo(footstepMono);
 
             // Wall tones with frequency-compensated volumes (Fletcher-Munson equal-loudness)
@@ -168,13 +168,13 @@ namespace FFI_ScreenReader.Utils
             // One-shot tones (with decay) - kept for PlayWallTone single-direction
             wallToneNorth = GenerateStereoTone(330, 150, BASE_VOLUME * 1.00f, 0.5f);
             wallToneSouth = GenerateStereoTone(110, 150, BASE_VOLUME * 0.70f, 0.5f);
-            wallToneEast = GenerateStereoTone(200, 150, BASE_VOLUME * 0.85f, 1.0f);
+            wallToneEast = GenerateStereoTone(220, 150, BASE_VOLUME * 0.85f, 1.0f);
             wallToneWest = GenerateStereoTone(200, 150, BASE_VOLUME * 0.85f, 0.0f);
 
             // Sustain tones (no decay, for seamless looping) - 200ms buffer
             wallToneNorthSustain = GenerateStereoToneSustain(330, 200, BASE_VOLUME * 1.00f, 0.5f);
             wallToneSouthSustain = GenerateStereoToneSustain(110, 200, BASE_VOLUME * 0.70f, 0.5f);
-            wallToneEastSustain = GenerateStereoToneSustain(200, 200, BASE_VOLUME * 0.85f, 1.0f);
+            wallToneEastSustain = GenerateStereoToneSustain(220, 200, BASE_VOLUME * 0.85f, 1.0f);
             wallToneWestSustain = GenerateStereoToneSustain(200, 200, BASE_VOLUME * 0.85f, 0.0f);
 
             // Audio beacons (base tones - volume/pan adjusted at playback)

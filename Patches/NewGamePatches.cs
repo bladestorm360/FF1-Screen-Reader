@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
@@ -15,12 +16,13 @@ using NameContentListController = Il2CppLast.UI.KeyInput.NameContentListControll
 namespace FFI_ScreenReader.Patches
 {
     /// <summary>
-    /// Patches for new game character creation (Light Warrior naming).
+    /// Patches for new game character creation (Light Warrior naming and class selection).
     /// Port of FF3's NewGameNamingPatches with FF1-specific changes.
     ///
     /// Patches:
+    /// - SelectContent: Primary navigation handler for character grid (Name/Class/Done)
     /// - InitSelect: Entering character slot selection mode
-    /// - SetTargetSelectContent: Character slot navigation (event-driven)
+    /// - SetTargetSelectContent: Index tracking for UpdateView
     /// - InitNameSelect: Entering name selection mode
     /// - SetFocus: Name cycling (event-driven)
     /// - UpdateView: Name change detection
@@ -33,15 +35,32 @@ namespace FFI_ScreenReader.Patches
         private const string CONTEXT_SLOT = "NewGame.Slot";
         private const string CONTEXT_NAME = "NewGame.Name";
         private const string CONTEXT_AUTO_INDEX = "NewGame.AutoIndex";
+        private const string CONTEXT_FIELD = "NewGame.Field";
 
         // Track controller for cross-method access
         private static object currentController = null;
 
-        // Track last target index for UpdateView (more reliable than reading from instance)
+        // Track last target index from SetTargetSelectContent (for UpdateView fallback)
         private static int lastTargetIndex = -1;
 
         // Track last slot names for change detection
         private static string[] lastSlotNames = new string[4];
+
+        // SelectContent state tracking
+        private static int lastCharacterIndex = -1;
+        private static int lastFieldType = -1; // -1 = none, 0 = name, 1 = class
+
+        // Decoded character slot from SelectContent (for UpdateView)
+        private static int decodedCharacterSlot = -1;
+
+        // One-time diagnostic dump flag
+        private static bool hasLoggedContentList = false;
+
+        /// <summary>
+        /// Flag indicating NewGame is handling cursor events.
+        /// Used to prevent MenuTextDiscovery from double-reading.
+        /// </summary>
+        public static bool IsHandlingCursor { get; private set; } = false;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
@@ -53,10 +72,13 @@ namespace FFI_ScreenReader.Patches
                 Type charListType = typeof(CharacterContentListController);
                 Type nameListType = typeof(NameContentListController);
 
+                // SelectContent - primary navigation handler for character grid
+                PatchSelectContent(harmony, charListType);
+
                 // InitSelect - entering character selection mode
                 PatchMethod(harmony, controllerType, "InitSelect", nameof(InitSelect_Postfix));
 
-                // SetTargetSelectContent - character slot navigation (event-driven)
+                // SetTargetSelectContent - index tracking for UpdateView
                 PatchMethod(harmony, charListType, "SetTargetSelectContent", nameof(SetTargetSelectContent_Postfix));
 
                 // InitNameSelect - entering name selection mode
@@ -79,6 +101,33 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Error($"[New Game] Failed to apply patches: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Patches SelectContent on CharacterContentListController.
+        /// Same manual pattern as JobSelectionPatches.
+        /// </summary>
+        private static void PatchSelectContent(HarmonyLib.Harmony harmony, Type charListType)
+        {
+            try
+            {
+                var selectMethod = AccessTools.Method(charListType, "SelectContent");
+                if (selectMethod != null)
+                {
+                    var postfix = typeof(NewGamePatches).GetMethod("SelectContent_Postfix",
+                        BindingFlags.Public | BindingFlags.Static);
+                    harmony.Patch(selectMethod, postfix: new HarmonyMethod(postfix));
+                    MelonLogger.Msg("[New Game] Patched CharacterContentListController.SelectContent");
+                }
+                else
+                {
+                    MelonLogger.Warning("[New Game] SelectContent method not found on CharacterContentListController");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[New Game] Error patching SelectContent: {ex.Message}");
             }
         }
 
@@ -111,6 +160,225 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        #region Grid Decoding
+
+        /// <summary>
+        /// Decodes a cursor grid index into character index and field type.
+        /// Character-major encoding: flat index = characterIndex * 2 + commandIndex
+        /// Grid layout (2 commands per character, 2 columns of characters):
+        ///   Index 0: LW1 Name  (char=0, cmd=0)  |  Index 2: LW2 Name  (char=1, cmd=0)
+        ///   Index 1: LW1 Class (char=0, cmd=1)  |  Index 3: LW2 Class (char=1, cmd=1)
+        ///   Index 4: LW3 Name  (char=2, cmd=0)  |  Index 6: LW4 Name  (char=3, cmd=0)
+        ///   Index 5: LW3 Class (char=2, cmd=1)  |  Index 7: LW4 Class (char=3, cmd=1)
+        ///   Index 8+: Done
+        /// Formula: characterIndex = cursorIndex / 2
+        ///          isClass = cursorIndex % 2 == 1
+        /// </summary>
+        private static void DecodeGridIndex(int cursorIndex, out int characterIndex, out bool isClassField, out bool isDone)
+        {
+            if (cursorIndex >= 8)
+            {
+                characterIndex = -1;
+                isClassField = false;
+                isDone = true;
+                MelonLogger.Msg($"[New Game] DecodeGridIndex: cursor={cursorIndex} -> Done");
+                return;
+            }
+
+            characterIndex = cursorIndex / 2;
+            isClassField = cursorIndex % 2 == 1;
+            isDone = false;
+
+            MelonLogger.Msg($"[New Game] DecodeGridIndex: cursor={cursorIndex} -> char={characterIndex}, isClass={isClassField}");
+        }
+
+        #endregion
+
+        #region SelectContent (Primary Navigation)
+
+        /// <summary>
+        /// Postfix for CharacterContentListController.SelectContent.
+        /// Primary navigation handler for the character creation grid.
+        /// Announces Name/Class field with character context.
+        /// </summary>
+        public static void SelectContent_Postfix(object __instance, object targetCursor)
+        {
+            IsHandlingCursor = true;
+
+            try
+            {
+                if (targetCursor == null)
+                {
+                    MelonLogger.Msg("[New Game] SelectContent: targetCursor is null");
+                    return;
+                }
+
+                // Get cursor index
+                var indexProp = AccessTools.Property(targetCursor.GetType(), "Index");
+                if (indexProp == null)
+                {
+                    MelonLogger.Msg("[New Game] SelectContent: Cursor.Index property not found");
+                    return;
+                }
+
+                int cursorIndex = (int)indexProp.GetValue(targetCursor);
+                MelonLogger.Msg($"[New Game] SelectContent index={cursorIndex}");
+
+                // Decode grid index synchronously for UpdateView tracking
+                DecodeGridIndex(cursorIndex, out int charIdx, out bool isClass, out bool isDone);
+                if (!isDone && charIdx >= 0 && charIdx < 4)
+                {
+                    decodedCharacterSlot = charIdx;
+                }
+
+                // Start coroutine for announcement (waits one frame for UI to settle)
+                CoroutineManager.StartUntracked(AnnounceFieldAfterDelay(__instance, cursorIndex));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error in SelectContent_Postfix: {ex.Message}");
+                IsHandlingCursor = false;
+            }
+        }
+
+        /// <summary>
+        /// Coroutine to announce character field info after one frame delay.
+        /// Handles Name, Class, and Done announcements with character context.
+        /// </summary>
+        private static IEnumerator AnnounceFieldAfterDelay(object listController, int cursorIndex)
+        {
+            yield return null; // Wait one frame
+
+            try
+            {
+                // One-time diagnostic dump of ContentList structure
+                if (!hasLoggedContentList)
+                {
+                    hasLoggedContentList = true;
+                    try
+                    {
+                        var listProp = AccessTools.Property(listController.GetType(), "ContentList");
+                        var list = listProp?.GetValue(listController);
+                        var countProp = list?.GetType().GetProperty("Count");
+                        int count = countProp != null ? (int)countProp.GetValue(list) : -1;
+                        MelonLogger.Msg($"[New Game] ContentList count={count}");
+                        var indexer = list?.GetType().GetProperty("Item");
+                        for (int i = 0; i < Math.Min(count, 12); i++)
+                        {
+                            var item = indexer?.GetValue(list, new object[] { i });
+                            var nameProp = item != null ? AccessTools.Property(item.GetType(), "CharacterName") : null;
+                            string name = nameProp?.GetValue(item) as string ?? "(null)";
+                            MelonLogger.Msg($"[New Game]   ContentList[{i}] CharacterName='{name}'");
+                        }
+                        var statusesProp = AccessTools.Property(listController.GetType(), "Characterstatuses");
+                        var statusesList = statusesProp?.GetValue(listController);
+                        var sCountProp = statusesList?.GetType().GetProperty("Count");
+                        int sCount = sCountProp != null ? (int)sCountProp.GetValue(statusesList) : -1;
+                        MelonLogger.Msg($"[New Game] Characterstatuses count={sCount}");
+                    }
+                    catch (Exception ex) { MelonLogger.Warning($"[New Game] Diagnostic dump error: {ex.Message}"); }
+                }
+
+                DecodeGridIndex(cursorIndex, out int characterIndex, out bool isClassField, out bool isDone);
+
+                if (isDone)
+                {
+                    // Reset tracking
+                    lastCharacterIndex = -1;
+                    lastFieldType = -1;
+
+                    string doneText = "Done";
+                    if (AnnouncementDeduplicator.ShouldAnnounce(CONTEXT_FIELD, doneText))
+                    {
+                        MelonLogger.Msg("[New Game] Done button");
+                        FFI_ScreenReaderMod.SpeakText(doneText);
+                    }
+                    yield break;
+                }
+
+                // Determine field type and value
+                int fieldType = isClassField ? 1 : 0;
+                string fieldLabel = isClassField ? "Class" : "Name";
+
+                // Read via formula (current approach)
+                string formulaName = GetCharacterSlotNameOnly(listController, characterIndex);
+                string formulaJob = isClassField ? GetJobName(listController, characterIndex) : null;
+
+                // Read via direct cursor index (proposed fix)
+                string directName = GetCharacterSlotNameOnly(listController, cursorIndex);
+                string directJob = isClassField ? GetJobName(listController, cursorIndex) : null;
+
+                MelonLogger.Msg($"[New Game] cursor={cursorIndex}, char={characterIndex}: " +
+                    $"formulaName='{formulaName}' directName='{directName}' " +
+                    $"formulaJob='{formulaJob}' directJob='{directJob}'");
+
+                // USE whichever produces correct data (start with formula, compare in log)
+                string fieldValue;
+                if (isClassField)
+                {
+                    fieldValue = formulaJob ?? directJob ?? "unknown";
+                }
+                else
+                {
+                    fieldValue = formulaName ?? directName ?? "unnamed";
+                }
+
+                // Build announcement based on what changed
+                bool characterChanged = (characterIndex != lastCharacterIndex);
+                bool fieldChanged = (fieldType != lastFieldType);
+
+                string announcement;
+
+                if (characterChanged)
+                {
+                    // Full announcement with character context
+                    announcement = $"Light Warrior {characterIndex + 1}: {fieldLabel}: {fieldValue}";
+                }
+                else if (fieldChanged)
+                {
+                    // Same character, different field
+                    announcement = $"{fieldLabel}: {fieldValue}";
+                }
+                else
+                {
+                    // Nothing changed
+                    MelonLogger.Msg("[New Game] No change, skipping announcement");
+                    yield break;
+                }
+
+                // Update tracking
+                lastCharacterIndex = characterIndex;
+                lastFieldType = fieldType;
+
+                // String-only dedup
+                if (AnnouncementDeduplicator.ShouldAnnounce(CONTEXT_FIELD, announcement))
+                {
+                    MelonLogger.Msg($"[New Game] {announcement}");
+                    FFI_ScreenReaderMod.SpeakText(announcement);
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error in AnnounceFieldAfterDelay: {ex.Message}");
+            }
+            finally
+            {
+                IsHandlingCursor = false;
+            }
+        }
+
+        /// <summary>
+        /// Clears the handling flag. Called by CursorNavigation_Postfix after skipping a read.
+        /// </summary>
+        public static void ClearHandlingFlag()
+        {
+            IsHandlingCursor = false;
+        }
+
+        #endregion
+
+        #region Existing Patches
+
         /// <summary>
         /// Postfix for InitSelect - announces entering character selection mode.
         /// Stores controller reference for other patches.
@@ -121,12 +389,15 @@ namespace FFI_ScreenReader.Patches
             {
                 currentController = __instance;
 
-                // Reset tracking state
+                // Reset all tracking state
                 lastTargetIndex = -1;
+                lastCharacterIndex = -1;
+                lastFieldType = -1;
+                decodedCharacterSlot = -1;
                 for (int i = 0; i < lastSlotNames.Length; i++)
                     lastSlotNames[i] = null;
 
-                AnnouncementDeduplicator.Reset(CONTEXT_SLOT, CONTEXT_NAME, CONTEXT_AUTO_INDEX);
+                AnnouncementDeduplicator.Reset(CONTEXT_SLOT, CONTEXT_NAME, CONTEXT_AUTO_INDEX, CONTEXT_FIELD);
 
                 MelonLogger.Msg("[New Game] Character selection");
                 FFI_ScreenReaderMod.SpeakText("Character selection", interrupt: false);
@@ -139,111 +410,20 @@ namespace FFI_ScreenReader.Patches
 
         /// <summary>
         /// EVENT-DRIVEN: Postfix for CharacterContentListController.SetTargetSelectContent(int).
-        /// Fires once when cursor moves to a new character slot.
-        /// Announces slot info: "Light Warrior {n}: {name or unnamed}" or "Done"
+        /// Tracks index for UpdateView. No announcements (SelectContent handles those).
         /// </summary>
-        public static void SetTargetSelectContent_Postfix(int index)
+        public static void SetTargetSelectContent_Postfix(object __instance, int index)
         {
             try
             {
-                // Track for UpdateView
-                lastTargetIndex = index;
-
-                // Check if index changed (deduplication)
-                if (!AnnouncementDeduplicator.ShouldAnnounce(CONTEXT_SLOT, index))
-                {
-                    return;
-                }
-
-                // Get slot info
-                string slotInfo = GetCharacterSlotInfo(currentController, index);
-
-                if (!string.IsNullOrEmpty(slotInfo) &&
-                    AnnouncementDeduplicator.ShouldAnnounce(CONTEXT_NAME, slotInfo))
-                {
-                    MelonLogger.Msg($"[New Game] Slot: {slotInfo}");
-                    FFI_ScreenReaderMod.SpeakText(slotInfo, interrupt: true);
-                }
+                DecodeGridIndex(index, out int charIdx, out bool isClass, out bool isDone);
+                if (!isDone && charIdx >= 0 && charIdx < 4)
+                    lastTargetIndex = charIdx;
+                MelonLogger.Msg($"[New Game] SetTargetSelectContent grid={index} -> char={charIdx}");
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in SetTargetSelectContent_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Gets character slot info from the controller.
-        /// Returns "Light Warrior {n}: {name}" or "Light Warrior {n}: unnamed" or "Done"
-        /// </summary>
-        private static string GetCharacterSlotInfo(object controller, int index)
-        {
-            if (controller == null)
-            {
-                return index >= 4 ? "Done" : $"Light Warrior {index + 1}: unnamed";
-            }
-
-            int displayIndex = index + 1;
-
-            try
-            {
-                // Get SelectedDataList property
-                var listProp = AccessTools.Property(controller.GetType(), "SelectedDataList");
-                if (listProp == null)
-                {
-                    return $"Light Warrior {displayIndex}: unnamed";
-                }
-
-                var list = listProp.GetValue(controller);
-                if (list == null)
-                {
-                    return $"Light Warrior {displayIndex}: unnamed";
-                }
-
-                // Get count and item at index
-                var countProp = list.GetType().GetProperty("Count");
-                if (countProp == null)
-                {
-                    return $"Light Warrior {displayIndex}: unnamed";
-                }
-
-                int count = (int)countProp.GetValue(list);
-                if (index < 0 || index >= count)
-                {
-                    // Index beyond character list is the Done button
-                    return index >= count ? "Done" : null;
-                }
-
-                // Get item at index using indexer
-                var indexer = list.GetType().GetProperty("Item");
-                if (indexer == null)
-                {
-                    return $"Light Warrior {displayIndex}: unnamed";
-                }
-
-                var item = indexer.GetValue(list, new object[] { index });
-                if (item == null)
-                {
-                    return $"Light Warrior {displayIndex}: unnamed";
-                }
-
-                // Get CharacterName from NewGameSelectData
-                var nameProp = AccessTools.Property(item.GetType(), "CharacterName");
-                if (nameProp != null)
-                {
-                    string name = nameProp.GetValue(item) as string;
-                    if (string.IsNullOrEmpty(name))
-                    {
-                        return $"Light Warrior {displayIndex}: unnamed";
-                    }
-                    return $"Light Warrior {displayIndex}: {name}";
-                }
-
-                return $"Light Warrior {displayIndex}: unnamed";
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"Error getting character slot info: {ex.Message}");
-                return $"Light Warrior {displayIndex}: unnamed";
             }
         }
 
@@ -336,9 +516,9 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                // Use lastTargetIndex set by SetTargetSelectContent_Postfix
-                // (reading from instance offset was unreliable)
-                int currentSlot = lastTargetIndex;
+                // Use decodedCharacterSlot from SelectContent if available,
+                // otherwise fall back to lastTargetIndex
+                int currentSlot = decodedCharacterSlot >= 0 ? decodedCharacterSlot : lastTargetIndex;
 
                 MelonLogger.Msg($"[New Game] UpdateView called: currentSlot={currentSlot}");
 
@@ -365,62 +545,6 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in UpdateView_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Gets just the character name for a slot (without "Light Warrior X:" prefix).
-        /// </summary>
-        private static string GetCharacterSlotNameOnly(object controller, int index)
-        {
-            try
-            {
-                // Get ContentList property which has CharacterContentController items
-                var listProp = AccessTools.Property(controller.GetType(), "ContentList");
-                if (listProp == null)
-                {
-                    return null;
-                }
-
-                var list = listProp.GetValue(controller);
-                if (list == null)
-                {
-                    return null;
-                }
-
-                // Get count
-                var countProp = list.GetType().GetProperty("Count");
-                if (countProp == null || index < 0 || index >= (int)countProp.GetValue(list))
-                {
-                    return null;
-                }
-
-                // Get item at index
-                var indexer = list.GetType().GetProperty("Item");
-                if (indexer == null)
-                {
-                    return null;
-                }
-
-                var charController = indexer.GetValue(list, new object[] { index });
-                if (charController == null)
-                {
-                    return null;
-                }
-
-                // Get CharacterName property from CharacterContentController
-                var nameProp = AccessTools.Property(charController.GetType(), "CharacterName");
-                if (nameProp != null)
-                {
-                    string name = nameProp.GetValue(charController) as string;
-                    return string.IsNullOrEmpty(name) ? null : name;
-                }
-
-                return null;
-            }
-            catch
-            {
-                return null;
             }
         }
 
@@ -493,6 +617,66 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in InitStartPopup_Postfix: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Name Helpers
+
+        /// <summary>
+        /// Gets just the character name for a slot (without "Light Warrior X:" prefix).
+        /// </summary>
+        private static string GetCharacterSlotNameOnly(object controller, int index)
+        {
+            try
+            {
+                // Get ContentList property which has CharacterContentController items
+                var listProp = AccessTools.Property(controller.GetType(), "ContentList");
+                if (listProp == null)
+                {
+                    return null;
+                }
+
+                var list = listProp.GetValue(controller);
+                if (list == null)
+                {
+                    return null;
+                }
+
+                // Get count
+                var countProp = list.GetType().GetProperty("Count");
+                if (countProp == null || index < 0 || index >= (int)countProp.GetValue(list))
+                {
+                    return null;
+                }
+
+                // Get item at index
+                var indexer = list.GetType().GetProperty("Item");
+                if (indexer == null)
+                {
+                    return null;
+                }
+
+                var charController = indexer.GetValue(list, new object[] { index });
+                if (charController == null)
+                {
+                    return null;
+                }
+
+                // Get CharacterName property from CharacterContentController
+                var nameProp = AccessTools.Property(charController.GetType(), "CharacterName");
+                if (nameProp != null)
+                {
+                    string name = nameProp.GetValue(charController) as string;
+                    return string.IsNullOrEmpty(name) ? null : name;
+                }
+
+                return null;
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -577,5 +761,209 @@ namespace FFI_ScreenReader.Patches
             }
             return null;
         }
+
+        #endregion
+
+        #region Job/Class Reading (ported from CharacterCreationPatches)
+
+        /// <summary>
+        /// Gets the job/class name for the given character index (0-3).
+        /// Uses multiple strategies: Characterstatuses -> ContentList.Data -> MasterManager
+        /// </summary>
+        private static string GetJobName(object listController, int characterIndex)
+        {
+            try
+            {
+                // Strategy 1: Get from Characterstatuses list
+                var statusesProp = AccessTools.Property(listController.GetType(), "Characterstatuses");
+                if (statusesProp != null)
+                {
+                    var statusesList = statusesProp.GetValue(listController);
+                    if (statusesList != null)
+                    {
+                        var countProp = statusesList.GetType().GetProperty("Count");
+                        if (countProp != null)
+                        {
+                            int count = (int)countProp.GetValue(statusesList);
+                            if (characterIndex >= 0 && characterIndex < count)
+                            {
+                                var indexer = statusesList.GetType().GetProperty("Item");
+                                if (indexer != null)
+                                {
+                                    var characterStatus = indexer.GetValue(statusesList, new object[] { characterIndex });
+                                    if (characterStatus != null)
+                                    {
+                                        var jobIdProp = AccessTools.Property(characterStatus.GetType(), "JobId");
+                                        if (jobIdProp != null)
+                                        {
+                                            int jobId = (int)jobIdProp.GetValue(characterStatus);
+                                            MelonLogger.Msg($"[New Game] GetJobName strategy 1: char={characterIndex}, jobId={jobId}");
+                                            return GetJobNameById(jobId);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Strategy 2: Get from ContentList -> CharacterContentController.Data
+                var contentListProp = AccessTools.Property(listController.GetType(), "ContentList");
+                if (contentListProp != null)
+                {
+                    var contentList = contentListProp.GetValue(listController);
+                    if (contentList != null)
+                    {
+                        var countProp = contentList.GetType().GetProperty("Count");
+                        if (countProp != null)
+                        {
+                            int count = (int)countProp.GetValue(contentList);
+                            if (characterIndex >= 0 && characterIndex < count)
+                            {
+                                var indexer = contentList.GetType().GetProperty("Item");
+                                if (indexer != null)
+                                {
+                                    var charController = indexer.GetValue(contentList, new object[] { characterIndex });
+                                    if (charController != null)
+                                    {
+                                        // Try Data.CharacterStatusId -> master data lookup
+                                        var dataProp = AccessTools.Property(charController.GetType(), "Data");
+                                        if (dataProp != null)
+                                        {
+                                            var data = dataProp.GetValue(charController);
+                                            if (data != null)
+                                            {
+                                                var charStatusIdProp = AccessTools.Property(data.GetType(), "CharacterStatusId");
+                                                if (charStatusIdProp != null)
+                                                {
+                                                    int charStatusId = (int)charStatusIdProp.GetValue(data);
+                                                    if (charStatusId > 0)
+                                                    {
+                                                        int jobId = GetJobIdFromMasterData(charStatusId);
+                                                        if (jobId > 0)
+                                                        {
+                                                            MelonLogger.Msg($"[New Game] GetJobName strategy 2: char={characterIndex}, statusId={charStatusId}, jobId={jobId}");
+                                                            return GetJobNameById(jobId);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                MelonLogger.Msg($"[New Game] GetJobName: no job found for char={characterIndex}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error getting job name: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Maps FF1 job ID to job name.
+        /// </summary>
+        private static string GetJobNameById(int jobId)
+        {
+            switch (jobId)
+            {
+                case 1: return "Warrior";
+                case 2: return "Thief";
+                case 3: return "Monk";
+                case 4: return "Red Mage";
+                case 5: return "White Mage";
+                case 6: return "Black Mage";
+                case 7: return "Knight";
+                case 8: return "Ninja";
+                case 9: return "Master";
+                case 10: return "Red Wizard";
+                case 11: return "White Wizard";
+                case 12: return "Black Wizard";
+                default: return $"Job {jobId}";
+            }
+        }
+
+        /// <summary>
+        /// Gets JobId from CharacterStatus master data using MasterManager.
+        /// </summary>
+        private static int GetJobIdFromMasterData(int characterStatusId)
+        {
+            try
+            {
+                // Find MasterManager type
+                Type masterManagerType = FindType("Il2CppLast.Data.Master.MasterManager");
+                if (masterManagerType == null) return 0;
+
+                // Get MasterManager.Instance
+                var instanceProp = AccessTools.Property(masterManagerType, "Instance");
+                if (instanceProp == null) return 0;
+
+                var masterManager = instanceProp.GetValue(null);
+                if (masterManager == null) return 0;
+
+                // Find CharacterStatus master type
+                Type characterStatusType = FindType("Il2CppLast.Data.Master.CharacterStatus");
+                if (characterStatusType == null) return 0;
+
+                // Call MasterManager.GetData<CharacterStatus>(characterStatusId)
+                var getDataMethod = masterManagerType.GetMethod("GetData");
+                if (getDataMethod == null) return 0;
+
+                var genericGetData = getDataMethod.MakeGenericMethod(characterStatusType);
+                var characterStatus = genericGetData.Invoke(masterManager, new object[] { characterStatusId });
+                if (characterStatus == null) return 0;
+
+                // Get JobId
+                var jobIdProp = AccessTools.Property(characterStatus.GetType(), "JobId");
+                if (jobIdProp != null)
+                {
+                    return (int)jobIdProp.GetValue(characterStatus);
+                }
+
+                // Try job_id field
+                var jobIdField = AccessTools.Field(characterStatus.GetType(), "job_id");
+                if (jobIdField != null)
+                {
+                    return (int)jobIdField.GetValue(characterStatus);
+                }
+
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error getting JobId from master data: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Finds a type by name across all loaded assemblies.
+        /// </summary>
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var type in assembly.GetTypes())
+                    {
+                        if (type.FullName == fullName)
+                        {
+                            return type;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        #endregion
     }
 }

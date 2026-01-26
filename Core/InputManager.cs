@@ -278,8 +278,8 @@ namespace FFI_ScreenReader.Core
         {
             try
             {
-                EntityTranslator.DumpUntranslatedNames();
-                FFI_ScreenReaderMod.SpeakText("Entity names dumped to log", true);
+                string result = EntityTranslator.DumpUntranslatedNames();
+                FFI_ScreenReaderMod.SpeakText(result, true);
             }
             catch (System.Exception ex)
             {

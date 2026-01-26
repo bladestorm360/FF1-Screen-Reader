@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using MelonLoader;
 using UnityEngine;
+using FFI_ScreenReader.Field;
 
 namespace FFI_ScreenReader.Utils
 {
@@ -16,8 +17,8 @@ namespace FFI_ScreenReader.Utils
         private static bool isInitialized = false;
         private static string translationsPath;
 
-        // Track untranslated names for dumping
-        private static HashSet<string> untranslatedNames = new HashSet<string>();
+        // Track untranslated names by map for dumping
+        private static Dictionary<string, HashSet<string>> untranslatedNamesByMap = new Dictionary<string, HashSet<string>>();
 
         /// <summary>
         /// Initializes the translator by loading translations from JSON file.
@@ -181,10 +182,16 @@ namespace FFI_ScreenReader.Utils
                 return englishName;
             }
 
-            // Track untranslated name for potential dump
+            // Track untranslated name by current map for potential dump
             if (ContainsJapanese(japaneseName))
             {
-                untranslatedNames.Add(japaneseName);
+                string mapName = MapNameResolver.GetCurrentMapName();
+                if (!string.IsNullOrEmpty(mapName))
+                {
+                    if (!untranslatedNamesByMap.ContainsKey(mapName))
+                        untranslatedNamesByMap[mapName] = new HashSet<string>();
+                    untranslatedNamesByMap[mapName].Add(japaneseName);
+                }
             }
 
             // Return original if no translation
@@ -215,43 +222,209 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Dumps all untranslated entity names to EntityNames.json.
-        /// Called by the ' hotkey.
+        /// Dumps untranslated entity names for the current map to EntityNames.json.
+        /// Appends by map name with duplicate detection.
+        /// Returns a status string for TTS feedback.
         /// </summary>
-        public static void DumpUntranslatedNames()
+        public static string DumpUntranslatedNames()
         {
-            if (untranslatedNames.Count == 0)
-            {
-                MelonLogger.Msg("[EntityTranslator] No untranslated entity names found.");
-                return;
-            }
-
             try
             {
+                string currentMap = MapNameResolver.GetCurrentMapName();
+                if (string.IsNullOrEmpty(currentMap))
+                    return "Could not determine current map.";
+
                 string dumpPath = Path.Combine(
                     Path.GetDirectoryName(translationsPath),
                     "EntityNames.json"
                 );
 
-                // Build proper JSON
-                using (var writer = new StreamWriter(dumpPath, false, System.Text.Encoding.UTF8))
+                // Load existing data from file
+                var existingData = new Dictionary<string, Dictionary<string, string>>();
+                if (File.Exists(dumpPath))
                 {
-                    writer.WriteLine("{");
-                    var names = new List<string>(untranslatedNames);
-                    for (int i = 0; i < names.Count; i++)
-                    {
-                        string escaped = names[i].Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        string comma = (i < names.Count - 1) ? "," : "";
-                        writer.WriteLine($"  \"{escaped}\": \"\"{comma}");
-                    }
-                    writer.WriteLine("}");
+                    string existingJson = File.ReadAllText(dumpPath);
+                    existingData = ParseNestedJsonDictionary(existingJson);
                 }
 
-                MelonLogger.Msg($"[EntityTranslator] Saved {untranslatedNames.Count} untranslated names to: {dumpPath}");
+                // Check if map already exists in file
+                if (existingData.ContainsKey(currentMap))
+                    return "Entity data already exists for this map.";
+
+                // Check if we have untranslated names for this map
+                if (!untranslatedNamesByMap.ContainsKey(currentMap) || untranslatedNamesByMap[currentMap].Count == 0)
+                    return "No untranslated names for this map.";
+
+                // Add current map's names to data
+                var mapNames = new Dictionary<string, string>();
+                foreach (string name in untranslatedNamesByMap[currentMap])
+                {
+                    mapNames[name] = "";
+                }
+                existingData[currentMap] = mapNames;
+
+                // Write nested JSON
+                WriteNestedJson(dumpPath, existingData);
+
+                int count = mapNames.Count;
+                MelonLogger.Msg($"[EntityTranslator] Dumped {count} names for {currentMap} to: {dumpPath}");
+                return $"Dumped {count} names for {currentMap}";
             }
             catch (Exception ex)
             {
                 MelonLogger.Error($"[EntityTranslator] Failed to save EntityNames.json: {ex.Message}");
+                return "Failed to dump entity names.";
+            }
+        }
+
+        /// <summary>
+        /// Parses nested JSON: { "MapName": { "Japanese": "", ... }, ... }
+        /// </summary>
+        private static Dictionary<string, Dictionary<string, string>> ParseNestedJsonDictionary(string json)
+        {
+            var result = new Dictionary<string, Dictionary<string, string>>();
+
+            if (string.IsNullOrWhiteSpace(json))
+                return result;
+
+            json = json.Trim();
+            if (!json.StartsWith("{") || !json.EndsWith("}"))
+                return result;
+
+            // Remove outer braces
+            json = json.Substring(1, json.Length - 2).Trim();
+            if (string.IsNullOrEmpty(json))
+                return result;
+
+            int pos = 0;
+            while (pos < json.Length)
+            {
+                // Find map name key
+                int keyStart = json.IndexOf('"', pos);
+                if (keyStart < 0) break;
+
+                int keyEnd = FindClosingQuote(json, keyStart + 1);
+                if (keyEnd < 0) break;
+
+                string mapKey = json.Substring(keyStart + 1, keyEnd - keyStart - 1);
+                mapKey = mapKey.Replace("\\\"", "\"").Replace("\\\\", "\\");
+
+                // Find the opening brace for this map's value
+                int braceStart = json.IndexOf('{', keyEnd);
+                if (braceStart < 0) break;
+
+                // Find matching closing brace
+                int braceEnd = FindMatchingBrace(json, braceStart);
+                if (braceEnd < 0) break;
+
+                // Parse inner dictionary
+                string innerJson = json.Substring(braceStart, braceEnd - braceStart + 1);
+                result[mapKey] = ParseJsonDictionary(innerJson);
+
+                pos = braceEnd + 1;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Finds the closing quote for a JSON string, handling escaped quotes.
+        /// </summary>
+        private static int FindClosingQuote(string json, int startPos)
+        {
+            int pos = startPos;
+            while (pos < json.Length)
+            {
+                pos = json.IndexOf('"', pos);
+                if (pos < 0) return -1;
+
+                // Count preceding backslashes
+                int backslashes = 0;
+                int checkPos = pos - 1;
+                while (checkPos >= startPos - 1 && json[checkPos] == '\\')
+                {
+                    backslashes++;
+                    checkPos--;
+                }
+
+                if (backslashes % 2 == 0)
+                    return pos; // Not escaped
+
+                pos++;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Finds the matching closing brace for an opening brace.
+        /// </summary>
+        private static int FindMatchingBrace(string json, int openPos)
+        {
+            int depth = 0;
+            bool inString = false;
+
+            for (int i = openPos; i < json.Length; i++)
+            {
+                char c = json[i];
+
+                if (inString)
+                {
+                    if (c == '\\')
+                    {
+                        i++; // Skip escaped character
+                        continue;
+                    }
+                    if (c == '"')
+                        inString = false;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    inString = true;
+                }
+                else if (c == '{')
+                {
+                    depth++;
+                }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i;
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Writes a nested dictionary as formatted JSON to a file.
+        /// </summary>
+        private static void WriteNestedJson(string path, Dictionary<string, Dictionary<string, string>> data)
+        {
+            using (var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8))
+            {
+                writer.WriteLine("{");
+                var mapKeys = new List<string>(data.Keys);
+                for (int m = 0; m < mapKeys.Count; m++)
+                {
+                    string mapKey = mapKeys[m];
+                    string escapedMapKey = mapKey.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                    writer.WriteLine($"  \"{escapedMapKey}\": {{");
+
+                    var names = new List<string>(data[mapKey].Keys);
+                    for (int n = 0; n < names.Count; n++)
+                    {
+                        string escapedName = names[n].Replace("\\", "\\\\").Replace("\"", "\\\"");
+                        string escapedValue = data[mapKey][names[n]].Replace("\\", "\\\\").Replace("\"", "\\\"");
+                        string comma = (n < names.Count - 1) ? "," : "";
+                        writer.WriteLine($"    \"{escapedName}\": \"{escapedValue}\"{comma}");
+                    }
+
+                    string mapComma = (m < mapKeys.Count - 1) ? "," : "";
+                    writer.WriteLine($"  }}{mapComma}");
+                }
+                writer.WriteLine("}");
             }
         }
 

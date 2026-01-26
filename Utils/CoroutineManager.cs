@@ -42,6 +42,16 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Start an untracked coroutine (fire-and-forget, no leak tracking).
+        /// Use for short one-frame-delay coroutines that complete quickly.
+        /// </summary>
+        public static void StartUntracked(System.Collections.IEnumerator coroutine)
+        {
+            try { MelonCoroutines.Start(coroutine); }
+            catch (Exception ex) { MelonLogger.Error($"Error starting coroutine: {ex.Message}"); }
+        }
+
+        /// <summary>
         /// Start a managed coroutine with automatic cleanup and limit enforcement.
         /// </summary>
         /// <param name="coroutine">The coroutine to start.</param>
