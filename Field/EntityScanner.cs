@@ -16,6 +16,10 @@ using PropertyEntity = Il2CppLast.Map.PropertyEntity;
 using FieldTresureBox = Il2CppLast.Entity.Field.FieldTresureBox;
 using FieldMapObjectDefault = Il2CppLast.Entity.Field.FieldMapObjectDefault;
 using FieldEntity = Il2CppLast.Entity.Field.FieldEntity;
+using FieldNonPlayer = Il2CppLast.Entity.Field.FieldNonPlayer;
+using PropertyTransportation = Il2CppLast.Map.PropertyTransportation;
+using ContentUtitlity = Il2CppLast.Systems.ContentUtitlity;
+using MessageManager = Il2CppLast.Management.MessageManager;
 
 namespace FFI_ScreenReader.Field
 {
@@ -54,6 +58,22 @@ namespace FFI_ScreenReader.Field
         /// Current list of entities (filtered by category)
         /// </summary>
         public List<NavigableEntity> Entities => filteredEntities;
+
+        /// <summary>
+        /// Returns positions of all MapExitEntity instances from the unfiltered entity list.
+        /// Used by wall tone suppression to avoid false positives at map exits/doors/stairs.
+        /// Reads from the unfiltered list so it works regardless of the active category filter.
+        /// </summary>
+        public List<Vector3> GetMapExitPositions()
+        {
+            var positions = new List<Vector3>();
+            foreach (var entity in entities)
+            {
+                if (entity is MapExitEntity)
+                    positions.Add(entity.Position);
+            }
+            return positions;
+        }
 
         /// <summary>
         /// Current entity index
@@ -483,13 +503,24 @@ namespace FFI_ScreenReader.Field
             if (typeName.Contains("FieldPlayer") || goNameLower.Contains("player"))
                 return null;
 
+            // ===== VEHICLE DETECTION (must come before residentchara filter) =====
+            // Check VehicleTypeMap first - vehicles use ResidentCharaEntity GameObjects
+            if (FieldNavigationHelper.VehicleTypeMap.TryGetValue(fieldEntity, out int vehicleType))
+            {
+                string vehicleName = VehicleEntity.GetVehicleName(vehicleType);
+                return new VehicleEntity(fieldEntity, position, vehicleName, vehicleType);
+            }
+
             // Skip party member entities (following characters)
+            // This must come AFTER vehicle check since vehicles also use ResidentCharaEntity
             if (goNameLower.Contains("residentchara") || goNameLower.Contains("resident"))
                 return null;
 
-            // Skip visual effects and non-interactive elements
+            // Skip visual effects and non-interactive elements (including scroll/content that can be detected as vehicles)
             if (goNameLower.Contains("fieldeffect") || goNameLower.Contains("scrolldummy") ||
-                goNameLower.Contains("effect") && !goNameLower.Contains("object"))
+                goNameLower.Contains("scroll") || goNameLower.Contains("tileanim") ||
+                goNameLower.Contains("pointin") || goNameLower.Contains("opentrigger") ||
+                (goNameLower.Contains("effect") && !goNameLower.Contains("object")))
                 return null;
 
             // Skip inactive objects
@@ -545,11 +576,19 @@ namespace FFI_ScreenReader.Field
                 return new TreasureChestEntity(fieldEntity, position, name, isOpened);
             }
 
-            // ===== NPC DETECTION =====
-            if (goNameLower.Contains("npc") || goNameLower.Contains("chara") ||
-                typeName.Contains("NonPlayer") || typeName.Contains("Npc"))
+            // ===== NPC DETECTION (type-based) =====
+            var fieldNonPlayer = fieldEntity.TryCast<FieldNonPlayer>();
+            if (fieldNonPlayer != null)
             {
-                string npcName = GetNpcName(propertyObj);
+                // Check if NPC is actionable (can be interacted with)
+                try
+                {
+                    if (!fieldNonPlayer.CanAction)
+                        return null; // Skip non-interactive NPCs
+                }
+                catch { } // CanAction may not exist - include NPC if check fails
+
+                string npcName = GetEntityNameFromProperty(fieldEntity);
                 if (string.IsNullOrEmpty(npcName) || npcName == "NPC")
                     npcName = CleanObjectName(goName, "NPC");
                 bool isShop = goNameLower.Contains("shop") || goNameLower.Contains("merchant");
@@ -560,10 +599,40 @@ namespace FFI_ScreenReader.Field
             if (goNameLower.Contains("save") || typeName.Contains("Save"))
                 return new SavePointEntity(fieldEntity, position, "Save Point");
 
-            // ===== VEHICLE/TRANSPORT DETECTION =====
-            if (goNameLower.Contains("ship") || goNameLower.Contains("canoe") ||
-                goNameLower.Contains("airship") || typeName.Contains("Transport"))
-                return new VehicleEntity(fieldEntity, position, "Vehicle", 0);
+            // ===== VEHICLE/TRANSPORT DETECTION (fallback layers) =====
+            // Note: Layer 1 (VehicleTypeMap) is checked earlier, before residentchara filter
+
+            // Layer 2: Check for vehicles via PropertyTransportation
+            try
+            {
+                var property = fieldEntity.Property;
+                if (property != null)
+                {
+                    var transportProperty = property.TryCast<PropertyTransportation>();
+                    if (transportProperty != null)
+                    {
+                        string vehicleName = GetVehicleNameFromProperty(goName, typeName);
+                        int vehicleTypeFromName = GetVehicleTypeFromName(vehicleName);
+                        // Skip unknown vehicle types (Type 0) - prevents duplicates
+                        if (vehicleTypeFromName == 0)
+                            return null;
+                        return new VehicleEntity(fieldEntity, position, vehicleName, vehicleTypeFromName);
+                    }
+                }
+            }
+            catch { }
+
+            // Layer 3: String-based fallback (least reliable)
+            if (typeName.Contains("Transport") || goNameLower.Contains("ship") ||
+                goNameLower.Contains("canoe") || goNameLower.Contains("airship"))
+            {
+                string vehicleName = GetVehicleNameFromProperty(goName, typeName);
+                int vehicleTypeFromName = GetVehicleTypeFromName(vehicleName);
+                // Skip unknown types
+                if (vehicleTypeFromName == 0)
+                    return null;
+                return new VehicleEntity(fieldEntity, position, vehicleName, vehicleTypeFromName);
+            }
 
             // ===== DOOR/STAIRS (secondary exit detection) =====
             if (goNameLower.Contains("door") || goNameLower.Contains("stairs") ||
@@ -584,7 +653,9 @@ namespace FFI_ScreenReader.Field
                     return null;
 
                 // Try to get a meaningful name from the property
-                string name = GetInteractiveObjectName(propertyObj, goName);
+                string name = GetEntityNameFromProperty(fieldEntity);
+                if (string.IsNullOrEmpty(name))
+                    name = GetInteractiveObjectName(propertyObj, goName);
                 return new EventEntity(fieldEntity, position, name, "Interactive Object");
             }
 
@@ -596,7 +667,9 @@ namespace FFI_ScreenReader.Field
                 if (objectType == 0 && goNameLower.Contains("pointin"))
                     return null;
 
-                string name = CleanObjectName(goName, "Object");
+                string name = GetEntityNameFromProperty(fieldEntity);
+                if (string.IsNullOrEmpty(name))
+                    name = CleanObjectName(goName, "Object");
                 return new EventEntity(fieldEntity, position, name, "Interactive");
             }
 
@@ -822,8 +895,21 @@ namespace FFI_ScreenReader.Field
             {
                 var propType = propertyObj.GetType();
 
-                // Try common property names for item contents
-                string[] propNames = { "ItemId", "ContentsId", "RewardId", "GilAmount", "itemId" };
+                // Check for Gil first (special case)
+                var gilProp = propType.GetProperty("GilAmount");
+                if (gilProp != null)
+                {
+                    var gilValue = gilProp.GetValue(propertyObj);
+                    if (gilValue != null)
+                    {
+                        int gilAmount = Convert.ToInt32(gilValue);
+                        if (gilAmount > 0)
+                            return $"{gilAmount} Gil";
+                    }
+                }
+
+                // Try common property names for content/item IDs
+                string[] propNames = { "ContentId", "ItemId", "ContentsId", "RewardId", "itemId" };
                 foreach (var name in propNames)
                 {
                     var prop = propType.GetProperty(name);
@@ -832,14 +918,47 @@ namespace FFI_ScreenReader.Field
                         var value = prop.GetValue(propertyObj);
                         if (value != null)
                         {
-                            // TODO: Resolve item ID to name
-                            return $"Item {value}";
+                            int contentId = Convert.ToInt32(value);
+                            if (contentId > 0)
+                            {
+                                string itemName = ResolveItemName(contentId);
+                                if (!string.IsNullOrEmpty(itemName))
+                                    return itemName;
+                                // Fallback if resolution fails
+                                return $"Item {contentId}";
+                            }
                         }
                     }
                 }
             }
             catch { }
             return "";
+        }
+
+        /// <summary>
+        /// Resolves a content ID to a localized item name.
+        /// </summary>
+        private string ResolveItemName(int contentId)
+        {
+            if (contentId <= 0) return null;
+
+            try
+            {
+                string mesId = ContentUtitlity.GetMesIdItemName(contentId);
+                if (!string.IsNullOrEmpty(mesId))
+                {
+                    var messageManager = MessageManager.Instance;
+                    if (messageManager != null)
+                    {
+                        string name = messageManager.GetMessage(mesId, false);
+                        if (!string.IsNullOrEmpty(name))
+                            return TextUtils.StripIconMarkup(name);
+                    }
+                }
+            }
+            catch { }
+
+            return null;
         }
 
         /// <summary>
@@ -870,6 +989,51 @@ namespace FFI_ScreenReader.Field
             }
             catch { }
             return "NPC";
+        }
+
+        /// <summary>
+        /// Gets the entity name from PropertyEntity.Name for NPCs and interactive entities.
+        /// Falls back to trying to resolve via MessageManager if name looks like a message ID.
+        /// Japanese names are translated via EntityTranslator.
+        /// </summary>
+        private string GetEntityNameFromProperty(FieldEntity fieldEntity)
+        {
+            try
+            {
+                // Access Property directly on the IL2CPP object
+                PropertyEntity property = fieldEntity.Property;
+                if (property == null)
+                    return null;
+
+                // Get the Name property
+                string name = property.Name;
+                if (string.IsNullOrWhiteSpace(name))
+                    return null;
+
+                // Check if name looks like a message ID (e.g., starts with "mes_" or similar patterns)
+                if (name.StartsWith("mes_", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("sys_", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("field_", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try to resolve via MessageManager
+                    var messageManager = MessageManager.Instance;
+                    if (messageManager != null)
+                    {
+                        string localizedName = messageManager.GetMessage(name, false);
+                        if (!string.IsNullOrWhiteSpace(localizedName) && localizedName != name)
+                            return EntityTranslator.Translate(localizedName);
+                    }
+                }
+
+                // If name doesn't contain underscores and has mixed case, use it directly
+                // Translate in case it's Japanese
+                if (!name.Contains("_") && !name.All(c => char.IsLower(c)))
+                    return EntityTranslator.Translate(name);
+
+                return EntityTranslator.Translate(name);
+            }
+            catch { }
+            return null;
         }
 
         /// <summary>
@@ -1040,6 +1204,41 @@ namespace FFI_ScreenReader.Field
             catch { }
 
             return "";
+        }
+
+        /// <summary>
+        /// Gets a display name for a vehicle entity from property/GO name.
+        /// </summary>
+        private string GetVehicleNameFromProperty(string goName, string typeName)
+        {
+            string nameLower = goName.ToLower();
+
+            if (nameLower.Contains("airship") || typeName.Contains("AirShip"))
+                return "Airship";
+            if (nameLower.Contains("canoe"))
+                return "Canoe";
+            if (nameLower.Contains("ship") || nameLower.Contains("boat"))
+                return "Ship";
+
+            return "Vehicle";
+        }
+
+        /// <summary>
+        /// Gets the TransportationType enum value from vehicle name.
+        /// </summary>
+        private int GetVehicleTypeFromName(string vehicleName)
+        {
+            string nameLower = vehicleName.ToLower();
+
+            // FF1 TransportationType values (from docs/debug.md)
+            if (nameLower.Contains("airship"))
+                return 3; // Airship
+            if (nameLower.Contains("canoe"))
+                return 5; // Canoe
+            if (nameLower.Contains("ship") || nameLower.Contains("boat"))
+                return 2; // Ship
+
+            return 0; // Unknown - will be filtered out
         }
     }
 }

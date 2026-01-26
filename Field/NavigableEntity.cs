@@ -362,13 +362,14 @@ namespace FFI_ScreenReader.Field
         /// </summary>
         public static string GetVehicleName(int id)
         {
-            // FF1-specific vehicle names
+            // FF1-specific vehicle names (from docs/debug.md)
             switch (id)
             {
                 case 1: return "Player";
                 case 2: return "Ship";
-                case 3: return "Canoe";
-                case 4: return "Airship";
+                case 3: return "Airship";
+                case 5: return "Canoe";
+                case 7: return "LowFlying Airship";
                 default: return $"Vehicle {id}";
             }
         }

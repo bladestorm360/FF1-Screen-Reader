@@ -284,9 +284,13 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"{actorName}: {actionName}";
                 }
 
-                MelonLogger.Msg($"[Battle Action] {announcement}");
-                // Action announcement interrupts previous speech
-                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                // Use object-based deduplication so different enemies with the same name
+                // attacking in succession are both announced
+                if (AnnouncementDeduplicator.ShouldAnnounce("BattleAction", actData))
+                {
+                    MelonLogger.Msg($"[Battle Action] {announcement}");
+                    FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                }
             }
             catch (Exception ex)
             {
@@ -355,43 +359,36 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // Track last status announcement to avoid duplicates
-        private static string lastStatusAnnouncement = "";
-
         /// <summary>
         /// Postfix for BattleConditionController.Add - announces status effects.
+        /// Uses object-based deduplication so different enemies with the same name
+        /// getting the same status are both announced.
         /// </summary>
         public static void ConditionAdd_Postfix(object __instance, BattleUnitData battleUnitData, int id)
         {
             try
             {
-                // Debug: Log every call to see if patch is working
-                MelonLogger.Msg($"[Battle Status] ConditionAdd_Postfix called: id={id}, unit={battleUnitData != null}");
-
                 if (battleUnitData == null) return;
-
-                string targetName = GetUnitName(battleUnitData);
-                MelonLogger.Msg($"[Battle Status] Target: {targetName}, Condition ID: {id}");
 
                 // Get condition name from ID
                 string conditionName = GetConditionName(id);
-                MelonLogger.Msg($"[Battle Status] Condition name lookup: '{conditionName ?? "null"}'");
 
                 if (string.IsNullOrEmpty(conditionName))
                 {
-                    // Log skipped conditions for debugging
-                    MelonLogger.Msg($"[Battle Status] Skipping condition {id} (no display name)");
                     return;
                 }
 
+                // Use object-based deduplication so different enemies with same name
+                // getting the same status are both announced
+                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleStatus", battleUnitData))
+                {
+                    return;
+                }
+
+                string targetName = GetUnitName(battleUnitData);
                 string announcement = $"{targetName}: {conditionName}";
 
-                // Skip duplicate announcements
-                if (announcement == lastStatusAnnouncement) return;
-                lastStatusAnnouncement = announcement;
-
-                MelonLogger.Msg($"[Battle Status] Announcing: {announcement}");
-                // Status doesn't interrupt
+                MelonLogger.Msg($"[Battle Status] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
             catch (Exception ex)
@@ -463,7 +460,7 @@ namespace FFI_ScreenReader.Patches
                 var messageManager = MessageManager.Instance;
                 if (messageManager == null) return null;
 
-                return messageManager.GetMessage(mesIdName);
+                return TextUtils.StripIconMarkup(messageManager.GetMessage(mesIdName));
             }
             catch
             {
@@ -609,7 +606,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            lastStatusAnnouncement = "";
+            AnnouncementDeduplicator.Reset("BattleAction", "BattleStatus");
         }
     }
 }

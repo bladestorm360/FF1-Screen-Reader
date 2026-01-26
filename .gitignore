@@ -1,5 +1,6 @@
 **/.claude/
 **/bin/
+**/docs/scripts/
 **/obj/
 **/Releases/
 build_log.txt

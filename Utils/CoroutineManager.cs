@@ -49,9 +49,6 @@ namespace FFI_ScreenReader.Utils
         {
             lock (coroutineLock)
             {
-                // Clean up completed coroutines first
-                CleanupCompleted();
-
                 // If we're at the limit, remove the oldest one from tracking
                 if (activeCoroutines.Count >= maxConcurrentCoroutines)
                 {
@@ -70,15 +67,6 @@ namespace FFI_ScreenReader.Utils
                     MelonLogger.Error($"Error starting managed coroutine: {ex.Message}");
                 }
             }
-        }
-
-        /// <summary>
-        /// Remove completed coroutines from tracking.
-        /// Note: This is a simplified approach - we rely on the max limit to prevent accumulation.
-        /// </summary>
-        private static void CleanupCompleted()
-        {
-            // Simplified: we rely on max limit for now
         }
     }
 }

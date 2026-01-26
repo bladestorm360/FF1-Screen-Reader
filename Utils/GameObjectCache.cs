@@ -235,11 +235,7 @@ namespace FFI_ScreenReader.Utils
         /// </summary>
         private static bool IsValid(UnityEngine.Object obj)
         {
-            if (obj == null)
-                return false;
-
-            // Unity's null check catches destroyed objects
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            // Unity's == null override handles both null and destroyed objects
             if (obj == null)
                 return false;
 

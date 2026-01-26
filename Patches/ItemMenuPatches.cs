@@ -31,8 +31,7 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class ItemMenuState
     {
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
+        private const string CONTEXT = "Item.Select";
 
         /// <summary>
         /// True when item list or item target selection is active.
@@ -45,11 +44,8 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static ItemListContentData LastSelectedItem { get; set; } = null;
 
-        // State machine offsets (from dump.cs)
-        // KeyInput.ItemWindowController has stateMachine at offset 0x70
-        private const int OFFSET_STATE_MACHINE = 0x70;
-        private const int OFFSET_STATE_MACHINE_CURRENT = 0x10;
-        private const int OFFSET_STATE_TAG = 0x10;
+        // State machine offset - use centralized offsets
+        private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Item;
 
         // ItemWindowController.State values
         private const int STATE_NONE = 0;
@@ -74,7 +70,7 @@ namespace FFI_ScreenReader.Patches
                 var windowController = UnityEngine.Object.FindObjectOfType<KeyInputItemWindowController>();
                 if (windowController != null)
                 {
-                    int currentState = GetCurrentState(windowController);
+                    int currentState = StateMachineHelper.ReadState(windowController.Pointer, OFFSET_STATE_MACHINE);
 
                     // If we're in CommandSelect state, don't suppress - let MenuTextDiscovery handle it
                     if (currentState == STATE_COMMAND_SELECT || currentState == STATE_NONE)
@@ -101,49 +97,13 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Reads the current state from ItemWindowController's state machine.
-        /// Returns -1 if unable to read.
-        /// </summary>
-        private static int GetCurrentState(KeyInputItemWindowController controller)
-        {
-            try
-            {
-                IntPtr controllerPtr = controller.Pointer;
-                if (controllerPtr == IntPtr.Zero)
-                    return -1;
-
-                unsafe
-                {
-                    // Read stateMachine pointer at offset 0x70
-                    IntPtr stateMachinePtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_STATE_MACHINE);
-                    if (stateMachinePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read current State<T> pointer at offset 0x10
-                    IntPtr currentStatePtr = *(IntPtr*)((byte*)stateMachinePtr.ToPointer() + OFFSET_STATE_MACHINE_CURRENT);
-                    if (currentStatePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read Tag (int) at offset 0x10
-                    int stateValue = *(int*)((byte*)currentStatePtr.ToPointer() + OFFSET_STATE_TAG);
-                    return stateValue;
-                }
-            }
-            catch
-            {
-                return -1;
-            }
-        }
-
-        /// <summary>
         /// Clears item menu state when menu is closed.
         /// </summary>
         public static void ClearState()
         {
             IsItemMenuActive = false;
             LastSelectedItem = null;
-            lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -151,16 +111,10 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState() => ClearState();
 
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = UnityEngine.Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        /// <summary>
+        /// Check if announcement should be made (string-only deduplication).
+        /// </summary>
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         /// <summary>
         /// Gets the row (Front/Back) for a character.

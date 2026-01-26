@@ -139,18 +139,9 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Check if this is the same setting but different value (value changed)
-                if (menuText == lastAnnouncedSettingName && !string.IsNullOrWhiteSpace(configValue))
+                // Skip if same setting - value changes are handled by SwitchArrowSelectTypeProcess/SwitchSliderTypeProcess
+                if (menuText == lastAnnouncedSettingName)
                 {
-                    // Same setting, value changed - announce just the value
-                    lastAnnouncedText = announcement;
-
-                    // Ensure state is still active
-                    FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
-                    ConfigMenuState.IsActive = true;
-
-                    MelonLogger.Msg($"[Config Menu] Value: {configValue}");
-                    FFI_ScreenReaderMod.SpeakText(configValue, interrupt: true);
                     return;
                 }
 
@@ -282,8 +273,11 @@ namespace FFI_ScreenReader.Patches
                 var view = controller.view;
                 if (view.Slider == null) return;
 
-                // Calculate percentage using proper min/max range
-                string percentage = ConfigMenuReader.GetSliderPercentage(view.Slider);
+                // Get setting name for context-aware value formatting
+                string settingName = view.NameText?.text;
+
+                // Calculate value (percentage for most sliders, raw value for BGM/SFX)
+                string percentage = ConfigMenuReader.GetSliderPercentage(view.Slider, settingName);
                 if (string.IsNullOrEmpty(percentage)) return;
 
                 // Only announce if value changed for the SAME controller
@@ -419,7 +413,7 @@ namespace FFI_ScreenReader.Patches
                 var slider = view.SliderTypeRoot.GetComponentInChildren<UnityEngine.UI.Slider>();
                 if (slider == null) return;
 
-                // Calculate percentage using proper min/max range
+                // Calculate value (Touch mode doesn't expose setting name, uses percentage)
                 string percentage = ConfigMenuReader.GetSliderPercentage(slider);
                 if (string.IsNullOrEmpty(percentage)) return;
 

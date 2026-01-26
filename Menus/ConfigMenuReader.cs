@@ -41,14 +41,23 @@ namespace FFI_ScreenReader.Menus
 
         /// <summary>
         /// Converts a slider value to percentage based on its min/max range.
+        /// For BGM/SFX sliders (1-10 range), returns the raw integer value instead.
         /// </summary>
-        public static string GetSliderPercentage(UnityEngine.UI.Slider slider)
+        public static string GetSliderPercentage(UnityEngine.UI.Slider slider, string settingName = null)
         {
             if (slider == null) return null;
 
             float min = slider.minValue;
             float max = slider.maxValue;
             float current = slider.value;
+
+            // BGM/SFX sliders are 1-10, return raw value
+            if (!string.IsNullOrEmpty(settingName) &&
+                (settingName.IndexOf("BGM", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 settingName.IndexOf("SFX", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return ((int)Math.Round(current)).ToString();
+            }
 
             // Calculate percentage based on range
             float range = max - min;
@@ -80,15 +89,16 @@ namespace FFI_ScreenReader.Menus
                 }
             }
 
-            // Check slider value (for volume sliders) - always use percentage
+            // Check slider value (for volume sliders)
             if (view.SliderTypeRoot != null && view.SliderTypeRoot.activeSelf)
             {
                 if (view.Slider != null)
                 {
-                    string percentage = GetSliderPercentage(view.Slider);
-                    if (!string.IsNullOrEmpty(percentage))
+                    string settingName = view.NameText?.text;
+                    string sliderValue = GetSliderPercentage(view.Slider, settingName);
+                    if (!string.IsNullOrEmpty(sliderValue))
                     {
-                        return percentage;
+                        return sliderValue;
                     }
                 }
             }
@@ -191,17 +201,17 @@ namespace FFI_ScreenReader.Menus
                 }
             }
 
-            // Check slider value - use percentage from slider component
+            // Check slider value (Touch mode doesn't expose setting name, uses percentage)
             if (view.SliderTypeRoot != null && view.SliderTypeRoot.activeSelf)
             {
                 // Try to find the slider in the slider root
                 var slider = view.SliderTypeRoot.GetComponentInChildren<UnityEngine.UI.Slider>();
                 if (slider != null)
                 {
-                    string percentage = GetSliderPercentage(slider);
-                    if (!string.IsNullOrEmpty(percentage))
+                    string sliderValue = GetSliderPercentage(slider);
+                    if (!string.IsNullOrEmpty(sliderValue))
                     {
-                        return percentage;
+                        return sliderValue;
                     }
                 }
             }

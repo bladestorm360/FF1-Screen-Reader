@@ -481,7 +481,7 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Clear all battle state flags.
+        /// Clear all battle state flags (internal use).
         /// </summary>
         private static void ClearAllBattleStates()
         {
@@ -493,6 +493,15 @@ namespace FFI_ScreenReader.Patches
             BattleCommandPatches.ResetState();
             BattleItemPatches.ResetState();
             BattleMagicPatches.ResetState();
+        }
+
+        /// <summary>
+        /// Clear all battle menu flags (public alias for PopupPatches).
+        /// Called when returning to title screen to ensure clean state.
+        /// </summary>
+        public static void ClearAllBattleMenuFlags()
+        {
+            ClearAllBattleStates();
         }
 
         /// <summary>

@@ -45,9 +45,8 @@ namespace FFI_ScreenReader.Patches
         // Track last announced spell ID to prevent duplicates
         private static int lastSpellId = -1;
 
-        // Track last announced target for deduplication
-        private static string lastTargetAnnouncement = "";
-        private static float lastTargetAnnouncementTime = 0f;
+        // Context key for target announcements
+        private const string TARGET_CONTEXT = "MagicTarget.Select";
 
         // Cache the current character for charge lookup
         private static OwnedCharacterData _currentCharacter = null;
@@ -56,11 +55,8 @@ namespace FFI_ScreenReader.Patches
         private const int STATE_NONE = 0;
         private const int STATE_COMMAND = 4;
 
-        // State machine offsets (from dump.cs for Serial.FF1.UI.KeyInput.AbilityWindowController)
-        // stateMachine is at 0x88 in the KeyInput version
-        private const int OFFSET_STATE_MACHINE = 0x88;
-        private const int OFFSET_STATE_MACHINE_CURRENT = 0x10;
-        private const int OFFSET_STATE_TAG = 0x10;
+        // State machine offset - use centralized offsets
+        private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Magic;
 
         /// <summary>
         /// True when spell list has focus (SetFocus(true) was called).
@@ -125,7 +121,7 @@ namespace FFI_ScreenReader.Patches
                 var abilityController = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
                 if (abilityController != null)
                 {
-                    int currentState = GetCurrentState(abilityController);
+                    int currentState = StateMachineHelper.ReadState(abilityController.Pointer, OFFSET_STATE_MACHINE);
 
                     // STATE_COMMAND means we're in command bar (Use/Forget) - let MenuTextDiscovery handle
                     if (currentState == STATE_COMMAND)
@@ -155,41 +151,6 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Reads the current state from AbilityWindowController's state machine.
-        /// Returns -1 if unable to read.
-        /// </summary>
-        private static int GetCurrentState(AbilityWindowController controller)
-        {
-            try
-            {
-                IntPtr controllerPtr = controller.Pointer;
-                if (controllerPtr == IntPtr.Zero)
-                    return -1;
-
-                unsafe
-                {
-                    // Read stateMachine pointer at offset 0x60
-                    IntPtr stateMachinePtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_STATE_MACHINE);
-                    if (stateMachinePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read current State<T> pointer at offset 0x10
-                    IntPtr currentStatePtr = *(IntPtr*)((byte*)stateMachinePtr.ToPointer() + OFFSET_STATE_MACHINE_CURRENT);
-                    if (currentStatePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read Tag (int) at offset 0x10
-                    int stateValue = *(int*)((byte*)currentStatePtr.ToPointer() + OFFSET_STATE_TAG);
-                    return stateValue;
-                }
-            }
-            catch
-            {
-                return -1;
-            }
-        }
-
-        /// <summary>
         /// Checks if spell should be announced (changed from last).
         /// </summary>
         public static bool ShouldAnnounceSpell(int spellId)
@@ -208,8 +169,7 @@ namespace FFI_ScreenReader.Patches
             _isSpellListFocused = false;
             _isTargetSelectionActive = false;
             lastSpellId = -1;
-            lastTargetAnnouncement = "";
-            lastTargetAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(TARGET_CONTEXT);
             _currentCharacter = null;
         }
 
@@ -221,8 +181,7 @@ namespace FFI_ScreenReader.Patches
             FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Magic");
             _isTargetSelectionActive = true;
             _isSpellListFocused = false; // Clear spell list state when entering target selection
-            lastTargetAnnouncement = "";
-            lastTargetAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(TARGET_CONTEXT);
         }
 
         /// <summary>
@@ -231,23 +190,13 @@ namespace FFI_ScreenReader.Patches
         public static void OnTargetSelectionClosed()
         {
             _isTargetSelectionActive = false;
-            lastTargetAnnouncement = "";
-            lastTargetAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(TARGET_CONTEXT);
         }
 
         /// <summary>
-        /// Checks if the target announcement should be made (deduplication).
+        /// Checks if the target announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounceTarget(string announcement)
-        {
-            float currentTime = UnityEngine.Time.time;
-            if (announcement == lastTargetAnnouncement && (currentTime - lastTargetAnnouncementTime) < 0.1f)
-                return false;
-
-            lastTargetAnnouncement = announcement;
-            lastTargetAnnouncementTime = currentTime;
-            return true;
-        }
+        public static bool ShouldAnnounceTarget(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(TARGET_CONTEXT, announcement);
 
         /// <summary>
         /// Gets a localized condition/status effect name from a Condition object.
@@ -406,13 +355,12 @@ namespace FFI_ScreenReader.Patches
     {
         private static bool isPatched = false;
 
-        // Memory offsets from dump.cs (Serial.FF1.UI.KeyInput.AbilityContentListController)
-        // FF1 KeyInput version - different from FF3!
-        private const int OFFSET_CONTENT_LIST = 0x30;      // List<BattleAbilityInfomationContentController> contentList
-        private const int OFFSET_SLOT_CONTENT_LIST = 0x38; // List<AbilityContentController> slotContentList
-        private const int OFFSET_ON_SELECTED = 0x40;       // Action<int> OnSelected
-        private const int OFFSET_ON_SELECT = 0x48;         // Action<int> OnSelect
-        private const int OFFSET_ON_CANCEL = 0x50;         // Action OnCancel
+        // Memory offsets - use centralized offsets
+        private const int OFFSET_CONTENT_LIST = IL2CppOffsets.MagicMenu.ContentList;
+        private const int OFFSET_SLOT_CONTENT_LIST = IL2CppOffsets.MagicMenu.SlotContentList;
+        private const int OFFSET_ON_SELECTED = IL2CppOffsets.MagicMenu.OnSelected;
+        private const int OFFSET_ON_SELECT = IL2CppOffsets.MagicMenu.OnSelect;
+        private const int OFFSET_ON_CANCEL = IL2CppOffsets.MagicMenu.OnCancel;
 
         // State constants moved to MagicMenuState class
 
@@ -634,11 +582,9 @@ namespace FFI_ScreenReader.Patches
             catch { }
         }
 
-        // Offsets for KeyInput version (from dump.cs)
-        // AbilityWindowController (KeyInput): statusController at 0x50
-        // AbilityCharaStatusController (KeyInput): targetData at 0x48
-        private const int OFFSET_STATUS_CONTROLLER = 0x50;
-        private const int OFFSET_TARGET_DATA = 0x48;
+        // Offsets - use centralized offsets
+        private const int OFFSET_STATUS_CONTROLLER = IL2CppOffsets.AbilityWindow.StatusController;
+        private const int OFFSET_TARGET_DATA = IL2CppOffsets.AbilityWindow.TargetData;
 
         /// <summary>
         /// Postfix for UpdateController - called when spell list is actively handling input.
@@ -880,9 +826,9 @@ namespace FFI_ScreenReader.Patches
 
         // ==================== Target Selection Patches ====================
 
-        // Offsets for AbilityUseContentListController (KeyInput version)
-        private const int OFFSET_USE_CONTENT_LIST = 0x38;  // List<ItemTargetSelectContentController> contentList
-        private const int OFFSET_USE_SELECT_CURSOR = 0x40; // Cursor selectCursor
+        // Offsets - use centralized offsets
+        private const int OFFSET_USE_CONTENT_LIST = IL2CppOffsets.MagicTarget.ContentList;
+        private const int OFFSET_USE_SELECT_CURSOR = IL2CppOffsets.MagicTarget.SelectCursor;
 
         /// <summary>
         /// Patches AbilityUseContentListController.SetCursor to announce target selection.

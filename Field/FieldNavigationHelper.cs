@@ -6,7 +6,9 @@ using FFI_ScreenReader.Utils;
 using Il2CppLast.Entity.Field;
 using Il2CppLast.Map;
 using FieldMap = Il2Cpp.FieldMap;
+using TransportationInfo = Il2CppLast.Map.TransportationInfo;
 using MapRouteSearcher = Il2Cpp.MapRouteSearcher;
+using FieldPlayerController = Il2CppLast.Map.FieldPlayerController;
 
 namespace FFI_ScreenReader.Field
 {
@@ -35,6 +37,19 @@ namespace FFI_ScreenReader.Field
     public static class FieldNavigationHelper
     {
         /// <summary>
+        /// Maps FieldEntity to their vehicle type ID (populated from Transportation.ModelList)
+        /// </summary>
+        public static Dictionary<FieldEntity, int> VehicleTypeMap { get; } = new Dictionary<FieldEntity, int>();
+
+        /// <summary>
+        /// Clears the vehicle type map. Call on map transitions.
+        /// </summary>
+        public static void ResetTransportationDebug()
+        {
+            VehicleTypeMap.Clear();
+        }
+
+        /// <summary>
         /// Gets all field entities in the current map.
         /// </summary>
         public static List<FieldEntity> GetAllFieldEntities()
@@ -62,78 +77,18 @@ namespace FFI_ScreenReader.Field
                     return results;
                 }
 
-                MelonLogger.Msg($"[FieldNav] FieldController type: {fieldMap.fieldController.GetType().FullName}");
-
-                // entityList is private - access via reflection
-                var controllerType = fieldMap.fieldController.GetType();
-                var entityListField = controllerType.GetField("entityList",
-                    System.Reflection.BindingFlags.NonPublic |
-                    System.Reflection.BindingFlags.Instance);
-
-                if (entityListField == null)
+                // Direct property access (IL2CppInterop wrapper - like FF3)
+                var entityList = fieldMap.fieldController.entityList;
+                if (entityList != null)
                 {
-                    MelonLogger.Msg("[FieldNav] entityList field not found, trying property...");
-                    // Try as property
-                    var entityListProp = controllerType.GetProperty("entityList",
-                        System.Reflection.BindingFlags.NonPublic |
-                        System.Reflection.BindingFlags.Public |
-                        System.Reflection.BindingFlags.Instance);
-
-                    if (entityListProp != null)
+                    foreach (var fieldEntity in entityList)
                     {
-                        var propValue = entityListProp.GetValue(fieldMap.fieldController);
-                        if (propValue is Il2CppSystem.Collections.Generic.List<FieldEntity> il2cppList)
-                        {
-                            foreach (var entity in il2cppList)
-                            {
-                                if (entity != null)
-                                    results.Add(entity);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        MelonLogger.Msg("[FieldNav] entityList property also not found");
-                        // List all fields for debugging
-                        var fields = controllerType.GetFields(
-                            System.Reflection.BindingFlags.NonPublic |
-                            System.Reflection.BindingFlags.Public |
-                            System.Reflection.BindingFlags.Instance);
-                        foreach (var f in fields)
-                        {
-                            if (f.Name.ToLower().Contains("entity") || f.Name.ToLower().Contains("list"))
-                            {
-                                MelonLogger.Msg($"[FieldNav] Found field: {f.Name} ({f.FieldType.Name})");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    var entityListValue = entityListField.GetValue(fieldMap.fieldController);
-                    MelonLogger.Msg($"[FieldNav] entityList value type: {entityListValue?.GetType().FullName ?? "null"}");
-
-                    if (entityListValue is Il2CppSystem.Collections.Generic.List<FieldEntity> il2cppList)
-                    {
-                        MelonLogger.Msg($"[FieldNav] entityList count: {il2cppList.Count}");
-                        foreach (var entity in il2cppList)
-                        {
-                            if (entity != null)
-                                results.Add(entity);
-                        }
-                    }
-                    else if (entityListValue is System.Collections.IEnumerable enumerable)
-                    {
-                        foreach (var item in enumerable)
-                        {
-                            var entity = item as FieldEntity;
-                            if (entity != null)
-                                results.Add(entity);
-                        }
+                        if (fieldEntity != null)
+                            results.Add(fieldEntity);
                     }
                 }
 
-                // Also check for transportation entities
+                // Also check for transportation entities via NeedInteractiveList
                 if (fieldMap.fieldController.transportation != null)
                 {
                     try
@@ -153,7 +108,56 @@ namespace FFI_ScreenReader.Field
                             }
                         }
                     }
-                    catch { }
+                    catch { /* NeedInteractiveList may not be available */ }
+
+                    // Access Transportation.ModelList dictionary via pointer offsets
+                    // This gives us the actual vehicle type information
+                    try
+                    {
+                        unsafe
+                        {
+                            IntPtr transportControllerPtr = fieldMap.fieldController.transportation.Pointer;
+                            if (transportControllerPtr != IntPtr.Zero)
+                            {
+                                // Get infoData (Transportation) at offset 0x18
+                                IntPtr infoDataPtr = *(IntPtr*)(transportControllerPtr + 0x18);
+                                if (infoDataPtr != IntPtr.Zero)
+                                {
+                                    // Get modelList (Dictionary) at offset 0x18 in Transportation
+                                    IntPtr modelListPtr = *(IntPtr*)(infoDataPtr + 0x18);
+                                    if (modelListPtr != IntPtr.Zero)
+                                    {
+                                        var modelListObj = new Il2CppSystem.Object(modelListPtr);
+                                        var modelDict = modelListObj.TryCast<Il2CppSystem.Collections.Generic.Dictionary<int, TransportationInfo>>();
+
+                                        if (modelDict != null)
+                                        {
+                                            foreach (var kvp in modelDict)
+                                            {
+                                                var transportInfo = kvp.Value;
+                                                if (transportInfo == null) continue;
+
+                                                bool enabled = transportInfo.Enable;
+                                                int transportType = transportInfo.Type;
+
+                                                // Skip non-vehicle types and disabled vehicles
+                                                // Type 0 = None, Type 1 = Player; Types 2,3,5,7 are valid vehicles in FF1
+                                                if (transportType == 0 || transportType == 1 || !enabled) continue;
+
+                                                var mapObject = transportInfo.MapObject;
+                                                if (mapObject != null && !results.Contains(mapObject))
+                                                {
+                                                    results.Add(mapObject);
+                                                    VehicleTypeMap[mapObject] = transportType;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { /* Vehicle scan via pointer offsets may fail */ }
                 }
             }
             catch (Exception ex)
@@ -162,6 +166,38 @@ namespace FFI_ScreenReader.Field
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Checks if a direction from the player position leads to a map exit entity.
+        /// Used to suppress wall tones at map exits, doors, and stairs where
+        /// MapRouteSearcher.Search() reports blocked but the tile is actually accessible.
+        /// </summary>
+        /// <param name="playerPos">Player's local position.</param>
+        /// <param name="direction">Direction vector (e.g., new Vector3(0, 16, 0) for North).</param>
+        /// <param name="mapExitPositions">Positions of all map exit entities.</param>
+        /// <param name="tolerance">Max 2D distance to match (default 12.0 = 3/4 tile).</param>
+        /// <returns>True if a map exit is near the adjacent tile in this direction.</returns>
+        public static bool IsDirectionNearMapExit(Vector3 playerPos, Vector3 direction,
+            List<Vector3> mapExitPositions, float tolerance = 12.0f)
+        {
+            if (mapExitPositions == null || mapExitPositions.Count == 0)
+                return false;
+
+            Vector3 adjacentTilePos = playerPos + direction;
+
+            foreach (var exitPos in mapExitPositions)
+            {
+                // 2D distance only (X/Y), ignoring Z (collision layer)
+                float dx = adjacentTilePos.x - exitPos.x;
+                float dy = adjacentTilePos.y - exitPos.y;
+                float dist2D = Mathf.Sqrt(dx * dx + dy * dy);
+
+                if (dist2D <= tolerance)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -199,7 +235,138 @@ namespace FFI_ScreenReader.Field
             return string.Join(", ", directions);
         }
 
-        private static bool CheckPositionWalkable(FieldPlayer player, Vector3 position)
+        /// <summary>
+        /// Result structure for wall proximity detection.
+        /// Distance values: -1 = no wall within range, 0 = adjacent/blocked
+        /// </summary>
+        public struct WallDistances
+        {
+            public int NorthDist;
+            public int SouthDist;
+            public int EastDist;
+            public int WestDist;
+
+            public WallDistances(int north, int south, int east, int west)
+            {
+                NorthDist = north;
+                SouthDist = south;
+                EastDist = east;
+                WestDist = west;
+            }
+        }
+
+        /// <summary>
+        /// Gets distance to nearest wall in each cardinal direction (in tiles).
+        /// Returns -1 for a direction if no wall adjacent (1 tile away).
+        /// </summary>
+        public static WallDistances GetNearbyWallsWithDistance(FieldPlayer player)
+        {
+            if (player == null || player.transform == null)
+                return new WallDistances(-1, -1, -1, -1);
+
+            Vector3 pos = player.transform.localPosition;
+
+            return new WallDistances(
+                GetWallDistance(player, pos, new Vector3(0, 16, 0)),
+                GetWallDistance(player, pos, new Vector3(0, -16, 0)),
+                GetWallDistance(player, pos, new Vector3(16, 0, 0)),
+                GetWallDistance(player, pos, new Vector3(-16, 0, 0))
+            );
+        }
+
+        /// <summary>
+        /// Gets the distance to a wall in a given direction using pathfinding.
+        /// Returns: 0 = adjacent/blocked, -1 = no wall adjacent
+        /// Only checks the immediately adjacent tile to reduce confusion from distant walls.
+        /// </summary>
+        private static int GetWallDistance(FieldPlayer player, Vector3 pos, Vector3 step)
+        {
+            // Check 1 tile away - if blocked, wall is adjacent (distance 0)
+            if (IsAdjacentTileBlocked(player, pos, step))
+                return 0;
+
+            // No wall adjacent
+            return -1;
+        }
+
+        /// <summary>
+        /// Checks if an adjacent tile is blocked using pathfinding.
+        /// More reliable than IsCanMoveToDestPosition for predictive checks.
+        /// </summary>
+        private static bool IsAdjacentTileBlocked(FieldPlayer player, Vector3 playerPos, Vector3 direction)
+        {
+            try
+            {
+                var playerController = GameObjectCache.Get<FieldPlayerController>();
+                if (playerController == null)
+                {
+                    MelonLogger.Msg("[WallCheck] playerController is null, refreshing");
+                    playerController = GameObjectCache.Refresh<FieldPlayerController>();
+                    if (playerController == null)
+                    {
+                        MelonLogger.Msg("[WallCheck] playerController still null after refresh");
+                        return false;
+                    }
+                }
+
+                var mapHandle = playerController.mapHandle;
+                if (mapHandle == null)
+                {
+                    MelonLogger.Msg("[WallCheck] mapHandle is null");
+                    return false;
+                }
+
+                int mapWidth = mapHandle.GetCollisionLayerWidth();
+                int mapHeight = mapHandle.GetCollisionLayerHeight();
+
+                // Validate map dimensions
+                if (mapWidth <= 0 || mapHeight <= 0 || mapWidth > 10000 || mapHeight > 10000)
+                {
+                    MelonLogger.Msg($"[WallCheck] Invalid map dimensions: {mapWidth}x{mapHeight}");
+                    return false;
+                }
+
+                // Convert world position to cell coordinates
+                Vector3 startCell = new Vector3(
+                    Mathf.FloorToInt(mapWidth * 0.5f + playerPos.x * 0.0625f),
+                    Mathf.FloorToInt(mapHeight * 0.5f - playerPos.y * 0.0625f),
+                    player.gameObject.layer - 9
+                );
+
+                Vector3 targetPos = playerPos + direction;
+                Vector3 destCell = new Vector3(
+                    Mathf.FloorToInt(mapWidth * 0.5f + targetPos.x * 0.0625f),
+                    Mathf.FloorToInt(mapHeight * 0.5f - targetPos.y * 0.0625f),
+                    startCell.z
+                );
+
+                // Get player collision state
+                bool playerCollisionState = player._IsOnCollision_k__BackingField;
+
+                MelonLogger.Msg($"[WallCheck] start={startCell}, dest={destCell}, collision={playerCollisionState}");
+
+                // If pathfinding returns no path, tile is blocked
+                var pathPoints = MapRouteSearcher.Search(mapHandle, startCell, destCell, playerCollisionState);
+                bool blocked = pathPoints == null || pathPoints.Count == 0;
+
+                MelonLogger.Msg($"[WallCheck] pathPoints={(pathPoints?.Count ?? -1)}, blocked={blocked}");
+
+                return blocked;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[WallTones] IsAdjacentTileBlocked error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if a position is walkable for the player.
+        /// Made internal for wall proximity detection.
+        /// Note: This uses IsCanMoveToDestPosition which may not work reliably for predictive checks.
+        /// Use IsAdjacentTileBlocked for wall detection instead.
+        /// </summary>
+        internal static bool CheckPositionWalkable(FieldPlayer player, Vector3 position)
         {
             try
             {

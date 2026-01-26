@@ -2,10 +2,11 @@ using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using MelonLoader;
-using HarmonyLib;
 using ConfigActualDetailsControllerBase_KeyInput = Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase;
 using ConfigActualDetailsControllerBase_Touch = Il2CppLast.UI.Touch.ConfigActualDetailsControllerBase;
 using FFI_ScreenReader.Menus;
+using FFI_ScreenReader.Utils;
+using FFI_ScreenReader.Field;
 
 namespace FFI_ScreenReader.Core
 {
@@ -196,15 +197,22 @@ namespace FFI_ScreenReader.Core
                 }
             }
 
-            // Hotkey: 0 (Alpha0) or Shift+K to reset to All category
+            // Hotkey: 0 (Alpha0) to dump untranslated entity names
             if (Input.GetKeyDown(KeyCode.Alpha0))
+            {
+                DumpUntranslatedEntityNames();
+            }
+
+            // Hotkey: Shift+K to reset to All category
+            if (Input.GetKeyDown(KeyCode.K) && IsShiftHeld())
             {
                 mod.ResetToAllCategory();
             }
 
-            if (Input.GetKeyDown(KeyCode.K) && IsShiftHeld())
+            // Hotkey: 9 (Alpha9) to toggle audio beacons
+            if (Input.GetKeyDown(KeyCode.Alpha9))
             {
-                mod.ResetToAllCategory();
+                mod.ToggleAudioBeacons();
             }
 
             // Hotkey: = (Equals) to cycle to next category
@@ -230,6 +238,18 @@ namespace FFI_ScreenReader.Core
             {
                 AnnounceCurrentVehicle();
             }
+
+            // Hotkey: ' (Quote) to toggle footsteps
+            if (Input.GetKeyDown(KeyCode.Quote))
+            {
+                mod.ToggleFootsteps();
+            }
+
+            // Hotkey: ; (Semicolon) to toggle wall tones
+            if (Input.GetKeyDown(KeyCode.Semicolon))
+            {
+                mod.ToggleWallTones();
+            }
         }
 
         /// <summary>
@@ -247,6 +267,24 @@ namespace FFI_ScreenReader.Core
             catch (System.Exception ex)
             {
                 MelonLogger.Warning($"Error announcing vehicle state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Dumps all untranslated entity names to the log file.
+        /// Used to discover Japanese entity names that need translation.
+        /// </summary>
+        private void DumpUntranslatedEntityNames()
+        {
+            try
+            {
+                EntityTranslator.DumpUntranslatedNames();
+                FFI_ScreenReaderMod.SpeakText("Entity names dumped to log", true);
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"Error dumping entity names: {ex.Message}");
+                FFI_ScreenReaderMod.SpeakText("Failed to dump entity names", true);
             }
         }
 
@@ -325,7 +363,7 @@ namespace FFI_ScreenReader.Core
                 var keyInputController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_KeyInput>();
                 if (keyInputController != null && keyInputController.gameObject.activeInHierarchy)
                 {
-                    string description = GetDescriptionTextKeyInput(keyInputController);
+                    string description = GetDescriptionText(keyInputController.Pointer, IL2CppOffsets.ConfigMenu.DescriptionTextKeyInput);
                     if (!string.IsNullOrEmpty(description))
                     {
                         MelonLogger.Msg($"[Config Tooltip] {description}");
@@ -338,7 +376,7 @@ namespace FFI_ScreenReader.Core
                 var touchController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_Touch>();
                 if (touchController != null && touchController.gameObject.activeInHierarchy)
                 {
-                    string description = GetDescriptionTextTouch(touchController);
+                    string description = GetDescriptionText(touchController.Pointer, IL2CppOffsets.ConfigMenu.DescriptionTextTouch);
                     if (!string.IsNullOrEmpty(description))
                     {
                         MelonLogger.Msg($"[Config Tooltip] {description}");
@@ -357,78 +395,33 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
-        /// Gets the description text from a KeyInput ConfigActualDetailsControllerBase.
-        /// descriptionText field is at offset 0xA0 in FF1.
+        /// Gets the description text from a config controller using IL2CPP pointer access.
         /// </summary>
-        // IL2CPP field offset for descriptionText (from dump.cs)
-        private const int OFFSET_DESCRIPTION_TEXT_KEYINPUT = 0xA0;
-
-        private string GetDescriptionTextKeyInput(ConfigActualDetailsControllerBase_KeyInput controller)
+        /// <param name="controllerPtr">Pointer to the IL2CPP controller object</param>
+        /// <param name="offset">Offset of the descriptionText field</param>
+        /// <returns>The description text, or null if not available</returns>
+        private string GetDescriptionText(IntPtr controllerPtr, int offset)
         {
-            if (controller == null) return null;
+            if (controllerPtr == IntPtr.Zero) return null;
 
             try
             {
-                // Use IL2CPP pointer access - reflection doesn't work for IL2CPP private fields
-                IntPtr controllerPtr = controller.Pointer;
-                if (controllerPtr != IntPtr.Zero)
+                unsafe
                 {
-                    unsafe
+                    IntPtr textPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + offset);
+                    if (textPtr != IntPtr.Zero)
                     {
-                        IntPtr textPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_DESCRIPTION_TEXT_KEYINPUT);
-                        if (textPtr != IntPtr.Zero)
+                        var descText = new UnityEngine.UI.Text(textPtr);
+                        if (descText != null && !string.IsNullOrWhiteSpace(descText.text))
                         {
-                            var descText = new UnityEngine.UI.Text(textPtr);
-                            if (descText != null && !string.IsNullOrWhiteSpace(descText.text))
-                            {
-                                return descText.text.Trim();
-                            }
+                            return descText.text.Trim();
                         }
                     }
                 }
             }
             catch (System.Exception ex)
             {
-                MelonLogger.Warning($"Error accessing KeyInput description text: {ex.Message}");
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Gets the description text from a Touch ConfigActualDetailsControllerBase.
-        /// descriptionText field is at offset 0x50 in FF1.
-        /// </summary>
-        // IL2CPP field offset for descriptionText in Touch controller (from dump.cs)
-        private const int OFFSET_DESCRIPTION_TEXT_TOUCH = 0x50;
-
-        private string GetDescriptionTextTouch(ConfigActualDetailsControllerBase_Touch controller)
-        {
-            if (controller == null) return null;
-
-            try
-            {
-                // Use IL2CPP pointer access - reflection doesn't work for IL2CPP private fields
-                IntPtr controllerPtr = controller.Pointer;
-                if (controllerPtr != IntPtr.Zero)
-                {
-                    unsafe
-                    {
-                        IntPtr textPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_DESCRIPTION_TEXT_TOUCH);
-                        if (textPtr != IntPtr.Zero)
-                        {
-                            var descText = new UnityEngine.UI.Text(textPtr);
-                            if (descText != null && !string.IsNullOrWhiteSpace(descText.text))
-                            {
-                                return descText.text.Trim();
-                            }
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Warning($"Error accessing Touch description text: {ex.Message}");
+                MelonLogger.Warning($"Error accessing description text: {ex.Message}");
             }
 
             return null;

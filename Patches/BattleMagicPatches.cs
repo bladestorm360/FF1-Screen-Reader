@@ -15,6 +15,7 @@ using PlayerCharacterParameter = Il2CppLast.Data.PlayerCharacterParameter;
 using AbilityLevelType = Il2CppLast.Defaine.Master.AbilityLevelType;
 using GameCursor = Il2CppLast.UI.Cursor;
 using Il2CppInterop.Runtime;
+using FFI_ScreenReader.Utils;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -25,8 +26,6 @@ namespace FFI_ScreenReader.Patches
     public static class BattleMagicPatches
     {
         private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
-        private const float ANNOUNCE_DEBOUNCE = 0.15f;
 
         // Cache the current player for charge lookup
         public static BattlePlayerData CurrentPlayer { get; set; } = null;
@@ -152,9 +151,9 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // IL2CPP field offsets from dump.cs (on BattleAbilityInfomationControllerBase)
-        private const int OFFSET_DATA_LIST = 0x70;      // List<OwnedAbility>
-        private const int OFFSET_CONTENT_LIST = 0x78;   // List<BattleAbilityInfomationContentController>
+        // IL2CPP field offsets - use centralized offsets
+        private const int OFFSET_DATA_LIST = IL2CppOffsets.BattleMagic.DataList;
+        private const int OFFSET_CONTENT_LIST = IL2CppOffsets.BattleMagic.ContentList;
 
         /// <summary>
         /// Try to get ability announcement from controller.
@@ -282,17 +281,15 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Check if announcement should be made (debouncing).
+        /// Check if announcement should be made (string-only deduplication).
         /// </summary>
         private static bool ShouldAnnounce(string announcement)
         {
-            float currentTime = UnityEngine.Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < ANNOUNCE_DEBOUNCE)
+            if (announcement == lastAnnouncement)
             {
                 return false;
             }
             lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
             return true;
         }
 
@@ -393,13 +390,12 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // Offset for selectedBattlePlayerData in BattleAbilityInfomationControllerBase (FF1 KeyInput version)
-        // FF1 has stateMachine at 0x28, selectedBattlePlayerData at 0x30
-        private const int OFFSET_SELECTED_PLAYER = 0x30;
+        // Offset - use centralized offsets
+        private const int OFFSET_SELECTED_PLAYER = IL2CppOffsets.BattleMagic.SelectedPlayer;
 
-        // IL2CPP offsets for BattleUnitDataInfo path
-        private const int OFFSET_BATTLE_UNIT_DATA_INFO = 0x28; // BattleUnitData.BattleUnitDataInfo
-        private const int OFFSET_PARAMETER = 0x10;              // BattleUnitDataInfo.Parameter
+        // IL2CPP offsets - use centralized offsets
+        private const int OFFSET_BATTLE_UNIT_DATA_INFO = IL2CppOffsets.BattleUnit.BattleUnitDataInfo;
+        private const int OFFSET_PARAMETER = IL2CppOffsets.BattleUnit.Parameter;
 
         /// <summary>
         /// Gets current and max charges for a given spell level.
@@ -560,7 +556,6 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
             CurrentPlayer = null;
         }
     }

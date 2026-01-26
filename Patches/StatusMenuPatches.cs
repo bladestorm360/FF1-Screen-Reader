@@ -3,7 +3,6 @@ using System.Collections;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
-using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Menus;
@@ -28,30 +27,23 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class StatusMenuState
     {
+        private const string CONTEXT = "Status.Select";
+
         /// <summary>
         /// True when character selection menu is active and handling announcements.
         /// </summary>
         public static bool IsActive { get; set; } = false;
 
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
-
         public static void ResetState()
         {
             IsActive = false;
-            lastAnnouncement = "";
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = UnityEngine.Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        /// <summary>
+        /// Check if announcement should be made (string-only deduplication).
+        /// </summary>
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
@@ -696,18 +688,16 @@ namespace FFI_ScreenReader.Patches
                 if (controllerPtr == IntPtr.Zero)
                     return null;
 
-                // Read statusController pointer at offset 0x78
-                // StatusDetailsController has: statusController: AbilityCharaStatusController (0x78)
-                IntPtr statusControllerPtr = System.Runtime.InteropServices.Marshal.ReadIntPtr(controllerPtr, 0x78);
+                // Read statusController pointer - use centralized offsets
+                IntPtr statusControllerPtr = System.Runtime.InteropServices.Marshal.ReadIntPtr(controllerPtr, IL2CppOffsets.StatusDetails.StatusController);
                 if (statusControllerPtr == IntPtr.Zero)
                 {
-                    MelonLogger.Warning("[Status Details] statusController is null at 0x78");
+                    MelonLogger.Warning("[Status Details] statusController is null");
                     return null;
                 }
 
-                // Read targetData pointer at offset 0x48 from AbilityCharaStatusController
-                // AbilityCharaStatusController has: targetData: OwnedCharacterData (0x48)
-                IntPtr targetDataPtr = System.Runtime.InteropServices.Marshal.ReadIntPtr(statusControllerPtr, 0x48);
+                // Read targetData pointer from AbilityCharaStatusController
+                IntPtr targetDataPtr = System.Runtime.InteropServices.Marshal.ReadIntPtr(statusControllerPtr, IL2CppOffsets.StatusDetails.TargetData);
                 if (targetDataPtr == IntPtr.Zero)
                 {
                     MelonLogger.Warning("[Status Details] targetData is null at 0x48");

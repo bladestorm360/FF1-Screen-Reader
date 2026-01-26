@@ -5,6 +5,7 @@ using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using Il2CppInterop.Runtime;
+using FFI_ScreenReader.Utils;
 
 // FF1 Battle types - KeyInput namespace
 using BattleItemInfomationController = Il2CppLast.UI.KeyInput.BattleItemInfomationController;
@@ -21,8 +22,6 @@ namespace FFI_ScreenReader.Patches
     public static class BattleItemPatches
     {
         private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
-        private const float ANNOUNCE_DEBOUNCE = 0.15f;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
@@ -116,14 +115,12 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Debounce - skip duplicate announcements
-                float currentTime = UnityEngine.Time.time;
-                if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < ANNOUNCE_DEBOUNCE)
+                // String-only deduplication - skip duplicate announcements
+                if (announcement == lastAnnouncement)
                 {
                     return;
                 }
                 lastAnnouncement = announcement;
-                lastAnnouncementTime = currentTime;
 
                 // Set state AFTER successful validation - this is the key fix
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleItem");
@@ -139,10 +136,9 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // IL2CPP field offsets from dump.cs (on BattleItemInfomationController - KeyInput namespace)
-        // Note: Touch namespace uses different offsets (0xC8, 0x60) - KeyInput uses these:
-        private const int OFFSET_DISPLAY_DATA_LIST = 0xE0;  // List<ItemListContentData>
-        private const int OFFSET_DATA_LIST = 0x88;          // List<OwnedItemData>
+        // IL2CPP field offsets - use centralized offsets
+        private const int OFFSET_DISPLAY_DATA_LIST = IL2CppOffsets.BattleItem.DisplayDataList;
+        private const int OFFSET_DATA_LIST = IL2CppOffsets.BattleItem.DataList;
 
         /// <summary>
         /// Try to get item announcement from controller.
@@ -310,7 +306,6 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
         }
     }
 }

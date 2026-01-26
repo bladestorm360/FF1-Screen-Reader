@@ -51,11 +51,8 @@ namespace FFI_ScreenReader.Patches
         // Cached controller reference to avoid expensive FindObjectOfType calls
         private static ShopController cachedShopController = null;
 
-        // State machine offsets (from FF1 dump.cs)
-        // FF1 ShopController has stateMachine at offset 0x90 (different from FF3's 0x98)
-        private const int OFFSET_STATE_MACHINE = 0x90;
-        private const int OFFSET_STATE_MACHINE_CURRENT = 0x10;
-        private const int OFFSET_STATE_TAG = 0x10;
+        // State machine offset - use centralized offsets
+        private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Shop;
 
         // ShopController.State values (from dump.cs line 423102-423116)
         private const int STATE_NONE = 0;
@@ -165,33 +162,9 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static int GetCurrentState(ShopController controller)
         {
-            try
-            {
-                IntPtr controllerPtr = controller.Pointer;
-                if (controllerPtr == IntPtr.Zero)
-                    return -1;
-
-                unsafe
-                {
-                    // Read stateMachine pointer at offset 0x90 (FF1-specific)
-                    IntPtr stateMachinePtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_STATE_MACHINE);
-                    if (stateMachinePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read current State<T> pointer at offset 0x10
-                    IntPtr currentStatePtr = *(IntPtr*)((byte*)stateMachinePtr.ToPointer() + OFFSET_STATE_MACHINE_CURRENT);
-                    if (currentStatePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read Tag (int) at offset 0x10
-                    int stateValue = *(int*)((byte*)currentStatePtr.ToPointer() + OFFSET_STATE_TAG);
-                    return stateValue;
-                }
-            }
-            catch
-            {
+            if (controller == null)
                 return -1;
-            }
+            return StateMachineHelper.ReadState(controller.Pointer, OFFSET_STATE_MACHINE);
         }
 
         public static void ClearState()
@@ -483,16 +456,11 @@ namespace FFI_ScreenReader.Patches
 
         // ============ Postfix Methods ============
 
-        // Track last announcement to prevent duplicates from list recycling
+        // Track last announcement to prevent duplicates (string-only deduplication)
         private static string lastAnnouncedItemText = "";
-        private static float lastAnnouncedItemTime = 0f;
-        private const float DIFFERENT_ITEM_DEBOUNCE = 0.1f;  // 100ms debounce for different items (list recycling)
-        private const float SAME_ITEM_DEBOUNCE = 0.15f;      // 150ms debounce for same item (menu entry/exit)
 
         // Track last command to prevent duplicates
         private static string lastAnnouncedCommand = "";
-        private static float lastAnnouncedCommandTime = 0f;
-        private const float COMMAND_DEBOUNCE = 0.1f;
 
         /// <summary>
         /// Called when an item in the shop list gains/loses focus.
@@ -656,28 +624,13 @@ namespace FFI_ScreenReader.Patches
                 // Build announcement: "Item Name, Price"
                 string announcement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
 
-                // Handle list recycling and menu transitions
-                float currentTime = UnityEngine.Time.time;
-                float timeSinceLastAnnouncement = currentTime - lastAnnouncedItemTime;
-
-                // If this is a DIFFERENT item announced within debounce window, skip it
-                // (this handles virtual list recycling where old items briefly get focus)
-                if (announcement != lastAnnouncedItemText && timeSinceLastAnnouncement < DIFFERENT_ITEM_DEBOUNCE)
+                // String-only deduplication - skip if same announcement
+                if (announcement == lastAnnouncedItemText)
                 {
-                    MelonLogger.Msg($"[Shop] Skipping '{announcement}' - different item within {DIFFERENT_ITEM_DEBOUNCE}s of '{lastAnnouncedItemText}'");
-                    return;
-                }
-
-                // If this is the SAME item announced within a short window, skip it
-                // (this handles menu entry/exit where SetFocus fires twice)
-                if (announcement == lastAnnouncedItemText && timeSinceLastAnnouncement < SAME_ITEM_DEBOUNCE)
-                {
-                    MelonLogger.Msg($"[Shop] Skipping '{announcement}' - same item within {SAME_ITEM_DEBOUNCE}s");
                     return;
                 }
 
                 lastAnnouncedItemText = announcement;
-                lastAnnouncedItemTime = currentTime;
 
                 MelonLogger.Msg($"[Shop Item] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement);
@@ -733,18 +686,14 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(commandName))
                     return;
 
-                // Debounce to prevent double announcements
-                float currentTime = UnityEngine.Time.time;
-                float timeSinceLastAnnouncement = currentTime - lastAnnouncedCommandTime;
-
-                if (commandName == lastAnnouncedCommand && timeSinceLastAnnouncement < COMMAND_DEBOUNCE)
+                // String-only deduplication
+                if (commandName == lastAnnouncedCommand)
                 {
                     MelonLogger.Msg($"[Shop Command] Skipping duplicate: {commandName}");
                     return;
                 }
 
                 lastAnnouncedCommand = commandName;
-                lastAnnouncedCommandTime = currentTime;
 
                 MelonLogger.Msg($"[Shop Command] Announcing: {commandName}");
                 FFI_ScreenReaderMod.SpeakText(commandName);
@@ -901,11 +850,10 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // Memory offsets for ShopTradeWindowController (FF1 KeyInput version)
-        // FF1 KeyInput: selectedCount at offset 0x3C, view at offset 0x30
-        private const int OFFSET_SELECTED_COUNT = 0x3C;
-        private const int OFFSET_TRADE_VIEW = 0x30;           // ShopTradeWindowView
-        private const int OFFSET_TOTAL_PRICE_TEXT = 0x70;     // Text totarlPriceText (in view)
+        // Memory offsets - use centralized offsets
+        private const int OFFSET_SELECTED_COUNT = IL2CppOffsets.Shop.SelectedCount;
+        private const int OFFSET_TRADE_VIEW = IL2CppOffsets.Shop.TradeView;
+        private const int OFFSET_TOTAL_PRICE_TEXT = IL2CppOffsets.Shop.TotalPriceText;
 
         // Track last quantity to avoid duplicate announcements
         private static int lastAnnouncedQuantity = -1;
@@ -1073,11 +1021,11 @@ namespace FFI_ScreenReader.Patches
             ShopMenuTracker.ClearState();
         }
 
-        // Memory offsets for ShopGetMagicContentController (FF1 KeyInput) - spell slot
-        private const int OFFSET_SLOT_CHARACTER_ID = 0x18;      // int CharacterId
-        private const int OFFSET_SLOT_TYPE = 0x1C;              // AbilitySlotType SlotType
-        private const int OFFSET_SLOT_VIEW = 0x30;              // ShopGetMagicContentView view
-        private const int OFFSET_SLOT_ICON_TEXT_VIEW = 0x30;    // IconTextView iconTextView (in view)
+        // Memory offsets - use centralized offsets
+        private const int OFFSET_SLOT_CHARACTER_ID = IL2CppOffsets.ShopMagic.CharacterId;
+        private const int OFFSET_SLOT_TYPE = IL2CppOffsets.ShopMagic.SlotType;
+        private const int OFFSET_SLOT_VIEW = IL2CppOffsets.ShopMagic.View;
+        private const int OFFSET_SLOT_ICON_TEXT_VIEW = IL2CppOffsets.ShopMagic.View; // Same as view offset
 
         // Track last announced slot to prevent duplicates
         private static string lastAnnouncedSlot = "";
@@ -1116,8 +1064,8 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // Offset for isFoundEquipSlot in KeyInput ShopMagicTargetSelectController
-        private const int OFFSET_IS_FOUND_EQUIP_SLOT = 0x70;
+        // Offset - use centralized offsets
+        private const int OFFSET_IS_FOUND_EQUIP_SLOT = IL2CppOffsets.ShopMagic.IsFoundEquipSlot;
 
         // Track if we already announced "no characters can learn" to prevent duplicates
         private static bool announcedNoLearnersThisSession = false;
@@ -1297,8 +1245,8 @@ namespace FFI_ScreenReader.Patches
             return null;
         }
 
-        // Offset for ContentId in ShopGetMagicContentController (KeyInput version)
-        private const int OFFSET_SLOT_CONTENT_ID = 0x20;
+        // Offset - use centralized offsets
+        private const int OFFSET_SLOT_CONTENT_ID = IL2CppOffsets.ShopMagic.ContentId;
 
         /// <summary>
         /// Gets spell name from ShopGetMagicContentController using ContentId.

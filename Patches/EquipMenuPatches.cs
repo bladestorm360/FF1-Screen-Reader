@@ -28,11 +28,10 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static bool IsActive { get; set; } = false;
 
-        // State machine offsets (from dump.cs)
-        // KeyInput.EquipmentWindowController has stateMachine at offset 0x60
-        private const int OFFSET_STATE_MACHINE = 0x60;
-        private const int OFFSET_STATE_MACHINE_CURRENT = 0x10;
-        private const int OFFSET_STATE_TAG = 0x10;
+        private const string CONTEXT = "Equip.Select";
+
+        // State machine offset - use centralized offsets
+        private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Equip;
 
         // EquipmentWindowController.State values (from dump.cs)
         private const int STATE_NONE = 0;
@@ -56,13 +55,11 @@ namespace FFI_ScreenReader.Patches
                 var equipmentController = UnityEngine.Object.FindObjectOfType<KeyInputEquipmentWindowController>();
                 if (equipmentController != null)
                 {
-                    int currentState = GetCurrentState(equipmentController);
-                    MelonLogger.Msg($"[DEBUG EquipMenu] State={currentState}");
+                    int currentState = StateMachineHelper.ReadState(equipmentController.Pointer, OFFSET_STATE_MACHINE);
 
                     // STATE_COMMAND means we're in command bar - let MenuTextDiscovery handle
                     if (currentState == STATE_COMMAND)
                     {
-                        MelonLogger.Msg("[DEBUG EquipMenu] STATE_COMMAND, clearing and not suppressing");
                         ClearState();
                         return false;
                     }
@@ -70,7 +67,6 @@ namespace FFI_ScreenReader.Patches
                     // STATE_NONE means menu closing
                     if (currentState == STATE_NONE)
                     {
-                        MelonLogger.Msg("[DEBUG EquipMenu] STATE_NONE, clearing");
                         ClearState();
                         return false;
                     }
@@ -83,60 +79,20 @@ namespace FFI_ScreenReader.Patches
                 bool infoActive = infoController != null && infoController.gameObject.activeInHierarchy;
                 bool selectActive = selectController != null && selectController.gameObject.activeInHierarchy;
 
-                MelonLogger.Msg($"[DEBUG EquipMenu] InfoActive={infoActive}, SelectActive={selectActive}");
-
                 if (!infoActive && !selectActive)
                 {
                     // Neither list controller is active - we've left the equipment submenu
-                    MelonLogger.Msg("[DEBUG EquipMenu] No list controllers active, clearing");
                     ClearState();
                     return false;
                 }
 
                 // At least one list is active - suppress
-                MelonLogger.Msg("[DEBUG EquipMenu] List controller active, suppressing");
                 return true;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Msg($"[DEBUG EquipMenu] Exception: {ex.Message}, clearing");
-                ClearState();
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Reads the current state from EquipmentWindowController's state machine.
-        /// Returns -1 if unable to read.
-        /// </summary>
-        private static int GetCurrentState(KeyInputEquipmentWindowController controller)
-        {
-            try
-            {
-                IntPtr controllerPtr = controller.Pointer;
-                if (controllerPtr == IntPtr.Zero)
-                    return -1;
-
-                unsafe
-                {
-                    // Read stateMachine pointer at offset 0x60
-                    IntPtr stateMachinePtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_STATE_MACHINE);
-                    if (stateMachinePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read current State<T> pointer at offset 0x10
-                    IntPtr currentStatePtr = *(IntPtr*)((byte*)stateMachinePtr.ToPointer() + OFFSET_STATE_MACHINE_CURRENT);
-                    if (currentStatePtr == IntPtr.Zero)
-                        return -1;
-
-                    // Read Tag (int) at offset 0x10
-                    int stateValue = *(int*)((byte*)currentStatePtr.ToPointer() + OFFSET_STATE_TAG);
-                    return stateValue;
-                }
             }
             catch
             {
-                return -1;
+                ClearState();
+                return false;
             }
         }
 
@@ -146,8 +102,7 @@ namespace FFI_ScreenReader.Patches
         public static void ClearState()
         {
             IsActive = false;
-            lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -155,19 +110,10 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState() => ClearState();
 
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
-
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = UnityEngine.Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        /// <summary>
+        /// Check if announcement should be made (string-only deduplication).
+        /// </summary>
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         public static string GetSlotName(EquipSlotType slot)
         {

@@ -2,8 +2,8 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
-using UnityEngine;
 using FFI_ScreenReader.Core;
+using FFI_ScreenReader.Utils;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -18,6 +18,8 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleCommandState
     {
+        private const string CONTEXT = "BattleCommand.Select";
+
         /// <summary>
         /// True when battle command selection is active.
         /// </summary>
@@ -29,9 +31,6 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static int LastSelectedCommandIndex { get; set; } = -1;
 
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
-
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
         /// Simply returns IsActive - battle command state is cleared explicitly on battle end.
@@ -42,18 +41,9 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Check if announcement should be made (deduplication).
+        /// Check if announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         /// <summary>
         /// Clears battle command state.
@@ -62,8 +52,7 @@ namespace FFI_ScreenReader.Patches
         {
             IsActive = false;
             LastSelectedCommandIndex = -1;
-            lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -77,13 +66,12 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleTargetState
     {
+        private const string CONTEXT = "BattleTarget.Select";
+
         /// <summary>
         /// True when target selection is active.
         /// </summary>
         public static bool IsTargetSelectionActive { get; set; } = false;
-
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
 
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
@@ -109,24 +97,14 @@ namespace FFI_ScreenReader.Patches
             }
             else
             {
-                lastAnnouncement = "";
-                lastAnnouncementTime = 0f;
+                AnnouncementDeduplicator.Reset(CONTEXT);
             }
         }
 
         /// <summary>
-        /// Check if announcement should be made (deduplication).
+        /// Check if announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         /// <summary>
         /// Clears target selection state.
@@ -134,8 +112,7 @@ namespace FFI_ScreenReader.Patches
         public static void ClearState()
         {
             IsTargetSelectionActive = false;
-            lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -149,13 +126,12 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleItemMenuState
     {
+        private const string CONTEXT = "BattleItem.Select";
+
         /// <summary>
         /// True when battle item selection is active.
         /// </summary>
         public static bool IsActive { get; set; } = false;
-
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
 
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
@@ -166,18 +142,9 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Check if announcement should be made (deduplication).
+        /// Check if announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         /// <summary>
         /// Resets battle item menu state.
@@ -185,8 +152,7 @@ namespace FFI_ScreenReader.Patches
         public static void Reset()
         {
             IsActive = false;
-            lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -200,13 +166,12 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleMagicMenuState
     {
+        private const string CONTEXT = "BattleMagic.Select";
+
         /// <summary>
         /// True when battle magic selection is active.
         /// </summary>
         public static bool IsActive { get; set; } = false;
-
-        private static string lastAnnouncement = "";
-        private static float lastAnnouncementTime = 0f;
 
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
@@ -217,18 +182,9 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Check if announcement should be made (deduplication).
+        /// Check if announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounce(string announcement)
-        {
-            float currentTime = Time.time;
-            if (announcement == lastAnnouncement && (currentTime - lastAnnouncementTime) < 0.1f)
-                return false;
-
-            lastAnnouncement = announcement;
-            lastAnnouncementTime = currentTime;
-            return true;
-        }
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
 
         /// <summary>
         /// Resets battle magic menu state.
@@ -236,8 +192,7 @@ namespace FFI_ScreenReader.Patches
         public static void Reset()
         {
             IsActive = false;
-            lastAnnouncement = "";
-            lastAnnouncementTime = 0f;
+            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
