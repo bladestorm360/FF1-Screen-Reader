@@ -6,6 +6,8 @@ using FFI_ScreenReader.Field;
 using UnityEngine;
 using HarmonyLib;
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using GameCursor = Il2CppLast.UI.Cursor;
 
@@ -63,17 +65,18 @@ namespace FFI_ScreenReader.Core
         private bool enableFootsteps = false;
         private bool enableAudioBeacons = false;
 
-        // Timer-based audio beacon
-        private float lastBeaconTime = 0f;
-        private const float BEACON_INTERVAL = 2.0f;  // Steady 2-second ping
-
-        // Timer-based wall tones (continuous while near walls)
-        private float lastWallToneLoopTime = 0f;
-        private const float WALL_TONE_LOOP_INTERVAL = 0.1f;  // 100ms between tone loops
+        // Coroutine-based audio loops (replace per-frame polling)
+        private IEnumerator wallToneCoroutine = null;
+        private IEnumerator beaconCoroutine = null;
+        private const float BEACON_INTERVAL = 2.0f;
+        private const float WALL_TONE_LOOP_INTERVAL = 0.1f;
 
         // Map transition suppression for wall tones
         private int wallToneMapId = -1;
         private float wallToneSuppressedUntil = 0f;
+
+        // Reusable direction list buffer to avoid per-cycle allocations
+        private static readonly List<SoundPlayer.Direction> wallDirectionsBuffer = new List<SoundPlayer.Direction>(4);
 
         // Preferences
         private static MelonPreferences_Category prefsCategory;
@@ -127,6 +130,10 @@ namespace FFI_ScreenReader.Core
 
             // Try manual patching with error handling
             TryManualPatching();
+
+            // Start audio loops if enabled from saved preferences
+            if (enableWallTones) StartWallToneLoop();
+            if (enableAudioBeacons) StartBeaconLoop();
         }
 
         /// <summary>
@@ -256,6 +263,13 @@ namespace FFI_ScreenReader.Core
             // Unsubscribe from scene load events
             UnityEngine.SceneManagement.SceneManager.sceneLoaded -= (UnityEngine.Events.UnityAction<UnityEngine.SceneManagement.Scene, UnityEngine.SceneManagement.LoadSceneMode>)OnSceneLoaded;
 
+            // Stop audio loops
+            StopWallToneLoop();
+            StopBeaconLoop();
+
+            // Shutdown sound player (closes waveOut handles, frees unmanaged memory)
+            SoundPlayer.Shutdown();
+
             CoroutineManager.CleanupAll();
             tolk?.Unload();
         }
@@ -293,9 +307,13 @@ namespace FFI_ScreenReader.Core
                 // Clear old cache
                 GameObjectCache.ClearAll();
 
-                // Suppress wall tones during scene transition
+                // Stop audio loops during scene transition and suppress wall tones briefly
+                StopWallToneLoop();
+                StopBeaconLoop();
                 wallToneSuppressedUntil = Time.time + 1.0f;
-                SoundPlayer.StopWallTone();
+
+                // Reset movement state for new map
+                MovementSoundPatches.ResetState();
 
                 // Reset location message tracker (but NOT lastAnnouncedMapId —
                 // battle transitions change scenes without changing maps)
@@ -313,10 +331,10 @@ namespace FFI_ScreenReader.Core
         /// <summary>
         /// Coroutine that delays entity scanning to allow scene to fully initialize.
         /// </summary>
-        private System.Collections.IEnumerator DelayedInitialScan()
+        private IEnumerator DelayedInitialScan()
         {
             // Wait 0.5 seconds for scene to fully initialize and entities to spawn
-            yield return new UnityEngine.WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(0.5f);
 
             // Scan for field entities
             try
@@ -328,142 +346,190 @@ namespace FFI_ScreenReader.Core
             {
                 LoggerInstance.Warning($"[EntityScanner] Error during delayed scan: {ex.Message}");
             }
+
+            // Restart audio loops after scene has settled
+            if (enableWallTones) StartWallToneLoop();
+            if (enableAudioBeacons) StartBeaconLoop();
         }
 
         public override void OnUpdate()
         {
-            // Handle all input
             inputManager?.Update();
+        }
 
-            // Timer-based audio beacon (independent of movement)
-            if (enableAudioBeacons)
+        #region Audio Loop Management
+
+        /// <summary>
+        /// Starts the wall tone coroutine loop. Safe to call if already running (no-op).
+        /// </summary>
+        private void StartWallToneLoop()
+        {
+            if (wallToneCoroutine != null) return;
+            wallToneCoroutine = WallToneLoop();
+            CoroutineManager.StartManaged(wallToneCoroutine);
+        }
+
+        /// <summary>
+        /// Stops the wall tone coroutine loop and silences any playing tone.
+        /// </summary>
+        private void StopWallToneLoop()
+        {
+            if (wallToneCoroutine != null)
             {
-                UpdateAudioBeacon();
+                try { MelonCoroutines.Stop(wallToneCoroutine); }
+                catch { }
+                wallToneCoroutine = null;
             }
+            if (SoundPlayer.IsWallTonePlaying())
+                SoundPlayer.StopWallTone();
+        }
 
-            // Continuous wall tones (play while near walls, independent of movement)
-            if (enableWallTones)
+        /// <summary>
+        /// Starts the audio beacon coroutine loop. Safe to call if already running (no-op).
+        /// </summary>
+        private void StartBeaconLoop()
+        {
+            if (beaconCoroutine != null) return;
+            beaconCoroutine = BeaconLoop();
+            CoroutineManager.StartManaged(beaconCoroutine);
+        }
+
+        /// <summary>
+        /// Stops the audio beacon coroutine loop.
+        /// </summary>
+        private void StopBeaconLoop()
+        {
+            if (beaconCoroutine != null)
             {
-                UpdateWallTones();
+                try { MelonCoroutines.Stop(beaconCoroutine); }
+                catch { }
+                beaconCoroutine = null;
             }
         }
 
         /// <summary>
-        /// Updates the audio beacon on a steady 2-second interval.
-        /// Independent of player movement for consistent pacing.
+        /// Coroutine loop that checks for adjacent walls every 100ms and plays looping tones.
+        /// Replaces per-frame OnUpdate polling.
         /// </summary>
-        private void UpdateAudioBeacon()
+        private IEnumerator WallToneLoop()
         {
-            float currentTime = Time.time;
-            if (currentTime - lastBeaconTime < BEACON_INTERVAL)
-                return;
+            var waitInterval = new WaitForSeconds(WALL_TONE_LOOP_INTERVAL);
 
-            lastBeaconTime = currentTime;
+            while (true)
+            {
+                yield return waitInterval;
 
-            var entity = entityScanner?.CurrentEntity;
-            if (entity == null) return;
+                try
+                {
+                    float currentTime = Time.time;
 
-            var playerController = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
-            if (playerController?.fieldPlayer == null) return;
+                    // Detect sub-map transitions and suppress tones briefly
+                    int currentMapId = GetCurrentMapId();
+                    if (currentMapId > 0 && wallToneMapId > 0 && currentMapId != wallToneMapId)
+                    {
+                        wallToneSuppressedUntil = currentTime + 1.0f;
+                        if (SoundPlayer.IsWallTonePlaying())
+                            SoundPlayer.StopWallTone();
+                    }
+                    if (currentMapId > 0)
+                        wallToneMapId = currentMapId;
 
-            Vector3 playerPos = playerController.fieldPlayer.transform.localPosition;
-            Vector3 entityPos = entity.Position;
+                    if (currentTime < wallToneSuppressedUntil)
+                    {
+                        if (SoundPlayer.IsWallTonePlaying())
+                            SoundPlayer.StopWallTone();
+                        continue;
+                    }
 
-            // Calculate distance and volume (louder when closer)
-            float distance = Vector3.Distance(playerPos, entityPos);
-            float maxDist = 500f;  // ~31 tiles
-            float volumeScale = Mathf.Clamp(1f - (distance / maxDist), 0.15f, 0.60f);
+                    if (MapTransitionPatches.IsScreenFading)
+                    {
+                        if (SoundPlayer.IsWallTonePlaying())
+                            SoundPlayer.StopWallTone();
+                        continue;
+                    }
 
-            // Calculate pan (0.0 = left, 0.5 = center, 1.0 = right)
-            float deltaX = entityPos.x - playerPos.x;
-            float pan = Mathf.Clamp(deltaX / 100f, -1f, 1f) * 0.5f + 0.5f;
+                    var player = GetFieldPlayer();
+                    if (player == null)
+                    {
+                        if (SoundPlayer.IsWallTonePlaying())
+                            SoundPlayer.StopWallTone();
+                        continue;
+                    }
 
-            // Check if entity is south of player (use lower pitch)
-            bool isSouth = entityPos.y < playerPos.y - 8f;
+                    var walls = FieldNavigationHelper.GetNearbyWallsWithDistance(player);
+                    var mapExitPositions = entityScanner?.GetMapExitPositions();
+                    Vector3 playerPos = player.transform.localPosition;
 
-            SoundPlayer.PlayBeacon(isSouth, pan, volumeScale);
+                    // Reuse static buffer to avoid per-cycle allocations
+                    wallDirectionsBuffer.Clear();
+
+                    if (walls.NorthDist == 0 &&
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(0, 16, 0), mapExitPositions))
+                        wallDirectionsBuffer.Add(SoundPlayer.Direction.North);
+
+                    if (walls.SouthDist == 0 &&
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(0, -16, 0), mapExitPositions))
+                        wallDirectionsBuffer.Add(SoundPlayer.Direction.South);
+
+                    if (walls.EastDist == 0 &&
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(16, 0, 0), mapExitPositions))
+                        wallDirectionsBuffer.Add(SoundPlayer.Direction.East);
+
+                    if (walls.WestDist == 0 &&
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(-16, 0, 0), mapExitPositions))
+                        wallDirectionsBuffer.Add(SoundPlayer.Direction.West);
+
+                    SoundPlayer.PlayWallTonesLooped(wallDirectionsBuffer.ToArray());
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"[WallTones] Error: {ex.Message}");
+                }
+            }
         }
 
         /// <summary>
-        /// Updates wall tones on a continuous interval.
-        /// Detects adjacent walls and plays continuous looping tones via hardware looping.
-        /// Only restarts the loop when detected directions change.
+        /// Coroutine loop that plays audio beacon pings every 2 seconds.
+        /// Replaces per-frame OnUpdate polling.
         /// </summary>
-        private void UpdateWallTones()
+        private IEnumerator BeaconLoop()
         {
-            float currentTime = Time.time;
-            if (currentTime - lastWallToneLoopTime < WALL_TONE_LOOP_INTERVAL)
-                return;
+            var waitInterval = new WaitForSeconds(BEACON_INTERVAL);
 
-            lastWallToneLoopTime = currentTime;
-
-            // Detect sub-map transitions (same scene, different map ID) and suppress tones briefly
-            int currentMapId = GetCurrentMapId();
-            if (currentMapId > 0 && wallToneMapId > 0 && currentMapId != wallToneMapId)
+            while (true)
             {
-                wallToneSuppressedUntil = currentTime + 1.0f;
-                SoundPlayer.StopWallTone();
-            }
-            if (currentMapId > 0)
-                wallToneMapId = currentMapId;
+                yield return waitInterval;
 
-            if (currentTime < wallToneSuppressedUntil)
-            {
-                SoundPlayer.StopWallTone();
-                return;
-            }
+                try
+                {
+                    var entity = entityScanner?.CurrentEntity;
+                    if (entity == null) continue;
 
-            if (MapTransitionPatches.IsScreenFading)
-            {
-                SoundPlayer.StopWallTone();
-                return;
-            }
+                    var playerController = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
+                    if (playerController?.fieldPlayer == null) continue;
 
-            var player = GetFieldPlayer();
-            if (player == null)
-            {
-                SoundPlayer.StopWallTone();
-                return;
-            }
+                    Vector3 playerPos = playerController.fieldPlayer.transform.localPosition;
+                    Vector3 entityPos = entity.Position;
 
-            try
-            {
-                var walls = FieldNavigationHelper.GetNearbyWallsWithDistance(player);
+                    float distance = Vector3.Distance(playerPos, entityPos);
+                    float maxDist = 500f;
+                    float volumeScale = Mathf.Clamp(1f - (distance / maxDist), 0.15f, 0.60f);
 
-                // Get map exit positions to suppress false wall tones at exits/doors/stairs
-                var mapExitPositions = entityScanner?.GetMapExitPositions();
-                Vector3 playerPos = player.transform.localPosition;
+                    float deltaX = entityPos.x - playerPos.x;
+                    float pan = Mathf.Clamp(deltaX / 100f, -1f, 1f) * 0.5f + 0.5f;
 
-                // Collect adjacent wall directions, skipping directions that lead to map exits
-                var directions = new System.Collections.Generic.List<SoundPlayer.Direction>();
+                    bool isSouth = entityPos.y < playerPos.y - 8f;
 
-                if (walls.NorthDist == 0 &&
-                    !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(0, 16, 0), mapExitPositions))
-                    directions.Add(SoundPlayer.Direction.North);
-
-                if (walls.SouthDist == 0 &&
-                    !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(0, -16, 0), mapExitPositions))
-                    directions.Add(SoundPlayer.Direction.South);
-
-                if (walls.EastDist == 0 &&
-                    !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(16, 0, 0), mapExitPositions))
-                    directions.Add(SoundPlayer.Direction.East);
-
-                if (walls.WestDist == 0 &&
-                    !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(-16, 0, 0), mapExitPositions))
-                    directions.Add(SoundPlayer.Direction.West);
-
-                // PlayWallTonesLooped handles start/stop/update:
-                // - No walls: stops the loop
-                // - Same directions: no-op (loop continues uninterrupted)
-                // - Different directions: restarts loop with new mix
-                SoundPlayer.PlayWallTonesLooped(directions.ToArray());
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Warning($"[WallTones] Error: {ex.Message}");
+                    SoundPlayer.PlayBeacon(isSouth, pan, volumeScale);
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"[Beacon] Error: {ex.Message}");
+                }
             }
         }
+
+        #endregion
 
         #region Entity Navigation
 
@@ -749,9 +815,10 @@ namespace FFI_ScreenReader.Core
         {
             enableWallTones = !enableWallTones;
 
-            // Stop any playing wall tone loop immediately when toggling off
-            if (!enableWallTones)
-                SoundPlayer.StopWallTone();
+            if (enableWallTones)
+                StartWallToneLoop();
+            else
+                StopWallToneLoop();
 
             // Save to preferences
             prefWallTones.Value = enableWallTones;
@@ -776,6 +843,11 @@ namespace FFI_ScreenReader.Core
         internal void ToggleAudioBeacons()
         {
             enableAudioBeacons = !enableAudioBeacons;
+
+            if (enableAudioBeacons)
+                StartBeaconLoop();
+            else
+                StopBeaconLoop();
 
             // Save to preferences
             prefAudioBeacons.Value = enableAudioBeacons;

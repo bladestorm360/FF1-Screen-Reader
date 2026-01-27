@@ -239,7 +239,20 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // Note: CheckAndPlayWallTones removed - now handled by continuous loop in FFI_ScreenReaderMod.OnUpdate()
-        // Note: PlayAudioBeacon removed - now handled by timer in FFI_ScreenReaderMod.OnUpdate()
+        /// <summary>
+        /// Resets all static state. Called on map transitions to prevent stale
+        /// collision/footstep data from the previous map.
+        /// </summary>
+        public static void ResetState()
+        {
+            lastBumpTime = 0f;
+            lastCollisionPos = Vector3.zero;
+            samePositionCount = 0;
+            wallCheckPending = false;
+            lastFootstepTime = 0f;
+            collisionDetectedThisFrame = false;
+            lastTilePosition = Vector2Int.zero;
+            tileTrackingInitialized = false;
+        }
     }
 }

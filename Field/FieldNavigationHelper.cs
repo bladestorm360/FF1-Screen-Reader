@@ -7,6 +7,7 @@ using Il2CppLast.Entity.Field;
 using Il2CppLast.Map;
 using FieldMap = Il2Cpp.FieldMap;
 using TransportationInfo = Il2CppLast.Map.TransportationInfo;
+using EventTriggerEntity = Il2CppLast.Entity.Field.EventTriggerEntity;
 using MapRouteSearcher = Il2Cpp.MapRouteSearcher;
 using FieldPlayerController = Il2CppLast.Map.FieldPlayerController;
 
@@ -159,6 +160,66 @@ namespace FFI_ScreenReader.Field
                     }
                     catch { /* Vehicle scan via pointer offsets may fail */ }
                 }
+
+                // Access FootEvent.stepOnTriggerList for step-on event triggers
+                // These are stored separately from the main entityList (e.g., airship-raising tile)
+                try
+                {
+                    unsafe
+                    {
+                        IntPtr fieldControllerPtr = fieldMap.fieldController.Pointer;
+                        if (fieldControllerPtr != IntPtr.Zero)
+                        {
+                            // FootEvent at offset 0x120 on FieldController
+                            IntPtr footEventPtr = *(IntPtr*)(fieldControllerPtr + 0x120);
+                            if (footEventPtr == IntPtr.Zero)
+                            {
+                                MelonLogger.Msg("[FootEvent] footEventPtr is Zero — FootEvent not yet initialized");
+                            }
+                            else
+                            {
+                                // stepOnTriggerList (Dictionary<int, EventTriggerEntity>) at offset 0x10
+                                IntPtr dictPtr = *(IntPtr*)(footEventPtr + 0x10);
+                                if (dictPtr == IntPtr.Zero)
+                                {
+                                    MelonLogger.Msg("[FootEvent] dictPtr is Zero — offset 0x10 may be wrong");
+                                }
+                                else
+                                {
+                                    var dictObj = new Il2CppSystem.Object(dictPtr);
+                                    var triggerDict = dictObj.TryCast<Il2CppSystem.Collections.Generic.Dictionary<int, EventTriggerEntity>>();
+                                    if (triggerDict == null)
+                                    {
+                                        MelonLogger.Msg("[FootEvent] TryCast<Dictionary> returned null — wrong type assumption");
+                                    }
+                                    else
+                                    {
+                                        int added = 0;
+                                        foreach (var kvp in triggerDict)
+                                        {
+                                            var triggerEntity = kvp.Value;
+                                            if (triggerEntity == null) continue;
+                                            var fieldEntity = triggerEntity.TryCast<FieldEntity>();
+                                            if (fieldEntity == null) continue;
+                                            if (!results.Contains(fieldEntity))
+                                            {
+                                                results.Add(fieldEntity);
+                                                added++;
+                                            }
+                                        }
+                                        if (added > 0)
+                                            MelonLogger.Msg($"[FootEvent] Added {added} entities from stepOnTriggerList");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"[FootEvent] Exception: {ex.GetType().Name}: {ex.Message}");
+                }
+
             }
             catch (Exception ex)
             {

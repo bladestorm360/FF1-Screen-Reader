@@ -212,9 +212,20 @@ In `EntityScanner.ConvertToNavigableEntity()`:
 1. Player filter — skip FieldPlayer entities
 2. VehicleTypeMap check — BEFORE residentchara filter (vehicles use ResidentCharaEntity GameObjects)
 3. Residentchara filter — skip party followers
-4. Visual effects filter — skip non-interactive elements
+4. Visual effects filter — skip non-interactive elements (**exempts EventTriggerEntity** — FieldScrollDummyEntity extends FieldEntity directly, NOT EventTriggerEntity, so still gets filtered)
 5. Inactive filter — skip inactive objects
-6. Type-specific detection (exits, treasures, NPCs, save points, fallback vehicle layers)
+6. GotoMapEventEntity detection (map exits)
+7. GotoMap fallback (name/ObjectType 3)
+8. **PropertyTelepoPoint detection** — same-map warp tiles (e.g., Citadel of Trials)
+9. Treasure chests (FieldTresureBox + name fallback)
+10. NPCs (FieldNonPlayer + CanAction)
+11. Save points
+12. Vehicle fallback layers (PropertyTransportation, string-based)
+13. Door/stairs (secondary exit detection)
+14. Elevation/layer-change filter — skip ToUpper/ToBottom entities
+15. **EventTriggerEntity catch-all** — catches trigger entities that don't match any specific detector
+16. FieldMapObjectDefault (generic interactive objects)
+17. IInteractiveEntity (generic fallback)
 
 ### Entity Name Resolution
 All entity types try `GetEntityNameFromProperty()` first for localized names. It accesses `PropertyEntity.Name` and resolves message IDs via `MessageManager.GetMessage()`. Falls back to GameObject-based naming (`CleanObjectName`, `GetInteractiveObjectName`, etc.) only if property name is empty.
@@ -275,8 +286,27 @@ Translates Japanese entity names to English using `UserData/FFI_ScreenReader/FF1
 
 ---
 
+### FieldController
+| Field | Offset | Description |
+|-------|--------|-------------|
+| FootEvent | 0x120 | Step-on event trigger manager |
+
+### FootEvent
+| Field | Offset | Description |
+|-------|--------|-------------|
+| stepOnTriggerList | 0x10 | Dictionary&lt;int, EventTriggerEntity&gt; of step-on triggers |
+
 ## Version History
 
+- **2026-01-27** - Added `飛空先入手` → "Airship Acquisition" translation to `FF1_translations.json`
+- **2026-01-27** - Re-added `ScriptTriggerEntity` class to `NavigableEntity.cs` (needed for synthetic script-driven trigger tiles; removal had been too aggressive)
+- **2026-01-27** - FootEvent.stepOnTriggerList integration: scan step-on event triggers (e.g., airship-raising tile) via FieldController+0x120 → FootEvent+0x10. `FieldNavigationHelper.cs`
+- **2026-01-27** - Fixed duplicate map exit names: `MapExitEntity.GetDisplayName()` now returns `Name` only (was `Name -> DestinationName` causing "Exit to X X"). `NavigableEntity.cs`
+- **2026-01-27** - FootEvent debug logging: reduced to warnings-only (offsets 0x120/0x10 verified working). Logs only on errors or when entities found. `FieldNavigationHelper.cs`
+- **2026-01-27** - Removed EntityId fallback ("Event #89") from EventTrigger catch-all; non-descriptive events now announce as "Event". `EntityScanner.cs`
+- **2026-01-27** - Non-descriptive event name fix: `GetEntityNameFromProperty()` returns null for "Event"/"EventTrigger"/"PointIn". `EntityScanner.cs`
+- **2026-01-27** - Removed debug logging from EntityScanner (debugEntityConversion, debugScanCount, all `[EntityDebug]` output). `EntityScanner.cs`
+- **2026-01-26** - Teleport tile detection: exempt EventTriggerEntity from name filter, add PropertyTelepoPoint detection and EventTriggerEntity catch-all. `EntityScanner.cs`
 - **2026-01-26** - Fixed load-game not announcing map name: removed first-run silent-store branch in `CheckMapTransition()`. Field states only fire on player-driven transitions, so the skip was unnecessary. `MapTransitionPatches.cs`
 - **2026-01-26** - Entity translation prefix stripping: `\d+:` and `SC\d+:` prefixes stripped before lookup, re-attached to translated output. Base names deduplicated in untranslated tracking. `EntityTranslator.cs`
 - **2026-01-26** - East wall tone frequency raised to 220Hz (from 200Hz) for pitch-based L/R distinction. `SoundPlayer.cs`

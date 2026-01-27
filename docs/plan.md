@@ -25,7 +25,7 @@ MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Provides scree
 - [x] Speaker names
 
 ### Navigation
-- [x] Entity scanner (chests, NPCs, exits, events)
+- [x] Entity scanner (chests, NPCs, exits, warp tiles, events)
 - [x] Category filtering (J/K/L navigation)
 - [x] Pathfinding with distance/direction
 - [x] Map transition announcements ("Entering {MapName}" on map change, including load-game)

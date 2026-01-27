@@ -18,6 +18,8 @@ using FieldMapObjectDefault = Il2CppLast.Entity.Field.FieldMapObjectDefault;
 using FieldEntity = Il2CppLast.Entity.Field.FieldEntity;
 using FieldNonPlayer = Il2CppLast.Entity.Field.FieldNonPlayer;
 using PropertyTransportation = Il2CppLast.Map.PropertyTransportation;
+using PropertyTelepoPoint = Il2CppLast.Map.PropertyTelepoPoint;
+using EventTriggerEntity = Il2CppLast.Entity.Field.EventTriggerEntity;
 using ContentUtitlity = Il2CppLast.Systems.ContentUtitlity;
 using MessageManager = Il2CppLast.Management.MessageManager;
 
@@ -215,9 +217,7 @@ namespace FFI_ScreenReader.Field
                         {
                             var navigable = ConvertToNavigableEntity(fieldEntity);
                             if (navigable != null)
-                            {
                                 entityMap[fieldEntity] = navigable;
-                            }
                         }
                         catch { }  // Silently skip entities that fail to convert
                     }
@@ -499,6 +499,12 @@ namespace FFI_ScreenReader.Field
 
             string goNameLower = goName.ToLower();
 
+            bool isActive = true;
+            try { isActive = fieldEntity.gameObject.activeInHierarchy; } catch { }
+
+            bool isEventTriggerEarly = false;
+            try { isEventTriggerEarly = fieldEntity.TryCast<EventTriggerEntity>() != null; } catch { }
+
             // Skip the player entity
             if (typeName.Contains("FieldPlayer") || goNameLower.Contains("player"))
                 return null;
@@ -516,20 +522,23 @@ namespace FFI_ScreenReader.Field
             if (goNameLower.Contains("residentchara") || goNameLower.Contains("resident"))
                 return null;
 
-            // Skip visual effects and non-interactive elements (including scroll/content that can be detected as vehicles)
-            if (goNameLower.Contains("fieldeffect") || goNameLower.Contains("scrolldummy") ||
-                goNameLower.Contains("scroll") || goNameLower.Contains("tileanim") ||
-                goNameLower.Contains("pointin") || goNameLower.Contains("opentrigger") ||
-                (goNameLower.Contains("effect") && !goNameLower.Contains("object")))
-                return null;
+            // EventTriggerEntity (warp tiles, map exits) should NOT be filtered
+            // FieldScrollDummyEntity extends FieldEntity directly, NOT EventTriggerEntity, so still gets filtered
+            bool isEventTrigger = isEventTriggerEarly;
 
-            // Skip inactive objects
-            try
+            // Skip visual effects and non-interactive elements (including scroll/content that can be detected as vehicles)
+            if (!isEventTrigger)
             {
-                if (!fieldEntity.gameObject.activeInHierarchy)
+                if (goNameLower.Contains("fieldeffect") || goNameLower.Contains("scrolldummy") ||
+                    goNameLower.Contains("scroll") || goNameLower.Contains("tileanim") ||
+                    goNameLower.Contains("pointin") || goNameLower.Contains("opentrigger") ||
+                    (goNameLower.Contains("effect") && !goNameLower.Contains("object")))
                     return null;
             }
-            catch { }
+
+            // Skip inactive objects
+            if (!isActive)
+                return null;
 
             // Try to get the Property object which determines entity type
             object propertyObj = GetEntityProperty(fieldEntity);
@@ -554,6 +563,24 @@ namespace FFI_ScreenReader.Field
                 string exitName = !string.IsNullOrEmpty(destName) ? $"Exit to {destName}" : "Exit";
                 return new MapExitEntity(fieldEntity, position, exitName, destMapId, destName);
             }
+
+            // ===== TELEPORT POINT DETECTION =====
+            // PropertyTelepoPoint = same-map warp tiles (e.g., Citadel of Trials puzzle)
+            try
+            {
+                if (propertyObj is PropertyEntity prop)
+                {
+                    var telepoProperty = prop.TryCast<PropertyTelepoPoint>();
+                    if (telepoProperty != null)
+                    {
+                        string name = GetEntityNameFromProperty(fieldEntity);
+                        if (string.IsNullOrEmpty(name))
+                            name = "Warp Tile";
+                        return new EventEntity(fieldEntity, position, name, "Warp Tile");
+                    }
+                }
+            }
+            catch { }
 
             // ===== TREASURE CHEST DETECTION =====
             // Try explicit cast to FieldTresureBox first (note: game uses "Tresure" spelling)
@@ -643,6 +670,23 @@ namespace FFI_ScreenReader.Field
                 return new MapExitEntity(fieldEntity, position, "Exit", destMapId, destName);
             }
 
+            // ===== SKIP ELEVATION/LAYER-CHANGE TRIGGERS =====
+            // ToUpper/ToBottom move the player between layers on the same map (e.g., stairs)
+            // These are not useful navigation targets — warp tiles use PropertyTelepoPoint instead
+            if (goNameLower == "toupper" || goNameLower == "tobottom")
+                return null;
+
+            // ===== EVENT TRIGGER CATCH-ALL =====
+            // EventTriggerEntity doesn't implement IInteractiveEntity, so without this
+            // it falls through all detection and returns null
+            if (isEventTrigger)
+            {
+                string entityName = GetEntityNameFromProperty(fieldEntity);
+                if (string.IsNullOrEmpty(entityName))
+                    entityName = CleanObjectName(goName, "Event Trigger");
+                return new EventEntity(fieldEntity, position, entityName, "Event");
+            }
+
             // ===== FIELDMAPOBJECTDEFAULT DETECTION =====
             // These are generic interactive objects (buildings, misc objects)
             var mapObjectDefault = fieldEntity.TryCast<FieldMapObjectDefault>();
@@ -673,7 +717,6 @@ namespace FFI_ScreenReader.Field
                 return new EventEntity(fieldEntity, position, name, "Interactive");
             }
 
-            // Skip unidentifiable entities
             return null;
         }
 
@@ -1007,6 +1050,7 @@ namespace FFI_ScreenReader.Field
 
                 // Get the Name property
                 string name = property.Name;
+
                 if (string.IsNullOrWhiteSpace(name))
                     return null;
 
@@ -1025,11 +1069,12 @@ namespace FFI_ScreenReader.Field
                     }
                 }
 
-                // If name doesn't contain underscores and has mixed case, use it directly
-                // Translate in case it's Japanese
-                if (!name.Contains("_") && !name.All(c => char.IsLower(c)))
-                    return EntityTranslator.Translate(name);
+                // Treat generic/non-descriptive names as empty so callers fall back to other sources
+                string nameLower = name.ToLower();
+                if (nameLower == "event" || nameLower == "eventtrigger" || nameLower == "event trigger" || nameLower == "pointin")
+                    return null;
 
+                // Translate in case it's Japanese
                 return EntityTranslator.Translate(name);
             }
             catch { }

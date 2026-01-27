@@ -239,9 +239,7 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetDisplayName()
         {
-            return !string.IsNullOrEmpty(DestinationName)
-                ? $"{Name} -> {DestinationName}"
-                : Name;
+            return Name;
         }
 
         protected override string GetEntityTypeName()
@@ -316,6 +314,33 @@ namespace FFI_ScreenReader.Field
         {
             return eventTypeName;
         }
+    }
+
+    /// <summary>
+    /// Represents a synthetic script-driven trigger tile (e.g., airship appearance, fairy bottle).
+    /// These have no backing FieldEntity — they are injected based on flag conditions.
+    /// </summary>
+    public class ScriptTriggerEntity : NavigableEntity
+    {
+        private Vector3 position;
+        private string name;
+        private string triggerTypeName;
+
+        public ScriptTriggerEntity(Vector3 pos, string entityName, string typeName = "Hidden Trigger")
+        {
+            GameEntity = null; // Synthetic — no backing FieldEntity
+            position = pos;
+            name = entityName;
+            triggerTypeName = typeName;
+        }
+
+        public override Vector3 Position => position;
+        public override string Name => name;
+        public override EntityCategory Category => EntityCategory.Events;
+        public override int Priority => 5;
+        public override bool BlocksPathing => false;
+        protected override string GetDisplayName() => Name;
+        protected override string GetEntityTypeName() => triggerTypeName;
     }
 
     /// <summary>

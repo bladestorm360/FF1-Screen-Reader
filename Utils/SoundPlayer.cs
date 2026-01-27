@@ -115,8 +115,9 @@ namespace FFI_ScreenReader.Utils
         private static WAVEFORMATEX waveFormat;
         private static bool initialized = false;
 
-        // Track current wall tone directions to avoid unnecessary loop restarts
-        private static Direction[] currentWallDirections = null;
+        // Track current wall tone directions as a bitmask to avoid unnecessary loop restarts
+        // Each bit represents a Direction enum value (North=0, South=1, East=2, West=3)
+        private static int currentWallDirectionsMask = 0;
 
         #endregion
 
@@ -140,9 +141,7 @@ namespace FFI_ScreenReader.Utils
         private static byte[] wallToneEastSustain;
         private static byte[] wallToneWestSustain;
 
-        // Audio beacon tones - stereo
-        private static byte[] beaconNormalWav;  // 400 Hz (North/East/West)
-        private static byte[] beaconLowWav;     // 280 Hz (South)
+        // Audio beacon tones no longer pre-cached - PlayBeacon writes directly to unmanaged buffer
 
         #endregion
 
@@ -177,9 +176,7 @@ namespace FFI_ScreenReader.Utils
             wallToneEastSustain = GenerateStereoToneSustain(220, 200, BASE_VOLUME * 0.85f, 1.0f);
             wallToneWestSustain = GenerateStereoToneSustain(200, 200, BASE_VOLUME * 0.85f, 0.0f);
 
-            // Audio beacons (base tones - volume/pan adjusted at playback)
-            beaconNormalWav = GenerateStereoTone(400, 60, 0.35f, 0.5f);
-            beaconLowWav = GenerateStereoTone(280, 60, 0.35f, 0.5f);
+            // Audio beacons use direct buffer writes in PlayBeacon() - no pre-caching needed
 
             // Setup wave format (stereo 8-bit 22050Hz - matches our generated tones)
             waveFormat = new WAVEFORMATEX
@@ -366,7 +363,7 @@ namespace FFI_ScreenReader.Utils
                 }
             }
 
-            currentWallDirections = null;
+            currentWallDirectionsMask = 0;
             initialized = false;
             MelonLogger.Msg("[SoundPlayer] All waveOut channels closed");
         }
@@ -473,12 +470,13 @@ namespace FFI_ScreenReader.Utils
                 return;
             }
 
-            // Skip restart if directions haven't changed
-            if (DirectionsMatch(currentWallDirections, directions))
+            // Compare bitmasks to skip restart if directions haven't changed
+            int newMask = DirectionsToBitmask(directions);
+            if (newMask == currentWallDirectionsMask)
                 return;
 
-            // Store new directions
-            currentWallDirections = (Direction[])directions.Clone();
+            // Store new directions mask
+            currentWallDirectionsMask = newMask;
 
             // Collect sustain tones for mixing
             var tonesToMix = new List<byte[]>();
@@ -524,23 +522,119 @@ namespace FFI_ScreenReader.Utils
         /// </summary>
         public static void StopWallTone()
         {
-            currentWallDirections = null;
+            currentWallDirectionsMask = 0;
             StopChannel(SoundChannel.WallTone);
         }
 
         /// <summary>
+        /// Returns true if the wall tone channel is currently playing.
+        /// Used to avoid redundant StopWallTone calls.
+        /// </summary>
+        public static bool IsWallTonePlaying()
+        {
+            if (!initialized || channels == null) return false;
+            var state = channels[(int)SoundChannel.WallTone];
+            if (state == null) return false;
+            lock (state.Lock)
+            {
+                return state.IsPlaying;
+            }
+        }
+
+        /// <summary>
         /// Plays an audio beacon on Channel 3 (Beacon).
-        /// Beacon has its own waveOut handle - does NOT interrupt other channels.
+        /// Writes PCM samples directly to the pre-allocated unmanaged buffer,
+        /// avoiding managed allocations (no MemoryStream, BinaryWriter, or byte[]).
         /// </summary>
         public static void PlayBeacon(bool isSouth, float pan, float volumeScale)
         {
+            if (!initialized) return;
+
+            int channelIndex = (int)SoundChannel.Beacon;
+            var state = channels[channelIndex];
+            if (state?.WaveOutHandle == IntPtr.Zero) return;
+
             try
             {
                 int frequency = isSouth ? 280 : 400;
-                float adjustedVolume = Math.Max(0.10f, Math.Min(0.50f, volumeScale));
+                float volume = Math.Max(0.10f, Math.Min(0.50f, volumeScale));
 
-                byte[] dynamicTone = GenerateStereoTone(frequency, 60, adjustedVolume, pan);
-                PlayOnChannel(dynamicTone, SoundChannel.Beacon);
+                int sampleRate = 22050;
+                int durationMs = 60;
+                int samples = (sampleRate * durationMs) / 1000; // 1323 samples
+                int dataLength = samples * 2; // stereo = 2 bytes per sample
+
+                double panAngle = pan * Math.PI / 2;
+                float leftVol = volume * (float)Math.Cos(panAngle);
+                float rightVol = volume * (float)Math.Sin(panAngle);
+
+                lock (state.Lock)
+                {
+                    // Stop current playback if any
+                    if (state.IsPlaying || state.HeaderPrepared)
+                    {
+                        waveOutReset(state.WaveOutHandle);
+                        if (state.HeaderPrepared)
+                        {
+                            waveOutUnprepareHeader(state.WaveOutHandle, ref state.Header,
+                                (uint)Marshal.SizeOf<WAVEHDR>());
+                            state.HeaderPrepared = false;
+                        }
+                        state.IsPlaying = false;
+                        state.IsLooping = false;
+                    }
+
+                    // Write PCM samples directly to unmanaged buffer (no managed allocations)
+                    int attackSamples = samples / 10;
+                    for (int i = 0; i < samples; i++)
+                    {
+                        double t = (double)i / sampleRate;
+                        double attack = Math.Min(1.0, (double)i / attackSamples);
+                        double decay = (double)(samples - i) / samples;
+                        double envelope = attack * decay;
+                        double sineValue = Math.Sin(2 * Math.PI * frequency * t) * envelope;
+
+                        byte left = (byte)((sineValue * leftVol * 127) + 128);
+                        byte right = (byte)((sineValue * rightVol * 127) + 128);
+
+                        Marshal.WriteByte(state.BufferPtr, i * 2, left);
+                        Marshal.WriteByte(state.BufferPtr, i * 2 + 1, right);
+                    }
+
+                    // Setup WAVEHDR (one-shot, no loop)
+                    state.Header = new WAVEHDR
+                    {
+                        lpData = state.BufferPtr,
+                        dwBufferLength = (uint)dataLength,
+                        dwBytesRecorded = 0,
+                        dwUser = IntPtr.Zero,
+                        dwFlags = 0,
+                        dwLoops = 0,
+                        lpNext = IntPtr.Zero,
+                        reserved = IntPtr.Zero
+                    };
+
+                    int prepResult = waveOutPrepareHeader(state.WaveOutHandle, ref state.Header,
+                        (uint)Marshal.SizeOf<WAVEHDR>());
+
+                    if (prepResult == 0)
+                    {
+                        state.HeaderPrepared = true;
+                        int writeResult = waveOutWrite(state.WaveOutHandle, ref state.Header,
+                            (uint)Marshal.SizeOf<WAVEHDR>());
+
+                        if (writeResult == 0)
+                        {
+                            state.IsPlaying = true;
+                        }
+                        else
+                        {
+                            waveOutUnprepareHeader(state.WaveOutHandle, ref state.Header,
+                                (uint)Marshal.SizeOf<WAVEHDR>());
+                            state.HeaderPrepared = false;
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -553,25 +647,15 @@ namespace FFI_ScreenReader.Utils
         #region Helpers
 
         /// <summary>
-        /// Checks if two direction arrays contain the same directions (order-independent).
+        /// Converts a direction array to a bitmask for fast comparison.
+        /// Each Direction enum value maps to a single bit.
         /// </summary>
-        private static bool DirectionsMatch(Direction[] a, Direction[] b)
+        private static int DirectionsToBitmask(Direction[] dirs)
         {
-            if (a == null && b == null) return true;
-            if (a == null || b == null) return false;
-            if (a.Length != b.Length) return false;
-
-            // Sort both and compare (small arrays, max 4 elements)
-            var sortedA = (Direction[])a.Clone();
-            var sortedB = (Direction[])b.Clone();
-            Array.Sort(sortedA);
-            Array.Sort(sortedB);
-
-            for (int i = 0; i < sortedA.Length; i++)
-            {
-                if (sortedA[i] != sortedB[i]) return false;
-            }
-            return true;
+            int mask = 0;
+            for (int i = 0; i < dirs.Length; i++)
+                mask |= (1 << (int)dirs[i]);
+            return mask;
         }
 
         #endregion
