@@ -15,7 +15,6 @@ using PlayerCharacterParameter = Il2CppLast.Data.PlayerCharacterParameter;
 using AbilityLevelType = Il2CppLast.Defaine.Master.AbilityLevelType;
 using GameCursor = Il2CppLast.UI.Cursor;
 using Il2CppInterop.Runtime;
-using FFI_ScreenReader.Utils;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -25,8 +24,6 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleMagicPatches
     {
-        private static string lastAnnouncement = "";
-
         // Cache the current player for charge lookup
         public static BattlePlayerData CurrentPlayer { get; set; } = null;
 
@@ -131,11 +128,9 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Debounce - skip duplicate announcements
-                if (!ShouldAnnounce(announcement))
-                {
+                // Use central deduplicator - skip duplicate announcements
+                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleMagic", announcement))
                     return;
-                }
 
                 // Set state AFTER successful validation - this is the key fix
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleMagic");
@@ -278,19 +273,6 @@ namespace FFI_ScreenReader.Patches
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        private static bool ShouldAnnounce(string announcement)
-        {
-            if (announcement == lastAnnouncement)
-            {
-                return false;
-            }
-            lastAnnouncement = announcement;
-            return true;
         }
 
         /// <summary>
@@ -555,7 +537,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            lastAnnouncement = "";
+            AnnouncementDeduplicator.Reset("BattleMagic");
             CurrentPlayer = null;
         }
     }

@@ -112,6 +112,14 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Unregisters a reset handler for a menu.
+        /// </summary>
+        public static void UnregisterResetHandler(string key)
+        {
+            _resetHandlers.Remove(key);
+        }
+
+        /// <summary>
         /// Resets a specific menu state.
         /// </summary>
         public static void Reset(string key)

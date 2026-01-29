@@ -249,7 +249,22 @@ namespace FFI_ScreenReader.Patches
 
             IsInBattle = false;
             ClearAllBattleMenuFlags();
+            BattleStartPatches.ResetState();
             MelonLogger.Msg("[Battle] Battle ended - IsInBattle = false");
+        }
+
+        /// <summary>
+        /// Force clears battle state. Used as fallback when normal clearing fails.
+        /// Called when Tab is pressed to open main menu (indicating player is on field, not in battle).
+        /// </summary>
+        public static void ForceClearBattleState()
+        {
+            if (IsInBattle)
+            {
+                IsInBattle = false;
+                ClearAllBattleMenuFlags();
+                MelonLogger.Msg("[Battle] Force cleared stale battle state");
+            }
         }
     }
 
@@ -310,6 +325,28 @@ namespace FFI_ScreenReader.Patches
                 }
                 catch { }
             }
+
+            // Patch Exit() method - most reliable hook for battle end
+            // Exit(bool isUnloadAsset = true) is called when battle truly ends, regardless of win/lose/escape path
+            try
+            {
+                var exitMethod = controllerType.GetMethod("Exit",
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null,
+                    new Type[] { typeof(bool) },
+                    null);
+
+                if (exitMethod != null)
+                {
+                    harmony.Patch(exitMethod,
+                        prefix: new HarmonyMethod(typeof(BattleControllerPatches), nameof(Exit_Prefix)));
+                    MelonLogger.Msg("[Battle Controller] Patched Exit()");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Controller] Failed to patch Exit: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -329,6 +366,24 @@ namespace FFI_ScreenReader.Patches
             {
                 // Silently ignore - this can happen during game initialization
                 MelonLogger.Warning($"[Battle Controller] FadeOut error (likely during init): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Called when BattleController.Exit() is invoked - reliable battle end detection.
+        /// This is the most reliable hook for battle end as it's called regardless of win/lose/escape path.
+        /// </summary>
+        public static void Exit_Prefix(object __instance)
+        {
+            try
+            {
+                if (__instance == null) return;
+                MelonLogger.Msg("[Battle Controller] Exit() called - clearing battle state");
+                BattleStateHelper.TryClearOnBattleEnd();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Controller] Exit error: {ex.Message}");
             }
         }
     }

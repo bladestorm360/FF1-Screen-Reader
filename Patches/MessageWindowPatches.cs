@@ -18,10 +18,6 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class MessageWindowPatches
     {
-        // State tracking for deduplication
-        private static string lastAnnouncedLine = "";
-        private static string lastSpeaker = "";
-
         // Store message list for page-by-page reading
         private static List<string> currentMessageList = new List<string>();
         private static List<int> currentPageBreaks = new List<int>(); // Line indices where new pages start
@@ -565,10 +561,9 @@ namespace FFI_ScreenReader.Patches
                 // Read speaker from instance
                 string speaker = ReadSpeakerFromInstance(__instance);
 
-                // Announce speaker if new
-                if (!string.IsNullOrWhiteSpace(speaker) && speaker != lastSpeaker)
+                // Announce speaker if new (using central deduplicator)
+                if (!string.IsNullOrWhiteSpace(speaker) && AnnouncementDeduplicator.ShouldAnnounce("Message.Speaker", speaker))
                 {
-                    lastSpeaker = speaker;
                     string cleanSpeaker = CleanMessage(speaker);
                     if (!string.IsNullOrWhiteSpace(cleanSpeaker))
                     {
@@ -581,9 +576,8 @@ namespace FFI_ScreenReader.Patches
                 if (currentPageBreaks.Count > 0 && lastAnnouncedPageIndex < 0)
                 {
                     string firstPage = GetPageText(0);
-                    if (!string.IsNullOrWhiteSpace(firstPage) && firstPage != lastAnnouncedLine)
+                    if (!string.IsNullOrWhiteSpace(firstPage) && AnnouncementDeduplicator.ShouldAnnounce("Message.Line", firstPage))
                     {
-                        lastAnnouncedLine = firstPage;
                         lastAnnouncedPageIndex = 0;
                         MelonLogger.Msg($"[MessageWindow] Page 1/{currentPageBreaks.Count}: {firstPage}");
                         FFI_ScreenReaderMod.SpeakText(firstPage, interrupt: false);
@@ -614,9 +608,8 @@ namespace FFI_ScreenReader.Patches
                 if (currentPage >= 0 && currentPage < currentPageBreaks.Count && currentPage != lastAnnouncedPageIndex)
                 {
                     string pageText = GetPageText(currentPage);
-                    if (!string.IsNullOrWhiteSpace(pageText) && pageText != lastAnnouncedLine)
+                    if (!string.IsNullOrWhiteSpace(pageText) && AnnouncementDeduplicator.ShouldAnnounce("Message.Line", pageText))
                     {
-                        lastAnnouncedLine = pageText;
                         lastAnnouncedPageIndex = currentPage;
                         MelonLogger.Msg($"[MessageWindow] Page {currentPage + 1}/{currentPageBreaks.Count}: {pageText}");
                         FFI_ScreenReaderMod.SpeakText(pageText, interrupt: false);
@@ -647,9 +640,8 @@ namespace FFI_ScreenReader.Patches
                 if (currentPage >= 0 && currentPage < currentPageBreaks.Count && currentPage != lastAnnouncedPageIndex)
                 {
                     string pageText = GetPageText(currentPage);
-                    if (!string.IsNullOrWhiteSpace(pageText) && pageText != lastAnnouncedLine)
+                    if (!string.IsNullOrWhiteSpace(pageText) && AnnouncementDeduplicator.ShouldAnnounce("Message.Line", pageText))
                     {
-                        lastAnnouncedLine = pageText;
                         lastAnnouncedPageIndex = currentPage;
                         MelonLogger.Msg($"[MessageWindow] Page {currentPage + 1}/{currentPageBreaks.Count}: {pageText}");
                         FFI_ScreenReaderMod.SpeakText(pageText, interrupt: false);
@@ -723,11 +715,9 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrWhiteSpace(fullText))
                     return;
 
-                // Check for duplicate
-                if (fullText == lastAnnouncedLine)
+                // Use central deduplicator
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Message.Line", fullText))
                     return;
-
-                lastAnnouncedLine = fullText;
 
                 string cleanMessage = CleanMessage(fullText);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
@@ -755,11 +745,9 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrWhiteSpace(fullText))
                     return;
 
-                // Check for duplicate
-                if (fullText == lastAnnouncedLine)
+                // Use central deduplicator
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Message.Line", fullText))
                     return;
-
-                lastAnnouncedLine = fullText;
 
                 string cleanMessage = CleanMessage(fullText);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
@@ -787,11 +775,9 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrWhiteSpace(message))
                     return;
 
-                // Check for duplicate
-                if (message == lastAnnouncedLine)
+                // Use central deduplicator
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Message.Line", message))
                     return;
-
-                lastAnnouncedLine = message;
 
                 string cleanMessage = CleanMessage(message);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
@@ -811,8 +797,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ClearState()
         {
-            lastSpeaker = "";
-            lastAnnouncedLine = "";
+            AnnouncementDeduplicator.Reset("Message.Speaker", "Message.Line");
             currentMessageList.Clear();
             currentPageBreaks.Clear();
             lastAnnouncedPageIndex = -1;

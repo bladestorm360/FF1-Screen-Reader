@@ -17,8 +17,6 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class JobSelectionPatches
     {
-        private static string lastAnnouncedJob = "";
-        private static int lastCursorIndex = -1;
 
         /// <summary>
         /// Flag indicating job selection is currently active and handling cursor events.
@@ -120,12 +118,9 @@ namespace FFI_ScreenReader.Patches
                 int currentIndex = (int)indexProp.GetValue(targetCursor);
                 MelonLogger.Msg($"[JobSelection] SelectContent index: {currentIndex}");
 
-                // Skip if same index
-                if (currentIndex == lastCursorIndex)
-                {
+                // Use central deduplicator - skip if same index
+                if (!AnnouncementDeduplicator.ShouldAnnounce("JobSelect.Index", currentIndex))
                     return;
-                }
-                lastCursorIndex = currentIndex;
 
                 // Cast to Component to access Unity hierarchy
                 var controllerComponent = __instance as Component;
@@ -144,12 +139,9 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Skip duplicate announcements
-                if (jobName == lastAnnouncedJob)
-                {
+                // Use central deduplicator - skip duplicate announcements
+                if (!AnnouncementDeduplicator.ShouldAnnounce("JobSelect.Name", jobName))
                     return;
-                }
-                lastAnnouncedJob = jobName;
 
                 // Use coroutine to wait one frame before reading description (UI needs to update)
                 CoroutineManager.StartManaged(AnnounceJobWithDelayedDescription(controllerComponent, jobName));
@@ -367,8 +359,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            lastAnnouncedJob = "";
-            lastCursorIndex = -1;
+            AnnouncementDeduplicator.Reset("JobSelect.Index", "JobSelect.Name");
             typesLogged = false;
             IsHandlingCursor = false;
         }

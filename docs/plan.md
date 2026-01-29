@@ -1,125 +1,47 @@
 # FF1 Screen Reader - Project Overview
 
-## About
-
-MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Provides screen reader support (NVDA, JAWS, Narrator) for blind users via Tolk.dll integration. Port of ff3-screen-reader.
+MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Screen reader support (NVDA, JAWS, Narrator) via Tolk.dll. Port of ff3-screen-reader.
 
 **Tech:** .NET 6.0 | MelonLoader | HarmonyLib 2.x | Tolk.dll
 
 ---
 
-## Feature Status
+## Features
 
-### Menus
-- [x] Title screen ("Press any button"), new game, load/save
-- [x] Main menu (Items, Magic, Equipment, Status, Formation, Config, Save)
-- [x] Config menu with I key descriptions
-- [x] Character creation (Light Warrior slots, name cycling, job selection)
-- [x] Shop system (items, magic slots, equipment comparison)
-- [x] Popup confirmations (save/load, exit, game over, magic learn/forget)
-- [x] G key (gil), H key (party HP/MP)
+**Menus:** Title screen, new game, load/save, main menu (Items/Magic/Equipment/Status/Formation/Config/Save), config descriptions (I key), character creation, shops, popup confirmations, G key (gil), H key (party HP/MP)
 
-### Dialogue
-- [x] Scrolling intro/outro text
-- [x] Message windows (page-by-page)
-- [x] Speaker names
+**Dialogue:** Scrolling intro/outro, message windows (page-by-page), speaker names
 
-### Navigation
-- [x] Entity scanner (chests, NPCs, exits, warp tiles, events)
-- [x] Category filtering (J/K/L navigation)
-- [x] Pathfinding with distance/direction
-- [x] Map transition announcements ("Entering {MapName}" on map change, including load-game)
-- [x] Map name (M key), wall bump sounds (consecutive hit detection, fade suppression)
-- [x] Directional wall proximity tones (N/S/E/W stereo panning, E=220Hz W=200Hz for L/R distinction)
-- [x] Teleportation (Ctrl+Arrow)
-- [x] Vehicle announcements (V key, enter/exit)
-- [ ] Landing zone detection - ported, untested
+**Navigation:** Entity scanner (chests/NPCs/exits/warp tiles/events), category filtering (J/K/L), pathfinding, map transitions ("Entering {MapName}"), M key (map name), wall bumps, directional wall tones (E=220Hz/W=200Hz stereo), Ctrl+Arrow teleport, V key (vehicle state). Landing zone detection ported but untested.
 
-### Battle
-- [x] Command/target selection
-- [x] Damage, healing, status effects
-- [x] Battle item/magic menus (spell charges)
-- [x] Victory screen (gil, XP, items, level ups)
-- [x] Battle start, escape
-- [x] Battle pause menu (spacebar)
-
-**Note:** Accuracy/evasion stat gains not hooked (minor)
+**Battle:** Command/target selection, damage/healing/status, item/magic menus (spell charges), victory screen, battle start/escape, pause menu (spacebar). Note: accuracy/evasion stat gains not hooked.
 
 ---
 
 ## Hotkeys
 
-| Key | Function |
-|-----|----------|
-| J/[ | Previous entity |
-| K | Repeat current |
-| L/] | Next entity |
-| Shift+J/L | Cycle category |
-| P/\ | Pathfind to entity |
-| Shift+P | Toggle path filter |
-| M | Map name |
-| H | Party HP/MP |
-| G | Gil |
-| V | Vehicle state |
-| I | Item/config description |
-| 0 | Reset to All category |
-| =/- | Next/prev category |
-| Ctrl+Arrow | Teleport |
-| ' | Dump untranslated names |
+| Key | Function | Key | Function |
+|-----|----------|-----|----------|
+| J/[ | Prev entity | M | Map name |
+| K | Repeat current | H | Party HP/MP |
+| L/] | Next entity | G | Gil |
+| Shift+J/L | Cycle category | V | Vehicle state |
+| P/\ | Pathfind | I | Item/config description |
+| Shift+P | Toggle path filter | ' | Toggle footsteps |
+| 0 | Reset to All category | ; | Toggle wall tones |
+| =/- | Next/prev category | 9 | Toggle audio beacons |
+| Ctrl+Arrow | Teleport | F1 | Toggle walk/run |
+| | | F8 | Open mod menu |
 
 ---
 
 ## Project Structure
 
-```
-FFI_ScreenReader/
-├── Core/
-│   ├── FFI_ScreenReaderMod.cs
-│   ├── InputManager.cs
-│   └── Filters/
-├── Field/
-│   ├── EntityScanner.cs
-│   ├── NavigableEntity.cs
-│   ├── FieldNavigationHelper.cs
-│   ├── MapNameResolver.cs
-│   └── FilterContext.cs
-├── Menus/
-│   ├── MenuTextDiscovery.cs
-│   ├── SaveSlotReader.cs
-│   ├── ConfigMenuReader.cs
-│   ├── ItemDetailsAnnouncer.cs
-│   ├── StatusDetailsReader.cs
-│   └── CharacterSelectionReader.cs
-├── Patches/
-│   ├── *MenuPatches.cs
-│   ├── Battle*Patches.cs
-│   ├── MessageWindowPatches.cs
-│   ├── ScrollMessagePatches.cs
-│   ├── PopupPatches.cs
-│   ├── BattlePausePatches.cs
-│   ├── MapTransitionPatches.cs
-│   ├── MovementSoundPatches.cs
-│   ├── CursorNavigationPatches.cs
-│   ├── SaveLoadPatches.cs
-│   ├── ShopPatches.cs
-│   ├── VehicleLandingPatches.cs
-│   ├── JobSelectionPatches.cs
-│   └── NewGamePatches.cs
-└── Utils/
-    ├── TolkWrapper.cs
-    ├── SpeechHelper.cs
-    ├── TextUtils.cs
-    ├── SoundPlayer.cs
-    ├── GameObjectCache.cs
-    ├── MenuStateRegistry.cs
-    ├── EntityTranslator.cs
-    ├── LocationMessageTracker.cs
-    ├── AnnouncementDeduplicator.cs
-    ├── CoroutineManager.cs
-    ├── MoveStateHelper.cs
-    ├── StateMachineHelper.cs
-    └── IL2CppOffsets.cs
-```
+**Core:** `FFI_ScreenReaderMod.cs`, `InputManager.cs`, `ModMenu.cs`, `Filters/`
+**Field:** `EntityScanner.cs`, `NavigableEntity.cs`, `FieldNavigationHelper.cs`, `MapNameResolver.cs`, `FilterContext.cs`
+**Menus:** `MenuTextDiscovery.cs`, `SaveSlotReader.cs`, `ConfigMenuReader.cs`, `ItemDetailsAnnouncer.cs`, `StatusDetailsReader.cs`, `CharacterSelectionReader.cs`
+**Patches:** `*MenuPatches.cs`, `Battle*Patches.cs`, `MessageWindowPatches.cs`, `ScrollMessagePatches.cs`, `PopupPatches.cs`, `BattlePausePatches.cs`, `MapTransitionPatches.cs`, `MovementSoundPatches.cs`, `CursorNavigationPatches.cs`, `SaveLoadPatches.cs`, `ShopPatches.cs`, `VehicleLandingPatches.cs`, `JobSelectionPatches.cs`, `NewGamePatches.cs`
+**Utils:** `TolkWrapper.cs`, `SpeechHelper.cs`, `TextUtils.cs`, `SoundPlayer.cs`, `GameObjectCache.cs`, `MenuStateRegistry.cs`, `EntityTranslator.cs`, `LocationMessageTracker.cs`, `AnnouncementDeduplicator.cs`, `CoroutineManager.cs`, `MoveStateHelper.cs`, `StateMachineHelper.cs`, `IL2CppOffsets.cs`
 
 ---
 
@@ -129,4 +51,4 @@ FFI_ScreenReader/
 - **Jobs:** Fighter, Thief, Black Mage, White Mage, Red Mage, Monk
 - **Party:** Fixed 4 Light Warriors named at start
 - **Vehicles:** Ship, Canoe, Airship (no chocobo)
-- **Translations:** Japanese entity names translated via `UserData/FFI_ScreenReader/FF1_translations.json` (see debug.md for details)
+- **Translations:** Japanese entity names via embedded dictionary in `EntityTranslator.cs`

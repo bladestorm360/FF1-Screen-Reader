@@ -333,7 +333,7 @@ namespace FFI_ScreenReader.Patches
                     PopupState.SetActive($"{context}Popup", popupPtr, SAVE_POPUP_COMMAND_LIST_OFFSET);
 
                     // Start coroutine to read text after delay (allows UI to populate)
-                    MelonCoroutines.Start(ReadPopupTextDelayed(popupPtr, context));
+                    CoroutineManager.StartManaged(ReadPopupTextDelayed(popupPtr, context));
                 }
             }
             catch (Exception ex)

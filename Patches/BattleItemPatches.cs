@@ -5,7 +5,6 @@ using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using Il2CppInterop.Runtime;
-using FFI_ScreenReader.Utils;
 
 // FF1 Battle types - KeyInput namespace
 using BattleItemInfomationController = Il2CppLast.UI.KeyInput.BattleItemInfomationController;
@@ -21,8 +20,6 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleItemPatches
     {
-        private static string lastAnnouncement = "";
-
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             try
@@ -115,12 +112,9 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // String-only deduplication - skip duplicate announcements
-                if (announcement == lastAnnouncement)
-                {
+                // Use central deduplicator - skip duplicate announcements
+                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleItem", announcement))
                     return;
-                }
-                lastAnnouncement = announcement;
 
                 // Set state AFTER successful validation - this is the key fix
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleItem");
@@ -305,7 +299,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            lastAnnouncement = "";
+            AnnouncementDeduplicator.Reset("BattleItem");
         }
     }
 }

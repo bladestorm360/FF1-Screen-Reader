@@ -119,6 +119,9 @@ namespace FFI_ScreenReader.Utils
         // Each bit represents a Direction enum value (North=0, South=1, East=2, West=3)
         private static int currentWallDirectionsMask = 0;
 
+        // Track last wall tone volume to detect changes (triggers loop restart)
+        private static int lastWallToneVolume = 50;
+
         #endregion
 
         #region Pre-cached Sounds
@@ -178,15 +181,16 @@ namespace FFI_ScreenReader.Utils
 
             // Audio beacons use direct buffer writes in PlayBeacon() - no pre-caching needed
 
-            // Setup wave format (stereo 8-bit 22050Hz - matches our generated tones)
+            // Setup wave format (stereo 16-bit 22050Hz - matches our generated tones)
+            // 16-bit provides 65536 amplitude levels vs 256 for 8-bit, eliminating quantization noise
             waveFormat = new WAVEFORMATEX
             {
                 wFormatTag = 1,           // PCM
                 nChannels = 2,            // Stereo
                 nSamplesPerSec = 22050,
-                nAvgBytesPerSec = 44100,  // 22050 * 2
-                nBlockAlign = 2,          // 2 channels * 1 byte
-                wBitsPerSample = 8,
+                nAvgBytesPerSec = 88200,  // 22050 * 2 channels * 2 bytes
+                nBlockAlign = 4,          // 2 channels * 2 bytes
+                wBitsPerSample = 16,
                 cbSize = 0
             };
 
@@ -208,10 +212,10 @@ namespace FFI_ScreenReader.Utils
                 else
                 {
                     // Pre-allocate buffer for longest sound
-                    // Sustain tones: 200ms * 22050 * 2 = 8820 bytes
-                    // Mixed sustain (same length): 8820 bytes
-                    // Use 16384 for headroom
-                    channels[i].BufferPtr = Marshal.AllocHGlobal(16384);
+                    // Sustain tones at 16-bit: 200ms * 22050 * 2 channels * 2 bytes = 17640 bytes
+                    // Mixed sustain (same length): 17640 bytes
+                    // Use 32768 for headroom
+                    channels[i].BufferPtr = Marshal.AllocHGlobal(32768);
                 }
             }
 
@@ -220,11 +224,39 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Scales 16-bit PCM samples in an unmanaged buffer by a volume percentage.
+        /// Volume 50 = no change, 0 = silence, 100 = 2x volume.
+        /// </summary>
+        private static void ScaleSamples(IntPtr bufferPtr, int length, int volumePercent)
+        {
+            if (volumePercent == 50) return; // No scaling needed at default
+            float multiplier = volumePercent / 50.0f;
+            // 16-bit samples: 2 bytes per sample
+            int sampleCount = length / 2;
+            for (int i = 0; i < sampleCount; i++)
+            {
+                short sample = Marshal.ReadInt16(bufferPtr, i * 2);
+                int scaled = (int)(sample * multiplier);
+                scaled = Math.Clamp(scaled, short.MinValue, short.MaxValue);
+                Marshal.WriteInt16(bufferPtr, i * 2, (short)scaled);
+            }
+        }
+
+        /// <summary>
         /// Plays a sound on the specified channel using waveOut API.
         /// Each channel plays independently - no waiting, no mixing, no batching.
         /// When loop=true, uses hardware looping for continuous playback until StopChannel is called.
         /// </summary>
         private static void PlayOnChannel(byte[] wavData, SoundChannel channel, bool loop = false)
+        {
+            PlayOnChannel(wavData, channel, loop, 50); // Default volume (no scaling)
+        }
+
+        /// <summary>
+        /// Plays a sound on the specified channel with volume scaling.
+        /// volumePercent: 0-100 where 50 is default/no change.
+        /// </summary>
+        private static void PlayOnChannel(byte[] wavData, SoundChannel channel, bool loop, int volumePercent)
         {
             if (wavData == null || !initialized) return;
 
@@ -255,6 +287,10 @@ namespace FFI_ScreenReader.Utils
 
                 int dataLength = wavData.Length - WAV_HEADER_SIZE;
                 Marshal.Copy(wavData, WAV_HEADER_SIZE, state.BufferPtr, dataLength);
+
+                // Apply volume scaling to the buffer
+                if (volumePercent != 50)
+                    ScaleSamples(state.BufferPtr, dataLength, volumePercent);
 
                 // Setup WAVEHDR with optional loop flags
                 state.Header = new WAVEHDR
@@ -364,6 +400,7 @@ namespace FFI_ScreenReader.Utils
             }
 
             currentWallDirectionsMask = 0;
+            lastWallToneVolume = 50;
             initialized = false;
             MelonLogger.Msg("[SoundPlayer] All waveOut channels closed");
         }
@@ -376,7 +413,8 @@ namespace FFI_ScreenReader.Utils
         public static void PlayWallBump()
         {
             if (wallBumpWav == null) return;
-            PlayOnChannel(wallBumpWav, SoundChannel.WallBump);
+            int volume = FFI_ScreenReader.Core.FFI_ScreenReaderMod.WallBumpVolume;
+            PlayOnChannel(wallBumpWav, SoundChannel.WallBump, false, volume);
         }
 
         /// <summary>
@@ -385,7 +423,8 @@ namespace FFI_ScreenReader.Utils
         public static void PlayFootstep()
         {
             if (footstepWav == null) return;
-            PlayOnChannel(footstepWav, SoundChannel.Movement);
+            int volume = FFI_ScreenReader.Core.FFI_ScreenReaderMod.FootstepVolume;
+            PlayOnChannel(footstepWav, SoundChannel.Movement, false, volume);
         }
 
         /// <summary>
@@ -416,7 +455,8 @@ namespace FFI_ScreenReader.Utils
             }
 
             if (tone == null) return;
-            PlayOnChannel(tone, SoundChannel.WallTone);
+            int volume = FFI_ScreenReader.Core.FFI_ScreenReaderMod.WallToneVolume;
+            PlayOnChannel(tone, SoundChannel.WallTone, false, volume);
         }
 
         /// <summary>
@@ -443,52 +483,71 @@ namespace FFI_ScreenReader.Utils
 
             if (tonesToMix.Count == 0) return;
 
+            int volume = FFI_ScreenReader.Core.FFI_ScreenReaderMod.WallToneVolume;
+
             if (tonesToMix.Count == 1)
             {
-                PlayOnChannel(tonesToMix[0], SoundChannel.WallTone);
+                PlayOnChannel(tonesToMix[0], SoundChannel.WallTone, false, volume);
                 return;
             }
 
             byte[] mixedWav = MixWavFiles(tonesToMix);
             if (mixedWav != null)
             {
-                PlayOnChannel(mixedWav, SoundChannel.WallTone);
+                PlayOnChannel(mixedWav, SoundChannel.WallTone, false, volume);
             }
         }
 
         /// <summary>
         /// Plays wall tones as a continuous looping sound.
         /// Mixes sustain tones for all given directions and loops them.
-        /// Only restarts the loop if directions have changed.
+        /// Only restarts the loop if directions have changed OR volume has changed.
         /// Pass empty/null to stop wall tones.
+        ///
+        /// Note: Volume is applied during tone generation (not post-scaling) to preserve
+        /// 8-bit dynamic range at low volumes, avoiding quantization distortion/buzzing.
+        /// Accepts IList&lt;Direction&gt; to avoid ToArray() allocations from callers.
         /// </summary>
-        public static void PlayWallTonesLooped(Direction[] directions)
+        public static void PlayWallTonesLooped(IList<Direction> directions)
         {
-            if (directions == null || directions.Length == 0)
+            if (directions == null || directions.Count == 0)
             {
                 StopWallTone();
                 return;
             }
 
-            // Compare bitmasks to skip restart if directions haven't changed
+            int volume = FFI_ScreenReader.Core.FFI_ScreenReaderMod.WallToneVolume;
+
+            // Compare bitmasks AND volume to skip restart if nothing changed
             int newMask = DirectionsToBitmask(directions);
-            if (newMask == currentWallDirectionsMask)
+            if (newMask == currentWallDirectionsMask && volume == lastWallToneVolume)
                 return;
 
-            // Store new directions mask
+            // Store new directions mask and volume
             currentWallDirectionsMask = newMask;
+            lastWallToneVolume = volume;
 
-            // Collect sustain tones for mixing
+            // Generate sustain tones with volume baked in during generation
+            // This preserves 8-bit dynamic range at low volumes (no post-scaling quantization)
+            const float BASE_VOLUME = 0.12f;
             var tonesToMix = new List<byte[]>();
             foreach (var dir in directions)
             {
                 byte[] tone = null;
                 switch (dir)
                 {
-                    case Direction.North: tone = wallToneNorthSustain; break;
-                    case Direction.South: tone = wallToneSouthSustain; break;
-                    case Direction.East: tone = wallToneEastSustain; break;
-                    case Direction.West: tone = wallToneWestSustain; break;
+                    case Direction.North:
+                        tone = GenerateStereoToneSustainWithVolume(330, 200, BASE_VOLUME * 1.00f, 0.5f, volume);
+                        break;
+                    case Direction.South:
+                        tone = GenerateStereoToneSustainWithVolume(110, 200, BASE_VOLUME * 0.70f, 0.5f, volume);
+                        break;
+                    case Direction.East:
+                        tone = GenerateStereoToneSustainWithVolume(220, 200, BASE_VOLUME * 0.85f, 1.0f, volume);
+                        break;
+                    case Direction.West:
+                        tone = GenerateStereoToneSustainWithVolume(200, 200, BASE_VOLUME * 0.85f, 0.0f, volume);
+                        break;
                 }
                 if (tone != null)
                     tonesToMix.Add(tone);
@@ -513,7 +572,8 @@ namespace FFI_ScreenReader.Utils
 
             if (loopBuffer != null)
             {
-                PlayOnChannel(loopBuffer, SoundChannel.WallTone, loop: true);
+                // Volume already baked in during generation - use 50 (no scaling)
+                PlayOnChannel(loopBuffer, SoundChannel.WallTone, loop: true, volumePercent: 50);
             }
         }
 
@@ -523,6 +583,7 @@ namespace FFI_ScreenReader.Utils
         public static void StopWallTone()
         {
             currentWallDirectionsMask = 0;
+            lastWallToneVolume = 50;
             StopChannel(SoundChannel.WallTone);
         }
 
@@ -557,12 +618,15 @@ namespace FFI_ScreenReader.Utils
             try
             {
                 int frequency = isSouth ? 280 : 400;
-                float volume = Math.Max(0.10f, Math.Min(0.50f, volumeScale));
+                // Apply preference volume multiplier (50 = 1.0x, 100 = 2.0x, 0 = 0x)
+                int beaconVolumePref = FFI_ScreenReader.Core.FFI_ScreenReaderMod.BeaconVolume;
+                float prefMultiplier = beaconVolumePref / 50.0f;
+                float volume = Math.Max(0.10f, Math.Min(0.50f, volumeScale * prefMultiplier));
 
                 int sampleRate = 22050;
                 int durationMs = 60;
                 int samples = (sampleRate * durationMs) / 1000; // 1323 samples
-                int dataLength = samples * 2; // stereo = 2 bytes per sample
+                int dataLength = samples * 4; // stereo 16-bit = 4 bytes per sample frame
 
                 double panAngle = pan * Math.PI / 2;
                 float leftVol = volume * (float)Math.Cos(panAngle);
@@ -584,7 +648,7 @@ namespace FFI_ScreenReader.Utils
                         state.IsLooping = false;
                     }
 
-                    // Write PCM samples directly to unmanaged buffer (no managed allocations)
+                    // Write 16-bit PCM samples directly to unmanaged buffer (no managed allocations)
                     int attackSamples = samples / 10;
                     for (int i = 0; i < samples; i++)
                     {
@@ -594,11 +658,12 @@ namespace FFI_ScreenReader.Utils
                         double envelope = attack * decay;
                         double sineValue = Math.Sin(2 * Math.PI * frequency * t) * envelope;
 
-                        byte left = (byte)((sineValue * leftVol * 127) + 128);
-                        byte right = (byte)((sineValue * rightVol * 127) + 128);
+                        // 16-bit signed: range -32767 to +32767
+                        short left = (short)(sineValue * leftVol * 32767);
+                        short right = (short)(sineValue * rightVol * 32767);
 
-                        Marshal.WriteByte(state.BufferPtr, i * 2, left);
-                        Marshal.WriteByte(state.BufferPtr, i * 2 + 1, right);
+                        Marshal.WriteInt16(state.BufferPtr, i * 4, left);
+                        Marshal.WriteInt16(state.BufferPtr, i * 4 + 2, right);
                     }
 
                     // Setup WAVEHDR (one-shot, no loop)
@@ -647,13 +712,15 @@ namespace FFI_ScreenReader.Utils
         #region Helpers
 
         /// <summary>
-        /// Converts a direction array to a bitmask for fast comparison.
+        /// Converts a direction list to a bitmask for fast comparison.
         /// Each Direction enum value maps to a single bit.
+        /// Accepts IList&lt;Direction&gt; to avoid array allocations.
         /// </summary>
-        private static int DirectionsToBitmask(Direction[] dirs)
+        private static int DirectionsToBitmask(IList<Direction> dirs)
         {
             int mask = 0;
-            for (int i = 0; i < dirs.Length; i++)
+            int count = dirs.Count;
+            for (int i = 0; i < count; i++)
                 mask |= (1 << (int)dirs[i]);
             return mask;
         }
@@ -663,7 +730,7 @@ namespace FFI_ScreenReader.Utils
         #region Tone Generation
 
         /// <summary>
-        /// Converts a mono WAV to stereo by duplicating each sample to both channels.
+        /// Converts a mono 16-bit WAV to stereo by duplicating each sample to both channels.
         /// </summary>
         private static byte[] MonoToStereo(byte[] monoWav)
         {
@@ -697,6 +764,7 @@ namespace FFI_ScreenReader.Utils
                 using (var ms = new MemoryStream())
                 using (var writer = new BinaryWriter(ms))
                 {
+                    // 16-bit mono to stereo: each 2-byte sample becomes 4 bytes (L+R)
                     int stereoDataSize = dataSize * 2;
 
                     writer.Write(new[] { 'R', 'I', 'F', 'F' });
@@ -708,17 +776,20 @@ namespace FFI_ScreenReader.Utils
                     writer.Write((short)1);           // PCM
                     writer.Write((short)2);           // Stereo
                     writer.Write(sampleRate);
-                    writer.Write(sampleRate * 2);     // Byte rate (stereo)
-                    writer.Write((short)2);           // Block align
-                    writer.Write((short)8);           // Bits per sample
+                    writer.Write(sampleRate * 4);     // Byte rate (stereo 16-bit)
+                    writer.Write((short)4);           // Block align (2 channels * 2 bytes)
+                    writer.Write((short)16);          // Bits per sample
 
                     writer.Write(new[] { 'd', 'a', 't', 'a' });
                     writer.Write(stereoDataSize);
 
-                    for (int i = 0; i < monoData.Length; i++)
+                    // Copy 16-bit samples (2 bytes each) to both channels
+                    for (int i = 0; i < monoData.Length; i += 2)
                     {
-                        writer.Write(monoData[i]);  // Left
-                        writer.Write(monoData[i]);  // Right
+                        writer.Write(monoData[i]);      // Left low byte
+                        writer.Write(monoData[i + 1]);  // Left high byte
+                        writer.Write(monoData[i]);      // Right low byte
+                        writer.Write(monoData[i + 1]);  // Right high byte
                     }
 
                     return ms.ToArray();
@@ -727,7 +798,7 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Generates a WAV file containing a "thud" sound with soft attack and noise mix.
+        /// Generates a 16-bit WAV file containing a "thud" sound with soft attack and noise mix.
         /// </summary>
         private static byte[] GenerateThudTone(int frequency, int durationMs, float volume)
         {
@@ -735,25 +806,26 @@ namespace FFI_ScreenReader.Utils
             int samples = (sampleRate * durationMs) / 1000;
             int attackSamples = samples / 4;
             var random = new System.Random(42);
+            int dataSize = samples * 2; // 16-bit = 2 bytes per sample
 
             using (var ms = new MemoryStream())
             using (var writer = new BinaryWriter(ms))
             {
                 writer.Write(new[] { 'R', 'I', 'F', 'F' });
-                writer.Write(36 + samples);
+                writer.Write(36 + dataSize);
                 writer.Write(new[] { 'W', 'A', 'V', 'E' });
 
                 writer.Write(new[] { 'f', 'm', 't', ' ' });
                 writer.Write(16);
-                writer.Write((short)1);     // PCM
-                writer.Write((short)1);     // Mono
+                writer.Write((short)1);           // PCM
+                writer.Write((short)1);           // Mono
                 writer.Write(sampleRate);
-                writer.Write(sampleRate);
-                writer.Write((short)1);
-                writer.Write((short)8);
+                writer.Write(sampleRate * 2);     // Byte rate (mono 16-bit)
+                writer.Write((short)2);           // Block align (1 channel * 2 bytes)
+                writer.Write((short)16);          // Bits per sample
 
                 writer.Write(new[] { 'd', 'a', 't', 'a' });
-                writer.Write(samples);
+                writer.Write(dataSize);
 
                 double filteredNoise = 0;
 
@@ -772,7 +844,8 @@ namespace FFI_ScreenReader.Utils
                     double noise = filteredNoise * 0.3 * attack;
                     double value = (sine * 0.7 + noise) * volume * envelope;
 
-                    writer.Write((byte)((value * 127) + 128));
+                    // 16-bit signed: range -32767 to +32767
+                    writer.Write((short)(value * 32767));
                 }
 
                 return ms.ToArray();
@@ -780,38 +853,40 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Generates a short click/tap sound for footsteps using filtered noise burst.
+        /// Generates a short 16-bit click/tap sound for footsteps using filtered noise burst.
         /// </summary>
         private static byte[] GenerateClickTone(int frequency, int durationMs, float volume)
         {
             int sampleRate = 22050;
             int samples = (sampleRate * durationMs) / 1000;
             var random = new System.Random(42);
+            int dataSize = samples * 2; // 16-bit = 2 bytes per sample
 
             using (var ms = new MemoryStream())
             using (var writer = new BinaryWriter(ms))
             {
                 writer.Write(new[] { 'R', 'I', 'F', 'F' });
-                writer.Write(36 + samples);
+                writer.Write(36 + dataSize);
                 writer.Write(new[] { 'W', 'A', 'V', 'E' });
 
                 writer.Write(new[] { 'f', 'm', 't', ' ' });
                 writer.Write(16);
-                writer.Write((short)1);     // PCM
-                writer.Write((short)1);     // Mono
+                writer.Write((short)1);           // PCM
+                writer.Write((short)1);           // Mono
                 writer.Write(sampleRate);
-                writer.Write(sampleRate);
-                writer.Write((short)1);
-                writer.Write((short)8);
+                writer.Write(sampleRate * 2);     // Byte rate (mono 16-bit)
+                writer.Write((short)2);           // Block align (1 channel * 2 bytes)
+                writer.Write((short)16);          // Bits per sample
 
                 writer.Write(new[] { 'd', 'a', 't', 'a' });
-                writer.Write(samples);
+                writer.Write(dataSize);
 
                 for (int i = 0; i < samples; i++)
                 {
                     double decay = Math.Exp(-10.0 * i / samples);
                     double noise = (random.NextDouble() * 2 - 1) * volume * decay;
-                    writer.Write((byte)((noise * 127) + 128));
+                    // 16-bit signed: range -32767 to +32767
+                    writer.Write((short)(noise * 32767));
                 }
 
                 return ms.ToArray();
@@ -819,13 +894,14 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Generates a stereo WAV tone with constant-power panning and decay envelope.
+        /// Generates a 16-bit stereo WAV tone with constant-power panning and decay envelope.
         /// Used for one-shot sounds (beacons, single wall tone pings).
         /// </summary>
         private static byte[] GenerateStereoTone(int frequency, int durationMs, float volume, float pan)
         {
             int sampleRate = 22050;
             int samples = (sampleRate * durationMs) / 1000;
+            int dataSize = samples * 4; // stereo 16-bit = 4 bytes per sample frame
 
             double panAngle = pan * Math.PI / 2;
             float leftVol = volume * (float)Math.Cos(panAngle);
@@ -835,7 +911,7 @@ namespace FFI_ScreenReader.Utils
             using (var writer = new BinaryWriter(ms))
             {
                 writer.Write(new[] { 'R', 'I', 'F', 'F' });
-                writer.Write(36 + samples * 2);
+                writer.Write(36 + dataSize);
                 writer.Write(new[] { 'W', 'A', 'V', 'E' });
 
                 writer.Write(new[] { 'f', 'm', 't', ' ' });
@@ -843,12 +919,12 @@ namespace FFI_ScreenReader.Utils
                 writer.Write((short)1);           // PCM
                 writer.Write((short)2);           // Stereo
                 writer.Write(sampleRate);
-                writer.Write(sampleRate * 2);     // Byte rate
-                writer.Write((short)2);           // Block align
-                writer.Write((short)8);           // Bits per sample
+                writer.Write(sampleRate * 4);     // Byte rate (stereo 16-bit)
+                writer.Write((short)4);           // Block align (2 channels * 2 bytes)
+                writer.Write((short)16);          // Bits per sample
 
                 writer.Write(new[] { 'd', 'a', 't', 'a' });
-                writer.Write(samples * 2);
+                writer.Write(dataSize);
 
                 for (int i = 0; i < samples; i++)
                 {
@@ -861,8 +937,9 @@ namespace FFI_ScreenReader.Utils
 
                     double sineValue = Math.Sin(2 * Math.PI * frequency * t) * envelope;
 
-                    writer.Write((byte)((sineValue * leftVol * 127) + 128));
-                    writer.Write((byte)((sineValue * rightVol * 127) + 128));
+                    // 16-bit signed: range -32767 to +32767
+                    writer.Write((short)(sineValue * leftVol * 32767));
+                    writer.Write((short)(sineValue * rightVol * 32767));
                 }
 
                 return ms.ToArray();
@@ -870,14 +947,36 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Generates a stereo WAV tone with sustain (no decay) for seamless hardware looping.
-        /// Quick attack to avoid pop, then full amplitude for the rest of the buffer.
-        /// The buffer loops seamlessly because it sustains at full level.
+        /// Generates a stereo WAV tone with sustain for seamless hardware looping.
+        /// Volume is applied during generation to preserve 8-bit dynamic range at low volumes.
+        /// This avoids quantization distortion that occurs when scaling 8-bit samples post-generation.
+        /// </summary>
+        private static byte[] GenerateStereoToneSustainWithVolume(int frequency, int durationMs, float baseVolume, float pan, int volumePercent)
+        {
+            // Apply volume scaling to the base volume before generation
+            // volumePercent: 0-100, where 50 is the default (1.0x multiplier)
+            float scaledVolume = baseVolume * (volumePercent / 50.0f);
+            return GenerateStereoToneSustain(frequency, durationMs, scaledVolume, pan);
+        }
+
+        /// <summary>
+        /// Generates a 16-bit stereo WAV tone with sustain (no decay) for seamless hardware looping.
+        /// Uses cycle-aligned sample counts to ensure the waveform starts and ends at the same phase,
+        /// creating seamless loops without clicks or pops at buffer boundaries.
+        /// 16-bit audio eliminates quantization noise that causes static at low volumes.
         /// </summary>
         private static byte[] GenerateStereoToneSustain(int frequency, int durationMs, float volume, float pan)
         {
             int sampleRate = 22050;
-            int samples = (sampleRate * durationMs) / 1000;
+
+            // Calculate cycle-aligned sample count for seamless looping
+            // This ensures the buffer contains exactly N complete cycles of the waveform
+            double samplesPerCycle = (double)sampleRate / frequency;
+            int targetSamples = (sampleRate * durationMs) / 1000;
+            int numCycles = (int)Math.Round(targetSamples / samplesPerCycle);
+            if (numCycles < 1) numCycles = 1;
+            int samples = (int)Math.Round(numCycles * samplesPerCycle);
+            int dataSize = samples * 4; // stereo 16-bit = 4 bytes per sample frame
 
             double panAngle = pan * Math.PI / 2;
             float leftVol = volume * (float)Math.Cos(panAngle);
@@ -887,7 +986,7 @@ namespace FFI_ScreenReader.Utils
             using (var writer = new BinaryWriter(ms))
             {
                 writer.Write(new[] { 'R', 'I', 'F', 'F' });
-                writer.Write(36 + samples * 2);
+                writer.Write(36 + dataSize);
                 writer.Write(new[] { 'W', 'A', 'V', 'E' });
 
                 writer.Write(new[] { 'f', 'm', 't', ' ' });
@@ -895,27 +994,23 @@ namespace FFI_ScreenReader.Utils
                 writer.Write((short)1);           // PCM
                 writer.Write((short)2);           // Stereo
                 writer.Write(sampleRate);
-                writer.Write(sampleRate * 2);     // Byte rate
-                writer.Write((short)2);           // Block align
-                writer.Write((short)8);           // Bits per sample
+                writer.Write(sampleRate * 4);     // Byte rate (stereo 16-bit)
+                writer.Write((short)4);           // Block align (2 channels * 2 bytes)
+                writer.Write((short)16);          // Bits per sample
 
                 writer.Write(new[] { 'd', 'a', 't', 'a' });
-                writer.Write(samples * 2);
+                writer.Write(dataSize);
 
-                // Attack over first 5% of samples to avoid click at start
-                int attackSamples = Math.Max(1, samples / 20);
-
+                // No attack envelope - the cycle-aligned buffer creates seamless loops
+                // Adding an attack would create a discontinuity on each loop iteration
                 for (int i = 0; i < samples; i++)
                 {
                     double t = (double)i / sampleRate;
+                    double sineValue = Math.Sin(2 * Math.PI * frequency * t);
 
-                    // Quick attack, then full sustain - NO decay
-                    double envelope = Math.Min(1.0, (double)i / attackSamples);
-
-                    double sineValue = Math.Sin(2 * Math.PI * frequency * t) * envelope;
-
-                    writer.Write((byte)((sineValue * leftVol * 127) + 128));
-                    writer.Write((byte)((sineValue * rightVol * 127) + 128));
+                    // 16-bit signed: range -32767 to +32767
+                    writer.Write((short)(sineValue * leftVol * 32767));
+                    writer.Write((short)(sineValue * rightVol * 32767));
                 }
 
                 return ms.ToArray();
@@ -923,7 +1018,7 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Mixes multiple WAV files into a single stereo WAV.
+        /// Mixes multiple 16-bit WAV files into a single stereo WAV.
         /// Used for playing multiple wall tones in different directions simultaneously.
         /// </summary>
         private static byte[] MixWavFiles(List<byte[]> wavFiles)
@@ -956,27 +1051,31 @@ namespace FFI_ScreenReader.Utils
 
                 writer.Write(new[] { 'f', 'm', 't', ' ' });
                 writer.Write(16);
-                writer.Write((short)1);     // PCM
-                writer.Write((short)2);     // Stereo
+                writer.Write((short)1);           // PCM
+                writer.Write((short)2);           // Stereo
                 writer.Write(sampleRate);
-                writer.Write(sampleRate * 2);
-                writer.Write((short)2);
-                writer.Write((short)8);
+                writer.Write(sampleRate * 4);     // Byte rate (stereo 16-bit)
+                writer.Write((short)4);           // Block align (2 channels * 2 bytes)
+                writer.Write((short)16);          // Bits per sample
 
                 writer.Write(new[] { 'd', 'a', 't', 'a' });
                 writer.Write(maxDataLength);
 
-                for (int i = 0; i < maxDataLength; i++)
+                // Process 16-bit samples (2 bytes each)
+                int sampleCount = maxDataLength / 2;
+                for (int i = 0; i < sampleCount; i++)
                 {
                     int mixedValue = 0;
                     int count = 0;
 
                     foreach (var wav in wavFiles)
                     {
-                        int pos = HEADER_SIZE + i;
-                        if (pos < wav.Length)
+                        int pos = HEADER_SIZE + (i * 2);
+                        if (pos + 1 < wav.Length)
                         {
-                            mixedValue += (wav[pos] - 128);
+                            // Read 16-bit signed sample (little-endian)
+                            short sample = (short)(wav[pos] | (wav[pos + 1] << 8));
+                            mixedValue += sample;
                             count++;
                         }
                     }
@@ -987,8 +1086,9 @@ namespace FFI_ScreenReader.Utils
                         mixedValue = (int)(mixedValue * headroom);
                     }
 
-                    mixedValue = Math.Max(-127, Math.Min(127, mixedValue));
-                    writer.Write((byte)(mixedValue + 128));
+                    // Clamp to 16-bit signed range
+                    mixedValue = Math.Max(short.MinValue, Math.Min(short.MaxValue, mixedValue));
+                    writer.Write((short)mixedValue);
                 }
 
                 return ms.ToArray();

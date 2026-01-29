@@ -71,12 +71,20 @@ namespace FFI_ScreenReader.Core
         private const float BEACON_INTERVAL = 2.0f;
         private const float WALL_TONE_LOOP_INTERVAL = 0.1f;
 
-        // Map transition suppression for wall tones
+        // Map transition suppression for wall tones and beacons
         private int wallToneMapId = -1;
         private float wallToneSuppressedUntil = 0f;
+        private float beaconSuppressedUntil = 0f;
+        private float lastBeaconPlayedAt = 0f;  // Debounce for rapid-fire protection on first load
 
         // Reusable direction list buffer to avoid per-cycle allocations
         private static readonly List<SoundPlayer.Direction> wallDirectionsBuffer = new List<SoundPlayer.Direction>(4);
+
+        // Pre-cached direction vectors for map exit checks (avoids per-cycle Vector3 allocations)
+        private static readonly Vector3 DirNorth = new Vector3(0, 16, 0);
+        private static readonly Vector3 DirSouth = new Vector3(0, -16, 0);
+        private static readonly Vector3 DirEast = new Vector3(16, 0, 0);
+        private static readonly Vector3 DirWest = new Vector3(-16, 0, 0);
 
         // Preferences
         private static MelonPreferences_Category prefsCategory;
@@ -85,6 +93,15 @@ namespace FFI_ScreenReader.Core
         private static MelonPreferences_Entry<bool> prefWallTones;
         private static MelonPreferences_Entry<bool> prefFootsteps;
         private static MelonPreferences_Entry<bool> prefAudioBeacons;
+
+        // Volume controls (0-100, default 50 = current volume)
+        private static MelonPreferences_Entry<int> prefWallBumpVolume;
+        private static MelonPreferences_Entry<int> prefFootstepVolume;
+        private static MelonPreferences_Entry<int> prefWallToneVolume;
+        private static MelonPreferences_Entry<int> prefBeaconVolume;
+
+        // Enemy HP display mode (0=Numbers, 1=Percentage, 2=Hidden)
+        private static MelonPreferences_Entry<int> prefEnemyHPDisplay;
 
         public override void OnInitializeMelon()
         {
@@ -103,6 +120,15 @@ namespace FFI_ScreenReader.Core
             prefWallTones = prefsCategory.CreateEntry<bool>("WallTones", false, "Wall Tones", "Play directional tones when approaching walls");
             prefFootsteps = prefsCategory.CreateEntry<bool>("Footsteps", false, "Footsteps", "Play click sound on each tile movement");
             prefAudioBeacons = prefsCategory.CreateEntry<bool>("AudioBeacons", false, "Audio Beacons", "Play ping toward selected entity");
+
+            // Volume controls (0-100, default 50)
+            prefWallBumpVolume = prefsCategory.CreateEntry<int>("WallBumpVolume", 50, "Wall Bump Volume", "Volume for wall bump sounds (0-100)");
+            prefFootstepVolume = prefsCategory.CreateEntry<int>("FootstepVolume", 50, "Footstep Volume", "Volume for footstep sounds (0-100)");
+            prefWallToneVolume = prefsCategory.CreateEntry<int>("WallToneVolume", 50, "Wall Tone Volume", "Volume for wall proximity tones (0-100)");
+            prefBeaconVolume = prefsCategory.CreateEntry<int>("BeaconVolume", 50, "Beacon Volume", "Volume for audio beacon pings (0-100)");
+
+            // Enemy HP display mode
+            prefEnemyHPDisplay = prefsCategory.CreateEntry<int>("EnemyHPDisplay", 0, "Enemy HP Display", "0=Numbers, 1=Percentage, 2=Hidden");
 
             // Load saved preferences
             filterByPathfinding = prefPathfindingFilter.Value;
@@ -124,6 +150,9 @@ namespace FFI_ScreenReader.Core
             // Initialize input manager
             inputManager = new InputManager(this);
 
+            // Initialize mod menu
+            ModMenu.Initialize();
+
             // Initialize entity scanner for field navigation
             entityScanner = new EntityScanner();
             entityScanner.FilterByPathfinding = filterByPathfinding;
@@ -131,9 +160,9 @@ namespace FFI_ScreenReader.Core
             // Try manual patching with error handling
             TryManualPatching();
 
-            // Start audio loops if enabled from saved preferences
-            if (enableWallTones) StartWallToneLoop();
-            if (enableAudioBeacons) StartBeaconLoop();
+            // NOTE: Audio loops (wall tones, beacons) are NOT started here.
+            // They start from DelayedInitialScan() after scene loads, or from user toggle.
+            // Starting them before scene load causes lag (null checks run repeatedly).
         }
 
         /// <summary>
@@ -162,6 +191,9 @@ namespace FFI_ScreenReader.Core
             // Shop patches (item list, command menu, quantity)
             ShopPatches.ApplyPatches(harmony);
 
+            // Equipment menu patches (command bar announcements)
+            EquipMenuPatches.ApplyPatches(harmony);
+
             // Main menu patches (Item, Equipment, Magic, Status)
             MagicMenuPatches.ApplyPatches(harmony);
             StatusMenuPatches.ApplyPatches(harmony);
@@ -182,6 +214,7 @@ namespace FFI_ScreenReader.Core
             // NOTE: Ported from FF3 - may require debugging for FF1-specific classes
             VehicleLandingPatches.ApplyPatches(harmony);
             MovementSpeechPatches.ApplyPatches(harmony);
+            DashFlagPatches.ApplyPatches(harmony);
 
             // Popup patches (confirmations, save/load, battle pause, game over)
             PopupPatches.ApplyPatches(harmony);
@@ -299,6 +332,7 @@ namespace FFI_ScreenReader.Core
                     BattleStateHelper.TryClearOnBattleEnd();
                     ClearAllMenuStates();
                     BattleCommandPatches.ClearCachedTargetController();
+                    AnnouncementDeduplicator.ResetAll();
                 }
 
                 // Update previous scene name
@@ -307,10 +341,11 @@ namespace FFI_ScreenReader.Core
                 // Clear old cache
                 GameObjectCache.ClearAll();
 
-                // Stop audio loops during scene transition and suppress wall tones briefly
+                // Stop audio loops during scene transition and suppress briefly
                 StopWallToneLoop();
                 StopBeaconLoop();
                 wallToneSuppressedUntil = Time.time + 1.0f;
+                beaconSuppressedUntil = Time.time + 1.0f;
 
                 // Reset movement state for new map
                 MovementSoundPatches.ResetState();
@@ -347,9 +382,14 @@ namespace FFI_ScreenReader.Core
                 LoggerInstance.Warning($"[EntityScanner] Error during delayed scan: {ex.Message}");
             }
 
-            // Restart audio loops after scene has settled
-            if (enableWallTones) StartWallToneLoop();
-            if (enableAudioBeacons) StartBeaconLoop();
+            // Only restart audio loops on valid field scenes (not title, boot, splash, etc.)
+            // Use Refresh to actually search for FieldPlayerController (cache was cleared on scene load)
+            var fieldPlayerController = GameObjectCache.Refresh<Il2CppLast.Map.FieldPlayerController>();
+            if (fieldPlayerController != null)
+            {
+                if (enableWallTones) StartWallToneLoop();
+                if (enableAudioBeacons) StartBeaconLoop();
+            }
         }
 
         public override void OnUpdate()
@@ -364,6 +404,7 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         private void StartWallToneLoop()
         {
+            if (!enableWallTones) return;  // Don't start if disabled
             if (wallToneCoroutine != null) return;
             wallToneCoroutine = WallToneLoop();
             CoroutineManager.StartManaged(wallToneCoroutine);
@@ -376,8 +417,7 @@ namespace FFI_ScreenReader.Core
         {
             if (wallToneCoroutine != null)
             {
-                try { MelonCoroutines.Stop(wallToneCoroutine); }
-                catch { }
+                CoroutineManager.StopManaged(wallToneCoroutine);
                 wallToneCoroutine = null;
             }
             if (SoundPlayer.IsWallTonePlaying())
@@ -389,6 +429,7 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         private void StartBeaconLoop()
         {
+            if (!enableAudioBeacons) return;  // Don't start if disabled
             if (beaconCoroutine != null) return;
             beaconCoroutine = BeaconLoop();
             CoroutineManager.StartManaged(beaconCoroutine);
@@ -401,23 +442,29 @@ namespace FFI_ScreenReader.Core
         {
             if (beaconCoroutine != null)
             {
-                try { MelonCoroutines.Stop(beaconCoroutine); }
-                catch { }
+                CoroutineManager.StopManaged(beaconCoroutine);
                 beaconCoroutine = null;
             }
         }
 
         /// <summary>
         /// Coroutine loop that checks for adjacent walls every 100ms and plays looping tones.
-        /// Replaces per-frame OnUpdate polling.
+        /// Replaces per-frame OnUpdate polling. Exits when enableWallTones becomes false.
+        /// Uses manual time-based waiting because WaitForSeconds doesn't work through IL2CPP wrapper.
         /// </summary>
         private IEnumerator WallToneLoop()
         {
-            var waitInterval = new WaitForSeconds(WALL_TONE_LOOP_INTERVAL);
+            float nextCheckTime = Time.time + 0.3f;  // Delay first check by 300ms for scene stability
 
-            while (true)
+            while (enableWallTones)  // Exit when disabled
             {
-                yield return waitInterval;
+                // Manual time-based waiting (WaitForSeconds doesn't work in IL2CPP wrapper)
+                if (Time.time < nextCheckTime)
+                {
+                    yield return null;
+                    continue;
+                }
+                nextCheckTime = Time.time + WALL_TONE_LOOP_INTERVAL;
 
                 try
                 {
@@ -464,41 +511,58 @@ namespace FFI_ScreenReader.Core
                     wallDirectionsBuffer.Clear();
 
                     if (walls.NorthDist == 0 &&
-                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(0, 16, 0), mapExitPositions))
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, DirNorth, mapExitPositions))
                         wallDirectionsBuffer.Add(SoundPlayer.Direction.North);
 
                     if (walls.SouthDist == 0 &&
-                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(0, -16, 0), mapExitPositions))
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, DirSouth, mapExitPositions))
                         wallDirectionsBuffer.Add(SoundPlayer.Direction.South);
 
                     if (walls.EastDist == 0 &&
-                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(16, 0, 0), mapExitPositions))
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, DirEast, mapExitPositions))
                         wallDirectionsBuffer.Add(SoundPlayer.Direction.East);
 
                     if (walls.WestDist == 0 &&
-                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, new Vector3(-16, 0, 0), mapExitPositions))
+                        !FieldNavigationHelper.IsDirectionNearMapExit(playerPos, DirWest, mapExitPositions))
                         wallDirectionsBuffer.Add(SoundPlayer.Direction.West);
 
-                    SoundPlayer.PlayWallTonesLooped(wallDirectionsBuffer.ToArray());
+                    // Pass buffer directly (IList<Direction>) - no ToArray() allocation
+                    SoundPlayer.PlayWallTonesLooped(wallDirectionsBuffer);
                 }
                 catch (Exception ex)
                 {
                     MelonLogger.Warning($"[WallTones] Error: {ex.Message}");
                 }
             }
+
+            // Clean up when exiting
+            wallToneCoroutine = null;
+            if (SoundPlayer.IsWallTonePlaying())
+                SoundPlayer.StopWallTone();
         }
 
         /// <summary>
         /// Coroutine loop that plays audio beacon pings every 2 seconds.
-        /// Replaces per-frame OnUpdate polling.
+        /// Replaces per-frame OnUpdate polling. Exits when enableAudioBeacons becomes false.
+        /// Uses manual time-based waiting because WaitForSeconds doesn't work through IL2CPP wrapper.
         /// </summary>
         private IEnumerator BeaconLoop()
         {
-            var waitInterval = new WaitForSeconds(BEACON_INTERVAL);
+            float nextBeaconTime = Time.time + 0.3f;  // Delay first beacon by 300ms for scene stability
 
-            while (true)
+            while (enableAudioBeacons)  // Exit when disabled
             {
-                yield return waitInterval;
+                // Manual time-based waiting (WaitForSeconds doesn't work in IL2CPP wrapper)
+                if (Time.time < nextBeaconTime)
+                {
+                    yield return null;
+                    continue;
+                }
+                nextBeaconTime = Time.time + BEACON_INTERVAL;
+
+                // Suppress beacons briefly after scene load (same pattern as wall tones)
+                if (Time.time < beaconSuppressedUntil)
+                    continue;
 
                 try
                 {
@@ -511,6 +575,11 @@ namespace FFI_ScreenReader.Core
                     Vector3 playerPos = playerController.fieldPlayer.transform.localPosition;
                     Vector3 entityPos = entity.Position;
 
+                    // Sanity check: skip if positions look invalid (garbage data during load)
+                    if (float.IsNaN(playerPos.x) || float.IsNaN(entityPos.x) ||
+                        Mathf.Abs(playerPos.x) > 10000f || Mathf.Abs(entityPos.x) > 10000f)
+                        continue;
+
                     float distance = Vector3.Distance(playerPos, entityPos);
                     float maxDist = 500f;
                     float volumeScale = Mathf.Clamp(1f - (distance / maxDist), 0.15f, 0.60f);
@@ -520,18 +589,70 @@ namespace FFI_ScreenReader.Core
 
                     bool isSouth = entityPos.y < playerPos.y - 8f;
 
+                    // Debounce: ensure minimum interval between beacons (protects against timing issues on first load)
+                    float timeSinceLast = Time.time - lastBeaconPlayedAt;
+                    if (timeSinceLast < BEACON_INTERVAL * 0.8f)  // 80% of interval = 1.6s minimum
+                        continue;
+
                     SoundPlayer.PlayBeacon(isSouth, pan, volumeScale);
+                    lastBeaconPlayedAt = Time.time;
                 }
                 catch (Exception ex)
                 {
                     MelonLogger.Warning($"[Beacon] Error: {ex.Message}");
                 }
             }
+
+            // Clean up when exiting
+            beaconCoroutine = null;
         }
 
         #endregion
 
         #region Entity Navigation
+
+        // Deduplication context for field context check
+        private const string CONTEXT_FIELD_CHECK = "FieldContext";
+
+        /// <summary>
+        /// Checks if player is on an active field map.
+        /// Returns true if on valid map (ready for entity navigation), false otherwise.
+        /// Ported from FF3 to prevent entity navigation on title screen, menus, loading screens.
+        /// </summary>
+        internal bool EnsureFieldContext()
+        {
+            // Quick check: if any menu is active, we're not on field
+            if (MenuStateRegistry.AnyActive())
+                return false;
+
+            // Check if FieldMap exists and is active (with refresh fallback)
+            var fieldMap = GameObjectCache.Get<Il2Cpp.FieldMap>();
+            if (fieldMap == null)
+                fieldMap = GameObjectCache.Refresh<Il2Cpp.FieldMap>();
+
+            if (fieldMap == null || !fieldMap.gameObject.activeInHierarchy)
+            {
+                if (AnnouncementDeduplicator.ShouldAnnounce(CONTEXT_FIELD_CHECK, "Not on map"))
+                    SpeakText("Not on map");
+                return false;
+            }
+
+            // Check if player controller exists (with refresh fallback)
+            var playerController = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
+            if (playerController == null)
+                playerController = GameObjectCache.Refresh<Il2CppLast.Map.FieldPlayerController>();
+
+            if (playerController?.fieldPlayer == null)
+            {
+                if (AnnouncementDeduplicator.ShouldAnnounce(CONTEXT_FIELD_CHECK, "Not on map"))
+                    SpeakText("Not on map");
+                return false;
+            }
+
+            // Reset deduplicator on success so next failure will announce
+            AnnouncementDeduplicator.Reset(CONTEXT_FIELD_CHECK);
+            return true;
+        }
 
         /// <summary>
         /// Gets the current map ID from FieldMapProvisionInformation.
@@ -638,6 +759,8 @@ namespace FFI_ScreenReader.Core
 
         internal void CycleNext()
         {
+            if (!EnsureFieldContext()) return;
+
             if (entityScanner == null)
             {
                 SpeakText("Entity scanner not available");
@@ -661,6 +784,8 @@ namespace FFI_ScreenReader.Core
 
         internal void CyclePrevious()
         {
+            if (!EnsureFieldContext()) return;
+
             if (entityScanner == null)
             {
                 SpeakText("Entity scanner not available");
@@ -684,6 +809,8 @@ namespace FFI_ScreenReader.Core
 
         internal void AnnounceEntityOnly()
         {
+            if (!EnsureFieldContext()) return;
+
             // Refresh entities if map changed or time interval passed
             RefreshEntitiesIfNeeded();
 
@@ -722,6 +849,8 @@ namespace FFI_ScreenReader.Core
 
         internal void CycleNextCategory()
         {
+            if (!EnsureFieldContext()) return;
+
             // Cycle to next category
             int nextCategory = ((int)currentCategory + 1) % CategoryCount;
             currentCategory = (EntityCategory)nextCategory;
@@ -733,6 +862,8 @@ namespace FFI_ScreenReader.Core
 
         internal void CyclePreviousCategory()
         {
+            if (!EnsureFieldContext()) return;
+
             // Cycle to previous category
             int prevCategory = (int)currentCategory - 1;
             if (prevCategory < 0)
@@ -747,6 +878,8 @@ namespace FFI_ScreenReader.Core
 
         internal void ResetToAllCategory()
         {
+            if (!EnsureFieldContext()) return;
+
             if (currentCategory == EntityCategory.All)
             {
                 SpeakText("Already in All category");
@@ -862,6 +995,68 @@ namespace FFI_ScreenReader.Core
         internal bool IsFootstepsEnabled() => enableFootsteps;
         internal bool IsAudioBeaconsEnabled() => enableAudioBeacons;
 
+        // Public static accessors for volume settings (used by SoundPlayer and ModMenu)
+        public static int WallBumpVolume => prefWallBumpVolume?.Value ?? 50;
+        public static int FootstepVolume => prefFootstepVolume?.Value ?? 50;
+        public static int WallToneVolume => prefWallToneVolume?.Value ?? 50;
+        public static int BeaconVolume => prefBeaconVolume?.Value ?? 50;
+
+        // Public static accessor for enemy HP display mode (used by BattleCommandPatches and ModMenu)
+        public static int EnemyHPDisplay => prefEnemyHPDisplay?.Value ?? 0;
+
+        // Public static accessors for filter settings (used by ModMenu)
+        public static bool PathfindingFilterEnabled => instance?.filterByPathfinding ?? false;
+        public static bool MapExitFilterEnabled => instance?.filterMapExits ?? false;
+        public static bool WallTonesEnabled => instance?.enableWallTones ?? false;
+        public static bool FootstepsEnabled => instance?.enableFootsteps ?? false;
+        public static bool AudioBeaconsEnabled => instance?.enableAudioBeacons ?? false;
+
+        // Public static setters for ModMenu
+        public static void SetWallBumpVolume(int value)
+        {
+            if (prefWallBumpVolume != null)
+            {
+                prefWallBumpVolume.Value = Math.Clamp(value, 0, 100);
+                prefsCategory?.SaveToFile(false);
+            }
+        }
+
+        public static void SetFootstepVolume(int value)
+        {
+            if (prefFootstepVolume != null)
+            {
+                prefFootstepVolume.Value = Math.Clamp(value, 0, 100);
+                prefsCategory?.SaveToFile(false);
+            }
+        }
+
+        public static void SetWallToneVolume(int value)
+        {
+            if (prefWallToneVolume != null)
+            {
+                prefWallToneVolume.Value = Math.Clamp(value, 0, 100);
+                prefsCategory?.SaveToFile(false);
+            }
+        }
+
+        public static void SetBeaconVolume(int value)
+        {
+            if (prefBeaconVolume != null)
+            {
+                prefBeaconVolume.Value = Math.Clamp(value, 0, 100);
+                prefsCategory?.SaveToFile(false);
+            }
+        }
+
+        public static void SetEnemyHPDisplay(int value)
+        {
+            if (prefEnemyHPDisplay != null)
+            {
+                prefEnemyHPDisplay.Value = Math.Clamp(value, 0, 2);
+                prefsCategory?.SaveToFile(false);
+            }
+        }
+
         /// <summary>
         /// Gets the currently selected entity for audio beacon tracking.
         /// </summary>
@@ -887,7 +1082,7 @@ namespace FFI_ScreenReader.Core
                 }
 
                 // Fallback: try to find and cache if cache returned null (e.g., after scene transition)
-                playerController = UnityEngine.Object.FindObjectOfType<Il2CppLast.Map.FieldPlayerController>();
+                playerController = GameObjectCache.Refresh<Il2CppLast.Map.FieldPlayerController>();
                 if (playerController?.fieldPlayer != null)
                 {
                     return playerController.fieldPlayer;
@@ -1088,6 +1283,7 @@ namespace FFI_ScreenReader.Core
         public static void ClearAllMenuStates()
         {
             ManualPatches.ClearAllMenuStates();
+            AnnouncementDeduplicator.ResetAll();
         }
     }
 

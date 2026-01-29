@@ -361,31 +361,21 @@ namespace FFI_ScreenReader.Field
                 var playerController = GameObjectCache.Get<FieldPlayerController>();
                 if (playerController == null)
                 {
-                    MelonLogger.Msg("[WallCheck] playerController is null, refreshing");
                     playerController = GameObjectCache.Refresh<FieldPlayerController>();
                     if (playerController == null)
-                    {
-                        MelonLogger.Msg("[WallCheck] playerController still null after refresh");
                         return false;
-                    }
                 }
 
                 var mapHandle = playerController.mapHandle;
                 if (mapHandle == null)
-                {
-                    MelonLogger.Msg("[WallCheck] mapHandle is null");
                     return false;
-                }
 
                 int mapWidth = mapHandle.GetCollisionLayerWidth();
                 int mapHeight = mapHandle.GetCollisionLayerHeight();
 
                 // Validate map dimensions
                 if (mapWidth <= 0 || mapHeight <= 0 || mapWidth > 10000 || mapHeight > 10000)
-                {
-                    MelonLogger.Msg($"[WallCheck] Invalid map dimensions: {mapWidth}x{mapHeight}");
                     return false;
-                }
 
                 // Convert world position to cell coordinates
                 Vector3 startCell = new Vector3(
@@ -404,15 +394,9 @@ namespace FFI_ScreenReader.Field
                 // Get player collision state
                 bool playerCollisionState = player._IsOnCollision_k__BackingField;
 
-                MelonLogger.Msg($"[WallCheck] start={startCell}, dest={destCell}, collision={playerCollisionState}");
-
                 // If pathfinding returns no path, tile is blocked
                 var pathPoints = MapRouteSearcher.Search(mapHandle, startCell, destCell, playerCollisionState);
-                bool blocked = pathPoints == null || pathPoints.Count == 0;
-
-                MelonLogger.Msg($"[WallCheck] pathPoints={(pathPoints?.Count ?? -1)}, blocked={blocked}");
-
-                return blocked;
+                return pathPoints == null || pathPoints.Count == 0;
             }
             catch (Exception ex)
             {

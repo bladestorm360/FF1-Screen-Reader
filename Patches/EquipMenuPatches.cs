@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
@@ -15,6 +16,8 @@ using EquipSlotType = Il2CppLast.Defaine.EquipSlotType;
 using EquipUtility = Il2CppLast.Systems.EquipUtility;
 using GameCursor = Il2CppLast.UI.Cursor;
 using CustomScrollViewWithinRangeType = Il2CppLast.UI.CustomScrollView.WithinRangeType;
+using EquipmentCommandController = Il2CppLast.UI.KeyInput.EquipmentCommandController;
+using EquipmentCommandId = Il2CppLast.UI.EquipmentCommandId;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -27,6 +30,12 @@ namespace FFI_ScreenReader.Patches
         /// True when equipment menu is active and handling announcements.
         /// </summary>
         public static bool IsActive { get; set; } = false;
+
+        /// <summary>
+        /// True when equipment menu was entered from shop menu.
+        /// Used to restore shop state when equipment menu closes.
+        /// </summary>
+        public static bool EnteredFromShop { get; set; } = false;
 
         private const string CONTEXT = "Equip.Select";
 
@@ -102,6 +111,7 @@ namespace FFI_ScreenReader.Patches
         public static void ClearState()
         {
             IsActive = false;
+            EnteredFromShop = false;
             AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
@@ -259,6 +269,12 @@ namespace FFI_ScreenReader.Patches
                 if (!EquipMenuState.ShouldAnnounce(announcement))
                     return;
 
+                // Capture shop context BEFORE clearing states (for restoration when equipment menu closes)
+                if (!EquipMenuState.IsActive)
+                {
+                    EquipMenuState.EnteredFromShop = ShopMenuTracker.IsShopMenuActive;
+                }
+
                 // Set active state AFTER validation - menu is confirmed open and we have valid data
                 // Also clear other menu states to prevent conflicts
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Equip");
@@ -277,6 +293,7 @@ namespace FFI_ScreenReader.Patches
     /// <summary>
     /// Patch for EquipmentWindowController.SetActive to clear state when menu closes.
     /// This ensures the active state flag is properly reset when backing out to main menu.
+    /// Also restores shop state if equipment was entered from shop menu.
     /// </summary>
     [HarmonyPatch(typeof(KeyInputEquipmentWindowController), "SetActive", new Type[] { typeof(bool) })]
     public static class EquipmentWindowController_SetActive_Patch
@@ -286,8 +303,18 @@ namespace FFI_ScreenReader.Patches
         {
             if (!isActive)
             {
-                MelonLogger.Msg("[Equipment Menu] SetActive(false) - clearing state");
+                // Capture shop restoration flag before clearing state
+                bool shouldRestoreShop = EquipMenuState.EnteredFromShop;
+
+                MelonLogger.Msg($"[Equipment Menu] SetActive(false) - clearing state, shouldRestoreShop={shouldRestoreShop}");
                 EquipMenuState.ClearState();
+
+                // Restore shop state if we entered from shop menu
+                if (shouldRestoreShop)
+                {
+                    MelonLogger.Msg("[Equipment Menu] Restoring shop state after equipment menu close");
+                    ShopMenuTracker.IsShopMenuActive = true;
+                }
             }
         }
     }
@@ -372,6 +399,12 @@ namespace FFI_ScreenReader.Patches
                 if (!EquipMenuState.ShouldAnnounce(announcement))
                     return;
 
+                // Capture shop context BEFORE clearing states (for restoration when equipment menu closes)
+                if (!EquipMenuState.IsActive)
+                {
+                    EquipMenuState.EnteredFromShop = ShopMenuTracker.IsShopMenuActive;
+                }
+
                 // Set active state AFTER validation - menu is confirmed open and we have valid data
                 // Also clear other menu states to prevent conflicts
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Equip");
@@ -383,6 +416,61 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in EquipmentSelectWindowController.SelectContent patch: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Manual patches for equipment menu (command bar announcements).
+    /// </summary>
+    public static class EquipMenuPatches
+    {
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                Type controllerType = typeof(EquipmentCommandController);
+
+                // Patch EquipmentCommandController.SetFocus(EquipmentCommandId, bool) - clears shop state for command bar
+                var setFocusMethod = controllerType.GetMethod("SetFocus",
+                    BindingFlags.Instance | BindingFlags.Public,
+                    null, new Type[] { typeof(EquipmentCommandId), typeof(bool) }, null);
+
+                if (setFocusMethod != null)
+                {
+                    harmony.Patch(setFocusMethod,
+                        postfix: new HarmonyMethod(typeof(EquipMenuPatches), nameof(CommandSetFocus_Postfix)));
+                    MelonLogger.Msg("[Equipment] Patched EquipmentCommandController.SetFocus");
+                }
+                else
+                {
+                    MelonLogger.Warning("[Equipment] Could not find EquipmentCommandController.SetFocus");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Equipment] Failed to apply patches: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Clears shop state when equipment command bar gains focus.
+        /// This allows MenuTextDiscovery/generic cursor to announce command bar items.
+        /// FF1 signature: SetFocus(EquipmentCommandId id, bool isFocus = true)
+        /// </summary>
+        public static void CommandSetFocus_Postfix(EquipmentCommandController __instance, EquipmentCommandId id, bool isFocus)
+        {
+            try
+            {
+                if (isFocus && ShopMenuTracker.IsShopMenuActive)
+                {
+                    MelonLogger.Msg("[Equipment] Command bar gained focus from shop - clearing shop state");
+                    ShopMenuTracker.ClearForEquipmentSubmenu();
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Equipment] Error in CommandSetFocus_Postfix: {ex.Message}");
             }
         }
     }

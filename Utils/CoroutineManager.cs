@@ -13,6 +13,9 @@ namespace FFI_ScreenReader.Utils
     public static class CoroutineManager
     {
         private static readonly List<IEnumerator> activeCoroutines = new List<IEnumerator>();
+        private static readonly Dictionary<IEnumerator, IEnumerator> originalToWrapper = new Dictionary<IEnumerator, IEnumerator>();
+        // Reverse mapping for O(1) lookup when evicting oldest coroutine
+        private static readonly Dictionary<IEnumerator, IEnumerator> wrapperToOriginal = new Dictionary<IEnumerator, IEnumerator>();
         private static readonly object coroutineLock = new object();
         private static int maxConcurrentCoroutines = 20;
 
@@ -22,6 +25,7 @@ namespace FFI_ScreenReader.Utils
         private class WrapperRef
         {
             public IEnumerator Wrapper;
+            public IEnumerator Original;
         }
 
         /// <summary>
@@ -47,6 +51,8 @@ namespace FFI_ScreenReader.Utils
                         }
                     }
                     activeCoroutines.Clear();
+                    originalToWrapper.Clear();
+                    wrapperToOriginal.Clear();
                 }
             }
         }
@@ -75,6 +81,12 @@ namespace FFI_ScreenReader.Utils
                     MelonLogger.Msg("Too many active coroutines, stopping oldest");
                     var oldest = activeCoroutines[0];
                     activeCoroutines.RemoveAt(0);
+                    // Use reverse mapping for O(1) lookup instead of O(n) dictionary scan
+                    if (wrapperToOriginal.TryGetValue(oldest, out var original))
+                    {
+                        originalToWrapper.Remove(original);
+                        wrapperToOriginal.Remove(oldest);
+                    }
                     try { MelonCoroutines.Stop(oldest); }
                     catch (Exception ex) { MelonLogger.Error($"Error stopping evicted coroutine: {ex.Message}"); }
                 }
@@ -83,16 +95,40 @@ namespace FFI_ScreenReader.Utils
                 var holder = new WrapperRef();
                 var wrapper = ManagedWrapper(coroutine, holder);
                 holder.Wrapper = wrapper;
+                holder.Original = coroutine;
 
                 // Start the wrapper coroutine
                 try
                 {
                     MelonCoroutines.Start(wrapper);
                     activeCoroutines.Add(wrapper);
+                    originalToWrapper[coroutine] = wrapper;
+                    wrapperToOriginal[wrapper] = coroutine;
                 }
                 catch (Exception ex)
                 {
                     MelonLogger.Error($"Error starting managed coroutine: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Stops a managed coroutine by its original IEnumerator reference.
+        /// This correctly looks up and stops the wrapper that's actually running.
+        /// </summary>
+        public static void StopManaged(IEnumerator original)
+        {
+            if (original == null) return;
+
+            lock (coroutineLock)
+            {
+                if (originalToWrapper.TryGetValue(original, out var wrapper))
+                {
+                    originalToWrapper.Remove(original);
+                    wrapperToOriginal.Remove(wrapper);
+                    activeCoroutines.Remove(wrapper);
+                    try { MelonCoroutines.Stop(wrapper); }
+                    catch (Exception ex) { MelonLogger.Error($"Error stopping managed coroutine: {ex.Message}"); }
                 }
             }
         }
@@ -113,7 +149,12 @@ namespace FFI_ScreenReader.Utils
                 lock (coroutineLock)
                 {
                     if (holder.Wrapper != null)
+                    {
                         activeCoroutines.Remove(holder.Wrapper);
+                        wrapperToOriginal.Remove(holder.Wrapper);
+                    }
+                    if (holder.Original != null)
+                        originalToWrapper.Remove(holder.Original);
                 }
             }
         }

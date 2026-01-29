@@ -7,6 +7,7 @@ using ConfigActualDetailsControllerBase_Touch = Il2CppLast.UI.Touch.ConfigActual
 using FFI_ScreenReader.Menus;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Field;
+using FFI_ScreenReader.Patches;
 
 namespace FFI_ScreenReader.Core
 {
@@ -28,6 +29,58 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public void Update()
         {
+            // Handle mod menu input first (consumes all input when open)
+            if (ModMenu.HandleInput())
+                return;
+
+            // F8 to open mod menu (only when not in battle)
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                if (!BattleStateHelper.IsInBattle)
+                {
+                    ModMenu.Open();
+                }
+                else
+                {
+                    FFI_ScreenReaderMod.SpeakText("Unavailable in battle", interrupt: true);
+                }
+                return;
+            }
+
+            // F5 to toggle enemy HP display (only when not in battle)
+            if (Input.GetKeyDown(KeyCode.F5))
+            {
+                if (!BattleStateHelper.IsInBattle)
+                {
+                    // Cycle HP display: 0→1→2→0 (Numbers→Percentage→Hidden→Numbers)
+                    int current = FFI_ScreenReaderMod.EnemyHPDisplay;
+                    int next = (current + 1) % 3;
+                    FFI_ScreenReaderMod.SetEnemyHPDisplay(next);
+
+                    string[] options = { "Numbers", "Percentage", "Hidden" };
+                    FFI_ScreenReaderMod.SpeakText($"Enemy HP: {options[next]}", interrupt: true);
+                }
+                else
+                {
+                    FFI_ScreenReaderMod.SpeakText("Unavailable in battle", interrupt: true);
+                }
+                return;
+            }
+
+            // F1 toggles walk/run speed - announce after game processes it
+            if (Input.GetKeyDown(KeyCode.F1))
+            {
+                CoroutineManager.StartUntracked(AnnounceWalkRunState());
+                return;
+            }
+
+            // F3 toggles encounters - announce after game processes it
+            if (Input.GetKeyDown(KeyCode.F3))
+            {
+                CoroutineManager.StartUntracked(AnnounceEncounterState());
+                return;
+            }
+
             // Early exit if no keys pressed this frame - avoids expensive operations
             if (!Input.anyKeyDown)
             {
@@ -160,10 +213,65 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
+        /// Coroutine that announces walk/run state after game processes F1 key.
+        /// </summary>
+        private static System.Collections.IEnumerator AnnounceWalkRunState()
+        {
+            // Wait 3 frames for game to fully process F1 and update dashFlag
+            yield return null; // Frame 1
+            yield return null; // Frame 2
+            yield return null; // Frame 3
+
+            try
+            {
+                // Read actual dash state from FieldKeyController
+                bool isDashing = FFI_ScreenReader.Utils.MoveStateHelper.GetDashFlag();
+                string state = isDashing ? "Run" : "Walk";
+                FFI_ScreenReaderMod.SpeakText(state, interrupt: true);
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[F1] Error reading walk/run state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Coroutine that announces encounter state after game processes F3 key.
+        /// </summary>
+        private static System.Collections.IEnumerator AnnounceEncounterState()
+        {
+            yield return null; // Wait one frame for game to process
+            try
+            {
+                var userData = Il2CppLast.Management.UserDataManager.Instance();
+                if (userData?.CheatSettingsData != null)
+                {
+                    bool enabled = userData.CheatSettingsData.IsEnableEncount;
+                    string state = enabled ? "Encounters on" : "Encounters off";
+                    FFI_ScreenReaderMod.SpeakText(state, interrupt: true);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[F3] Error reading encounter state: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Handles global input (works everywhere).
         /// </summary>
         private void HandleGlobalInput()
         {
+            // Tab key opens main menu - clear battle state as fallback
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                if (BattleStateHelper.IsInBattle)
+                {
+                    MelonLogger.Msg("[InputManager] Tab pressed - clearing stale battle state");
+                    BattleStateHelper.ForceClearBattleState();
+                }
+            }
+
             // Check for status details navigation (takes priority when active)
             if (HandleStatusDetailsInput())
             {
@@ -195,12 +303,6 @@ namespace FFI_ScreenReader.Core
                     // Just M (announce current map)
                     mod.AnnounceCurrentMap();
                 }
-            }
-
-            // Hotkey: 0 (Alpha0) to dump untranslated entity names
-            if (Input.GetKeyDown(KeyCode.Alpha0))
-            {
-                DumpUntranslatedEntityNames();
             }
 
             // Hotkey: Shift+K to reset to All category
@@ -271,24 +373,6 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
-        /// Dumps all untranslated entity names to the log file.
-        /// Used to discover Japanese entity names that need translation.
-        /// </summary>
-        private void DumpUntranslatedEntityNames()
-        {
-            try
-            {
-                string result = EntityTranslator.DumpUntranslatedNames();
-                FFI_ScreenReaderMod.SpeakText(result, true);
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Warning($"Error dumping entity names: {ex.Message}");
-                FFI_ScreenReaderMod.SpeakText("Failed to dump entity names", true);
-            }
-        }
-
-        /// <summary>
         /// Handles the I key for item details in shops and other menus.
         /// </summary>
         private void HandleItemDetailsKey()
@@ -296,9 +380,11 @@ namespace FFI_ScreenReader.Core
             try
             {
                 // Config menu: Announce option description/tooltip
-                if (IsConfigMenuActive())
+                // TryGetActiveConfigController does a single lookup pass and returns the controller if found
+                var configController = TryGetActiveConfigController(out bool isKeyInput);
+                if (configController != IntPtr.Zero)
                 {
-                    AnnounceConfigTooltip();
+                    AnnounceConfigTooltip(configController, isKeyInput);
                     return;
                 }
 
@@ -323,24 +409,30 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
-        /// Checks if a config menu is currently active.
+        /// Tries to find an active config menu controller.
+        /// Returns the controller's IL2CPP pointer if found, IntPtr.Zero otherwise.
+        /// Avoids redundant FindObjectOfType calls by doing a single pass.
         /// </summary>
-        private bool IsConfigMenuActive()
+        /// <param name="isKeyInput">True if KeyInput controller, false if Touch controller</param>
+        private IntPtr TryGetActiveConfigController(out bool isKeyInput)
         {
+            isKeyInput = false;
             try
             {
-                // Check for KeyInput config controller
+                // Check for KeyInput config controller first (more common for keyboard users)
                 var keyInputController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_KeyInput>();
                 if (keyInputController != null && keyInputController.gameObject.activeInHierarchy)
                 {
-                    return true;
+                    isKeyInput = true;
+                    return keyInputController.Pointer;
                 }
 
                 // Check for Touch config controller
                 var touchController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_Touch>();
                 if (touchController != null && touchController.gameObject.activeInHierarchy)
                 {
-                    return true;
+                    isKeyInput = false;
+                    return touchController.Pointer;
                 }
             }
             catch (System.Exception ex)
@@ -348,45 +440,32 @@ namespace FFI_ScreenReader.Core
                 MelonLogger.Warning($"Error checking config menu state: {ex.Message}");
             }
 
-            return false;
+            return IntPtr.Zero;
         }
 
         /// <summary>
         /// Announces the description/tooltip text for the currently highlighted config option.
-        /// Only works when in the config menu.
+        /// Takes the controller pointer directly to avoid redundant FindObjectOfType calls.
         /// </summary>
-        private void AnnounceConfigTooltip()
+        /// <param name="controllerPtr">The IL2CPP pointer to the config controller</param>
+        /// <param name="isKeyInput">True if this is a KeyInput controller, false for Touch</param>
+        private void AnnounceConfigTooltip(IntPtr controllerPtr, bool isKeyInput)
         {
             try
             {
-                // Try KeyInput controller (in-game config menu - keyboard/gamepad mode)
-                var keyInputController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_KeyInput>();
-                if (keyInputController != null && keyInputController.gameObject.activeInHierarchy)
+                int offset = isKeyInput
+                    ? IL2CppOffsets.ConfigMenu.DescriptionTextKeyInput
+                    : IL2CppOffsets.ConfigMenu.DescriptionTextTouch;
+
+                string description = GetDescriptionText(controllerPtr, offset);
+                if (!string.IsNullOrEmpty(description))
                 {
-                    string description = GetDescriptionText(keyInputController.Pointer, IL2CppOffsets.ConfigMenu.DescriptionTextKeyInput);
-                    if (!string.IsNullOrEmpty(description))
-                    {
-                        MelonLogger.Msg($"[Config Tooltip] {description}");
-                        FFI_ScreenReaderMod.SpeakText(description);
-                        return;
-                    }
+                    MelonLogger.Msg($"[Config Tooltip] {description}");
+                    FFI_ScreenReaderMod.SpeakText(description);
+                    return;
                 }
 
-                // Try Touch controller
-                var touchController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_Touch>();
-                if (touchController != null && touchController.gameObject.activeInHierarchy)
-                {
-                    string description = GetDescriptionText(touchController.Pointer, IL2CppOffsets.ConfigMenu.DescriptionTextTouch);
-                    if (!string.IsNullOrEmpty(description))
-                    {
-                        MelonLogger.Msg($"[Config Tooltip] {description}");
-                        FFI_ScreenReaderMod.SpeakText(description);
-                        return;
-                    }
-                }
-
-                // Not in a config menu or no description available
-                MelonLogger.Msg("[Config Tooltip] No config menu active or no description available");
+                MelonLogger.Msg("[Config Tooltip] No description available");
             }
             catch (System.Exception ex)
             {

@@ -1,172 +1,280 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text.RegularExpressions;
 using MelonLoader;
-using UnityEngine;
 using FFI_ScreenReader.Field;
 
 namespace FFI_ScreenReader.Utils
 {
     /// <summary>
-    /// Translates Japanese entity names to English using a JSON dictionary.
-    /// Loaded from UserData/FFI_ScreenReader/FF1_translations.json
+    /// Translates Japanese entity names to English using an embedded dictionary.
+    /// Translations are compiled into the DLL — no external file needed.
     /// </summary>
     public static class EntityTranslator
     {
-        private static Dictionary<string, string> translations = new Dictionary<string, string>();
-        private static bool isInitialized = false;
-        private static string translationsPath;
+        private static readonly Dictionary<string, string> translations = new Dictionary<string, string>
+        {
+            // === NPCs & Characters ===
+            { "コウモリ", "Bat" },
+            { "妖精王", "Fairy King" },
+            { "カギのかかった扉", "Locked Door" },
+            { "エルフ(村人)④", "Elf Villager 4" },
+            { "エルフ(村人)③", "Elf Villager 3" },
+            { "エルフ(村人)②", "Elf Villager 2" },
+            { "エルフ(村人)①", "Elf Villager 1" },
+            { "エルフ(村人)", "Elf Villager" },
+            { "エルフ王子", "Elf Prince" },
+            { "エルフ白ローブ", "White-Robed Elf" },
+            { "井戸", "Well" },
+            { "噴水", "Fountain" },
+            { "村人(女性)", "Female Villager" },
+            { "踊り子", "Dancer" },
+            { "兵士", "Soldier" },
+            { "村人(男性)", "Male Villager" },
+            { "村人(おばあさん)", "Old Woman" },
+            { "村人(おじいさん)", "Old Man" },
+            { "飛空先入手", "Airship Acquisition" },
 
-        // Track untranslated names by map for dumping
+            // === Story Characters ===
+            { "コーネリア王", "King of Cornelia" },
+            { "コーネリア大臣", "Chancellor of Cornelia" },
+            { "ガーランド", "Garland" },
+            { "セーラ", "Princess Sarah" },
+            { "マトーヤ", "Matoya" },
+            { "ほうき", "Broom" },
+            { "アストス", "Astos" },
+            { "賢者サーダ", "Sage Sarda" },
+            { "予言者ルカーン", "Prophet Lukahn" },
+            { "バハムート", "Bahamut" },
+            { "②ウネ", "Unne 2" },
+            { "女性", "Woman" },
+            { "男性", "Man" },
+            { "巨人", "Giant" },
+
+            // === Villagers (Mohawk, numbered) ===
+            { "村人(モヒカン)青", "Blue Mohawk Villager" },
+            { "村人(男性)①", "Male Villager 1" },
+
+            // === Pirates ===
+            { "海賊(ビッケ)", "Pirate (Bikke)" },
+            { "海賊(下っ端)", "Pirate Underling" },
+
+            // === Elves ===
+            { "エルフ(村人)⑤", "Elf Villager 5" },
+            { "エルフ(村人)⑦", "Elf Villager 7" },
+            { "エルフ青ローブ②", "Blue-Robed Elf 2" },
+            { "エルフ青ローブ⑥", "Blue-Robed Elf 6" },
+
+            // === Dwarves ===
+            { "ドワーフ(黄色の三角ニット帽)", "Dwarf" },
+            { "ドワーフ(黄色の三角ニット帽)①", "Dwarf 1" },
+            { "ドワーフ(黄色の三角ニット帽)②", "Dwarf 2" },
+            { "ドワーフ(黄色の三角ニット帽)③", "Dwarf 3" },
+            { "ドワーフ(黄色の三角ニット帽)④", "Dwarf 4" },
+            { "ドワーフ(スミス)(赤の羽根つき帽子)", "Dwarf (Smith)" },
+            { "ドワーフ(ネリク)(緑の帽子)", "Dwarf (Nerrick)" },
+            { "スミスの作品", "Smith's Work" },
+
+            // === Numbered Villagers ===
+            { "②村人（男性）", "Male Villager 2" },
+            { "③村人（おじいさん）", "Old Man 3" },
+            { "④村人（男性）", "Male Villager 4" },
+            { "⑤村人（男性）", "Male Villager 5" },
+            { "⑥村人（男性）", "Male Villager 6" },
+            { "⑦村人（女性）", "Female Villager 7" },
+            { "⑧村人（男性）", "Male Villager 8" },
+            { "⑨村人（女性）", "Female Villager 9" },
+            { "⑩村人（男性）", "Male Villager 10" },
+            { "⑪ドワーフ", "Dwarf 11" },
+            { "⑫村人（おじいさん）", "Old Man 12" },
+            { "⑬村人（男性）", "Male Villager 13" },
+            { "⑭村人（男性）", "Male Villager 14" },
+
+            // === Creatures & Objects ===
+            { "ドラゴン", "Dragon" },
+            { "魔女", "Witch" },
+            { "モヒカン頭", "Mohawk" },
+            { "学者", "Scholar" },
+            { "墓標", "Grave Marker" },
+            { "樽の潜水艦", "Barrel Submarine" },
+            { "人魚の霊", "Mermaid Ghost" },
+            { "動くほうき", "Moving Broom" },
+            { "妖精解放エフェクト", "Fairy Release Effect" },
+
+            // === Sages ===
+            { "賢者", "Sage" },
+            { "墓石", "Gravestone" },
+
+            // === Bats (suffix-numbered) ===
+            { "コウモリ1", "Bat1" },
+            { "コウモリ2", "Bat2" },
+            { "コウモリ3", "Bat3" },
+            { "コウモリ4", "Bat4" },
+            { "コウモリ5", "Bat5" },
+
+            // === Vampires ===
+            { "ヴァンパイア（コウモリ）", "Vampire (Bat)" },
+            { "ヴァンパイア", "Vampire" },
+            { "ヴァンパイア変身エフェクト", "Vampire Transformation Effect" },
+
+            // === Dragons (suffix-numbered) ===
+            { "ドラゴン1", "Dragon1" },
+            { "ドラゴン2", "Dragon2" },
+            { "ドラゴン3", "Dragon3" },
+            { "ドラゴン4", "Dragon4" },
+            { "ドラゴン5", "Dragon5" },
+            { "ドラゴン6", "Dragon6" },
+            { "ドラゴン7", "Dragon7" },
+            { "ドラゴン8", "Dragon8" },
+            { "ドラゴン9", "Dragon9" },
+            { "ドラゴン10", "Dragon10" },
+            { "クラスチェンジ用", "Class Change" },
+
+            // === Mermaids ===
+            { "人魚", "Mermaid" },
+            { "人魚①", "Mermaid 1" },
+            { "タル潜水艦", "Barrel Submarine" },
+
+            // === Lufenians (prefix-numbered, no dot) ===
+            { "1ルフェイン人", "1Lufenian" },
+            { "2ルフェイン人", "2Lufenian" },
+            { "3ルフェイン人", "3Lufenian" },
+            { "4ルフェイン人", "4Lufenian" },
+            { "5ルフェイン人", "5Lufenian" },
+            { "6ルフェイン人", "6Lufenian" },
+            { "7ルフェイン人", "7Lufenian" },
+            { "8ルフェイン人", "8Lufenian" },
+            { "9ルフェイン人", "9Lufenian" },
+            { "10ルフェイン人", "10Lufenian" },
+            { "11ルフェイン人", "11Lufenian" },
+            { "12ルフェイン人", "12Lufenian" },
+            { "13ルフェイン人", "13Lufenian" },
+            { "14ルフェイン人", "14Lufenian" },
+
+            // === Robots ===
+            { "ロボット", "Robot" },
+            { "ロボット電気", "Electric Robot" },
+            { "ロボット(78)", "Robot" },
+
+            // === Shops ===
+            { "防具屋", "Armor Shop" },
+
+            // === Crystals ===
+            { "クリスタルのかけら青", "Blue Crystal Shard" },
+            { "クリスタルのかけら緑", "Green Crystal Shard" },
+            { "クリスタルのかけら赤", "Red Crystal Shard" },
+            { "クリスタルのかけら黄", "Yellow Crystal Shard" },
+            { "緑色のクリスタルのかけら", "Green Crystal Shard" },
+            { "土のクリスタル暗", "Earth Crystal (Dark)" },
+            { "土のクリスタル明", "Earth Crystal (Lit)" },
+            { "火のクリスタル暗", "Fire Crystal (Dark)" },
+            { "火のクリスタル明", "Fire Crystal (Lit)" },
+            { "水のクリスタル明", "Water Crystal (Lit)" },
+            { "水のクリスタル暗", "Water Crystal (Dark)" },
+            { "風のクリスタル（明）", "Wind Crystal (Lit)" },
+            { "風のクリスタル（暗）", "Wind Crystal (Dark)" },
+
+            // === Crystal Cave Warps ===
+            { "クリスタルの洞窟のワープ（黄）暗", "Crystal Cave Warp (Yellow) Dark" },
+            { "クリスタルの洞窟のワープ（黄）明", "Crystal Cave Warp (Yellow) Lit" },
+            { "クリスタルの洞窟のワープ（赤）暗", "Crystal Cave Warp (Red) Dark" },
+            { "クリスタルの洞窟のワープ（赤）明", "Crystal Cave Warp (Red) Lit" },
+            { "クリスタルの洞窟のワープ（青）暗", "Crystal Cave Warp (Blue) Dark" },
+            { "クリスタルの洞窟のワープ（青）明", "Crystal Cave Warp (Blue) Lit" },
+            { "クリスタルの洞窟のワープ（緑）明\n", "Crystal Cave Warp (Green) Lit" },
+            { "クリスタルの洞窟のワープ（緑）暗\n", "Crystal Cave Warp (Green) Dark" },
+
+            // === Orbs & Key Items ===
+            { "黒色の玉", "Black Orb" },
+            { "土色の玉（リッチ会話前）", "Earth Orb (Before Lich)" },
+            { "赤色の玉(マリリス会話前)", "Fire Orb (Before Marilith)" },
+            { "水色の玉(クラーケン会話前)", "Water Orb (Before Kraken)" },
+            { "ティアマットのオーブ（会話前）", "Tiamat Orb (Before Dialogue)" },
+            { "石板", "Stone Tablet" },
+            { "石板（有）", "Stone Tablet (Present)" },
+            { "スタールビー", "Star Ruby" },
+            { "浮遊石", "Levistone" },
+            { "アダマンタイト（有）", "Adamantite (Present)" },
+
+            // === UI Markers ===
+            { "イベント用「！」マーク", "Event Exclamation Mark" },
+            { "ビックリマーク", "Exclamation Mark" },
+            { "ビックリマーク1", "Exclamation Mark 1" },
+            { "ビックリマーク2", "Exclamation Mark 2" },
+            { "ビックリマーク3", "Exclamation Mark 3" },
+            { "ビックリマーク4", "Exclamation Mark 4" },
+            { "PC1.ビックリマーク", "PC1 Exclamation Mark" },
+            { "PC2.ビックリマーク", "PC2 Exclamation Mark" },
+            { "PC3.ビックリマーク", "PC3 Exclamation Mark" },
+            { "PC4.ビックリマーク", "PC4 Exclamation Mark" },
+            { "PC1ビックリマーク", "PC1 Exclamation Mark" },
+            { "PC2ビックリマーク", "PC2 Exclamation Mark" },
+            { "PC3ビックリマーク", "PC3 Exclamation Mark" },
+            { "PC4ビックリマーク", "PC4 Exclamation Mark" },
+
+            // === Forced Encounters ===
+            { "強制エンカウント", "Forced Encounter" },
+            { "強制エンカウント①", "Forced Encounter 1" },
+            { "強制エンカウント②", "Forced Encounter 2" },
+            { "強制エンカウント：ブルードラゴン", "Forced Encounter: Blue Dragon" },
+            { "強制エンカウント：デスアイ", "Forced Encounter: Death Eye" },
+            { "強制エンカウント：リッチ", "Forced Encounter: Lich" },
+            { "強制エンカウント：マリリス", "Forced Encounter: Marilith" },
+            { "強制エンカウント：クラーケン", "Forced Encounter: Kraken" },
+            { "強制エンカウント：ティアマット", "Forced Encounter: Tiamat" },
+
+            // === Warps & Interactions ===
+            { "祭壇", "Altar" },
+            { "ワープ", "Warp" },
+            { "カギのかかった扉(確認用)", "Locked Door (Confirmation)" },
+            { "おじいさんのテレポート", "Old Man's Teleport" },
+            { "リュートで石板をどかす", "Move Tablet with Lute" },
+            { "浮遊城へワープ", "Warp to Flying Fortress" },
+            { "ミラージュの塔へワープ", "Warp to Mirage Tower" },
+            { "過去のカオス神殿にワープ", "Warp to Past Chaos Shrine" },
+            { "カオス神殿へワープ", "Warp to Chaos Shrine" },
+            { "クリスタルの洞窟のワープ（赤）明(仮置き）", "Crystal Cave Warp (Red) Lit" },
+            { "テレポートマス", "Teleport Tile" },
+            { "展望窓を覗く", "Look Through Window" },
+
+            // === Floor Warps ===
+            { "1Fへワープ", "Warp to 1F" },
+            { "2Fへワープ", "Warp to 2F" },
+            { "3Fへワープ", "Warp to 3F" },
+            { "4Fへワープ", "Warp to 4F" },
+            { "5Fへワープ", "Warp to 5F" },
+
+            // === Numbered Warps ===
+            { "③へワープ", "Warp to 3" },
+            { "④へワープ", "Warp to 4" },
+            { "⑤へワープ", "Warp to 5" },
+            { "⑥へワープ", "Warp to 6" },
+            { "⑦へワープ", "Warp to 7" },
+            { "⑧へワープ", "Warp to 8" },
+            { "⑩へワープ", "Warp to 10" },
+            { "⑪へワープ", "Warp to 11" },
+            { "⑫へワープ", "Warp to 12" },
+            { "⑬へワープ", "Warp to 13" },
+        };
+
+        private static bool isInitialized = false;
+
+        // Track untranslated names by map for dev logging
         private static Dictionary<string, HashSet<string>> untranslatedNamesByMap = new Dictionary<string, HashSet<string>>();
 
-        // Matches numeric prefix (e.g., "6:") or SC prefix (e.g., "SC01:") at start of entity names
+        // Matches numeric prefix (e.g., "6:" or "12.") or SC prefix (e.g., "SC01:") at start of entity names
         private static readonly Regex EntityPrefixRegex = new Regex(
-            @"^((?:SC)?\d+:)",
+            @"^((?:SC)?\d+[.:])",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
-        /// Initializes the translator by loading translations from JSON file.
-        /// Creates empty file if not exists.
+        /// Initializes the translator. Translations are embedded at compile time.
         /// </summary>
         public static void Initialize()
         {
             if (isInitialized) return;
-
-            try
-            {
-                // Build path: UserData/FFI_ScreenReader/translations.json
-                // Get game root directory (parent of _Data folder)
-                string gameDataPath = Application.dataPath; // e.g., .../FINAL FANTASY/FINAL FANTASY_Data
-                string gameRoot = Path.GetDirectoryName(gameDataPath);
-                string userDataPath = Path.Combine(gameRoot, "UserData", "FFI_ScreenReader");
-                translationsPath = Path.Combine(userDataPath, "FF1_translations.json");
-
-                // Create directory if needed
-                if (!Directory.Exists(userDataPath))
-                {
-                    Directory.CreateDirectory(userDataPath);
-                    MelonLogger.Msg($"[EntityTranslator] Created directory: {userDataPath}");
-                }
-
-                // Load or create translations file
-                if (File.Exists(translationsPath))
-                {
-                    LoadTranslations();
-                }
-                else
-                {
-                    // Create empty translations file
-                    File.WriteAllText(translationsPath, "{\n}");
-                    MelonLogger.Msg($"[EntityTranslator] Created empty translations file: {translationsPath}");
-                }
-
-                isInitialized = true;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error($"[EntityTranslator] Failed to initialize: {ex.Message}");
-                isInitialized = true; // Prevent repeated init attempts
-            }
-        }
-
-        /// <summary>
-        /// Loads translations from the JSON file.
-        /// </summary>
-        private static void LoadTranslations()
-        {
-            try
-            {
-                string json = File.ReadAllText(translationsPath);
-                translations = ParseJsonDictionary(json);
-                MelonLogger.Msg($"[EntityTranslator] Loaded {translations.Count} translations from {translationsPath}");
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[EntityTranslator] Failed to load translations: {ex.Message}");
-                translations = new Dictionary<string, string>();
-            }
-        }
-
-        /// <summary>
-        /// Simple JSON dictionary parser (no external dependencies).
-        /// Parses {"key": "value", ...} format.
-        /// </summary>
-        private static Dictionary<string, string> ParseJsonDictionary(string json)
-        {
-            var result = new Dictionary<string, string>();
-
-            if (string.IsNullOrWhiteSpace(json))
-                return result;
-
-            // Remove outer braces and whitespace
-            json = json.Trim();
-            if (json.StartsWith("{")) json = json.Substring(1);
-            if (json.EndsWith("}")) json = json.Substring(0, json.Length - 1);
-            json = json.Trim();
-
-            if (string.IsNullOrEmpty(json))
-                return result;
-
-            // Parse key-value pairs
-            int pos = 0;
-            while (pos < json.Length)
-            {
-                // Find opening quote for key
-                int keyStart = json.IndexOf('"', pos);
-                if (keyStart < 0) break;
-
-                // Find closing quote for key
-                int keyEnd = json.IndexOf('"', keyStart + 1);
-                if (keyEnd < 0) break;
-
-                string key = json.Substring(keyStart + 1, keyEnd - keyStart - 1);
-
-                // Find colon
-                int colonPos = json.IndexOf(':', keyEnd);
-                if (colonPos < 0) break;
-
-                // Find opening quote for value
-                int valueStart = json.IndexOf('"', colonPos);
-                if (valueStart < 0) break;
-
-                // Find closing quote for value (handle escaped quotes)
-                int valueEnd = valueStart + 1;
-                while (valueEnd < json.Length)
-                {
-                    valueEnd = json.IndexOf('"', valueEnd);
-                    if (valueEnd < 0) break;
-
-                    // Check if escaped
-                    int backslashes = 0;
-                    int checkPos = valueEnd - 1;
-                    while (checkPos >= valueStart && json[checkPos] == '\\')
-                    {
-                        backslashes++;
-                        checkPos--;
-                    }
-
-                    if (backslashes % 2 == 0)
-                        break; // Not escaped
-
-                    valueEnd++;
-                }
-
-                if (valueEnd < 0) break;
-
-                string value = json.Substring(valueStart + 1, valueEnd - valueStart - 1);
-
-                // Unescape basic sequences
-                value = value.Replace("\\\"", "\"").Replace("\\\\", "\\");
-
-                result[key] = value;
-
-                // Move to next pair
-                pos = valueEnd + 1;
-            }
-
-            return result;
+            MelonLogger.Msg($"[EntityTranslator] Initialized with {translations.Count} embedded translations");
+            isInitialized = true;
         }
 
         /// <summary>
@@ -189,7 +297,7 @@ namespace FFI_ScreenReader.Utils
             // 2. Strip numeric/SC prefix and try base name lookup
             StripPrefix(japaneseName, out string prefix, out string baseName);
             if (prefix != null && translations.TryGetValue(baseName, out string baseTranslation))
-                return prefix + " " + baseTranslation;
+                return prefix + baseTranslation;
 
             // 3. Track untranslated name by current map (use base name to deduplicate)
             string trackingName = prefix != null ? baseName : japaneseName;
@@ -252,226 +360,17 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Dumps untranslated entity names for the current map to EntityNames.json.
-        /// Appends by map name with duplicate detection.
-        /// Returns a status string for TTS feedback.
-        /// </summary>
-        public static string DumpUntranslatedNames()
-        {
-            try
-            {
-                string currentMap = MapNameResolver.GetCurrentMapName();
-                if (string.IsNullOrEmpty(currentMap))
-                    return "Could not determine current map.";
-
-                string dumpPath = Path.Combine(
-                    Path.GetDirectoryName(translationsPath),
-                    "EntityNames.json"
-                );
-
-                // Load existing data from file
-                var existingData = new Dictionary<string, Dictionary<string, string>>();
-                if (File.Exists(dumpPath))
-                {
-                    string existingJson = File.ReadAllText(dumpPath);
-                    existingData = ParseNestedJsonDictionary(existingJson);
-                }
-
-                // Check if map already exists in file
-                if (existingData.ContainsKey(currentMap))
-                    return "Entity data already exists for this map.";
-
-                // Check if we have untranslated names for this map
-                if (!untranslatedNamesByMap.ContainsKey(currentMap) || untranslatedNamesByMap[currentMap].Count == 0)
-                    return "No untranslated names for this map.";
-
-                // Add current map's names to data
-                var mapNames = new Dictionary<string, string>();
-                foreach (string name in untranslatedNamesByMap[currentMap])
-                {
-                    mapNames[name] = "";
-                }
-                existingData[currentMap] = mapNames;
-
-                // Write nested JSON
-                WriteNestedJson(dumpPath, existingData);
-
-                int count = mapNames.Count;
-                MelonLogger.Msg($"[EntityTranslator] Dumped {count} names for {currentMap} to: {dumpPath}");
-                return $"Dumped {count} names for {currentMap}";
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error($"[EntityTranslator] Failed to save EntityNames.json: {ex.Message}");
-                return "Failed to dump entity names.";
-            }
-        }
-
-        /// <summary>
-        /// Parses nested JSON: { "MapName": { "Japanese": "", ... }, ... }
-        /// </summary>
-        private static Dictionary<string, Dictionary<string, string>> ParseNestedJsonDictionary(string json)
-        {
-            var result = new Dictionary<string, Dictionary<string, string>>();
-
-            if (string.IsNullOrWhiteSpace(json))
-                return result;
-
-            json = json.Trim();
-            if (!json.StartsWith("{") || !json.EndsWith("}"))
-                return result;
-
-            // Remove outer braces
-            json = json.Substring(1, json.Length - 2).Trim();
-            if (string.IsNullOrEmpty(json))
-                return result;
-
-            int pos = 0;
-            while (pos < json.Length)
-            {
-                // Find map name key
-                int keyStart = json.IndexOf('"', pos);
-                if (keyStart < 0) break;
-
-                int keyEnd = FindClosingQuote(json, keyStart + 1);
-                if (keyEnd < 0) break;
-
-                string mapKey = json.Substring(keyStart + 1, keyEnd - keyStart - 1);
-                mapKey = mapKey.Replace("\\\"", "\"").Replace("\\\\", "\\");
-
-                // Find the opening brace for this map's value
-                int braceStart = json.IndexOf('{', keyEnd);
-                if (braceStart < 0) break;
-
-                // Find matching closing brace
-                int braceEnd = FindMatchingBrace(json, braceStart);
-                if (braceEnd < 0) break;
-
-                // Parse inner dictionary
-                string innerJson = json.Substring(braceStart, braceEnd - braceStart + 1);
-                result[mapKey] = ParseJsonDictionary(innerJson);
-
-                pos = braceEnd + 1;
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Finds the closing quote for a JSON string, handling escaped quotes.
-        /// </summary>
-        private static int FindClosingQuote(string json, int startPos)
-        {
-            int pos = startPos;
-            while (pos < json.Length)
-            {
-                pos = json.IndexOf('"', pos);
-                if (pos < 0) return -1;
-
-                // Count preceding backslashes
-                int backslashes = 0;
-                int checkPos = pos - 1;
-                while (checkPos >= startPos - 1 && json[checkPos] == '\\')
-                {
-                    backslashes++;
-                    checkPos--;
-                }
-
-                if (backslashes % 2 == 0)
-                    return pos; // Not escaped
-
-                pos++;
-            }
-            return -1;
-        }
-
-        /// <summary>
-        /// Finds the matching closing brace for an opening brace.
-        /// </summary>
-        private static int FindMatchingBrace(string json, int openPos)
-        {
-            int depth = 0;
-            bool inString = false;
-
-            for (int i = openPos; i < json.Length; i++)
-            {
-                char c = json[i];
-
-                if (inString)
-                {
-                    if (c == '\\')
-                    {
-                        i++; // Skip escaped character
-                        continue;
-                    }
-                    if (c == '"')
-                        inString = false;
-                    continue;
-                }
-
-                if (c == '"')
-                {
-                    inString = true;
-                }
-                else if (c == '{')
-                {
-                    depth++;
-                }
-                else if (c == '}')
-                {
-                    depth--;
-                    if (depth == 0)
-                        return i;
-                }
-            }
-            return -1;
-        }
-
-        /// <summary>
-        /// Writes a nested dictionary as formatted JSON to a file.
-        /// </summary>
-        private static void WriteNestedJson(string path, Dictionary<string, Dictionary<string, string>> data)
-        {
-            using (var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8))
-            {
-                writer.WriteLine("{");
-                var mapKeys = new List<string>(data.Keys);
-                for (int m = 0; m < mapKeys.Count; m++)
-                {
-                    string mapKey = mapKeys[m];
-                    string escapedMapKey = mapKey.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                    writer.WriteLine($"  \"{escapedMapKey}\": {{");
-
-                    var names = new List<string>(data[mapKey].Keys);
-                    for (int n = 0; n < names.Count; n++)
-                    {
-                        string escapedName = names[n].Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        string escapedValue = data[mapKey][names[n]].Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        string comma = (n < names.Count - 1) ? "," : "";
-                        writer.WriteLine($"    \"{escapedName}\": \"{escapedValue}\"{comma}");
-                    }
-
-                    string mapComma = (m < mapKeys.Count - 1) ? "," : "";
-                    writer.WriteLine($"  }}{mapComma}");
-                }
-                writer.WriteLine("}");
-            }
-        }
-
-        /// <summary>
-        /// Reloads translations from file.
-        /// </summary>
-        public static void Reload()
-        {
-            if (!string.IsNullOrEmpty(translationsPath) && File.Exists(translationsPath))
-            {
-                LoadTranslations();
-            }
-        }
-
-        /// <summary>
         /// Gets the count of loaded translations.
         /// </summary>
         public static int TranslationCount => translations.Count;
+
+        /// <summary>
+        /// Clears the untranslated names tracking dictionary.
+        /// Call on map transitions to prevent unbounded memory growth.
+        /// </summary>
+        public static void ClearUntranslatedTracking()
+        {
+            untranslatedNamesByMap.Clear();
+        }
     }
 }

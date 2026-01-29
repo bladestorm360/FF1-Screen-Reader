@@ -8,6 +8,7 @@ using FFI_ScreenReader.Utils;
 // FF1 Battle types
 using BattleController = Il2CppLast.Battle.BattleController;
 using BattlePopPlug = Il2CppLast.Battle.BattlePopPlug;
+using BattlePlugManager = Il2CppLast.Battle.BattlePlugManager;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -243,38 +244,32 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Get the preemptive state from BattleController.
+        /// Get the preemptive state from BattlePlugManager (singleton).
+        /// Uses direct IL2CPP access instead of .NET reflection.
         /// </summary>
         private static int GetPreeMptiveState(BattleController controller)
         {
             try
             {
-                // Try to get BattlePopPlug property
-                var popPlugProp = controller.GetType().GetProperty("BattlePopPlug",
-                    BindingFlags.Public | BindingFlags.Instance);
-                if (popPlugProp != null)
+                // BattlePopPlug is stored in BattlePlugManager singleton, not BattleController
+                var plugManager = BattlePlugManager.Instance();
+                if (plugManager == null)
                 {
-                    var battlePopPlug = popPlugProp.GetValue(controller) as BattlePopPlug;
-                    if (battlePopPlug != null)
-                    {
-                        // Call GetResult() to get the state
-                        var result = battlePopPlug.GetResult();
-                        return (int)result;
-                    }
+                    MelonLogger.Warning("[Battle Start] BattlePlugManager.Instance() is null");
+                    return STATE_NORMAL;
                 }
 
-                // Try field access
-                var popPlugField = controller.GetType().GetField("battlePopPlug",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-                if (popPlugField != null)
+                // Direct IL2CPP property access (not .NET reflection)
+                var battlePopPlug = plugManager.BattlePopPlug;
+                if (battlePopPlug == null)
                 {
-                    var battlePopPlug = popPlugField.GetValue(controller) as BattlePopPlug;
-                    if (battlePopPlug != null)
-                    {
-                        var result = battlePopPlug.GetResult();
-                        return (int)result;
-                    }
+                    MelonLogger.Warning("[Battle Start] BattlePopPlug is null");
+                    return STATE_NORMAL;
                 }
+
+                // Direct method call on IL2CPP type
+                var result = battlePopPlug.GetResult();
+                return (int)result;
             }
             catch (Exception ex)
             {

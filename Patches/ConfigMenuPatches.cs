@@ -4,6 +4,7 @@ using MelonLoader;
 using Il2CppLast.UI.KeyInput;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Menus;
+using FFI_ScreenReader.Utils;
 using UnityEngine;
 using Key = Il2CppSystem.Input.Key;
 using ConfigActualDetailsControllerBase_KeyInput = Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase;
@@ -64,9 +65,6 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigCommandController), nameof(Il2CppLast.UI.KeyInput.ConfigCommandController.SetFocus))]
     public static class ConfigCommandController_SetFocus_Patch
     {
-        private static string lastAnnouncedText = "";
-        private static string lastAnnouncedSettingName = "";
-
         [HarmonyPostfix]
         public static void Postfix(Il2CppLast.UI.KeyInput.ConfigCommandController __instance, bool isFocus)
         {
@@ -133,21 +131,13 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"{menuText}: {configValue}";
                 }
 
-                // Skip duplicate announcements
-                if (announcement == lastAnnouncedText)
-                {
+                // Use central deduplicator - skip duplicate announcements
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Text", announcement))
                     return;
-                }
 
                 // Skip if same setting - value changes are handled by SwitchArrowSelectTypeProcess/SwitchSliderTypeProcess
-                if (menuText == lastAnnouncedSettingName)
-                {
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Setting", menuText))
                     return;
-                }
-
-                // Different setting - announce full "Setting: Value"
-                lastAnnouncedText = announcement;
-                lastAnnouncedSettingName = menuText;
 
                 // Set active state and clear other menu states
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
@@ -167,8 +157,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            lastAnnouncedText = "";
-            lastAnnouncedSettingName = "";
+            AnnouncementDeduplicator.Reset("Config.Text", "Config.Setting", "Config.Arrow", "Config.Slider", "Config.TouchArrow", "Config.TouchSlider");
         }
     }
 
@@ -179,8 +168,6 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase), "SwitchArrowSelectTypeProcess")]
     public static class ConfigActualDetails_SwitchArrowSelectType_Patch
     {
-        private static string lastArrowValue = "";
-
         [HarmonyPostfix]
         public static void Postfix(
             Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase __instance,
@@ -210,10 +197,9 @@ namespace FFI_ScreenReader.Patches
                             // Filter out arrow characters and template values
                             if (IsValidConfigValue(textValue))
                             {
-                                // Only announce if value changed
-                                if (textValue == lastArrowValue) return;
+                                // Use central deduplicator - only announce if value changed
+                                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Arrow", textValue)) return;
 
-                                lastArrowValue = textValue;
                                 MelonLogger.Msg($"[ConfigMenu] Arrow value changed: {textValue}");
                                 FFI_ScreenReaderMod.SpeakText(textValue, interrupt: true);
                                 return;
@@ -257,7 +243,6 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase), "SwitchSliderTypeProcess")]
     public static class ConfigActualDetails_SwitchSliderType_Patch
     {
-        private static string lastSliderPercentage = "";
         private static ConfigCommandController lastController = null;
 
         [HarmonyPostfix]
@@ -280,24 +265,18 @@ namespace FFI_ScreenReader.Patches
                 string percentage = ConfigMenuReader.GetSliderPercentage(view.Slider, settingName);
                 if (string.IsNullOrEmpty(percentage)) return;
 
-                // Only announce if value changed for the SAME controller
-                // This prevents announcements when navigating between different sliders
-                if (controller == lastController && percentage == lastSliderPercentage)
-                {
-                    return;
-                }
-
                 // If we moved to a different controller (different option), don't announce
                 // Let SetFocus handle the full "Name: Value" announcement
                 if (controller != lastController)
                 {
                     lastController = controller;
-                    lastSliderPercentage = percentage;
+                    AnnouncementDeduplicator.ShouldAnnounce("Config.Slider", percentage); // Update tracker without announcing
                     return;
                 }
 
-                // Same controller, value changed - announce just the new value
-                lastSliderPercentage = percentage;
+                // Same controller - use central deduplicator to check if value changed
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Slider", percentage))
+                    return;
 
                 MelonLogger.Msg($"[ConfigMenu] Slider value changed: {percentage}");
                 FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);
@@ -316,8 +295,6 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(Il2CppLast.UI.Touch.ConfigActualDetailsControllerBase), "SwitchArrowTypeProcess")]
     public static class ConfigActualDetailsTouch_SwitchArrowType_Patch
     {
-        private static string lastTouchArrowValue = "";
-
         [HarmonyPostfix]
         public static void Postfix(
             Il2CppLast.UI.Touch.ConfigActualDetailsControllerBase __instance,
@@ -346,10 +323,9 @@ namespace FFI_ScreenReader.Patches
                             // Filter out arrow characters and template values
                             if (IsValidTouchConfigValue(textValue))
                             {
-                                // Only announce if value changed
-                                if (textValue == lastTouchArrowValue) return;
+                                // Use central deduplicator - only announce if value changed
+                                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.TouchArrow", textValue)) return;
 
-                                lastTouchArrowValue = textValue;
                                 MelonLogger.Msg($"[ConfigMenu] Touch arrow value changed: {textValue}");
                                 FFI_ScreenReaderMod.SpeakText(textValue, interrupt: true);
                                 return;
@@ -393,7 +369,6 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(Il2CppLast.UI.Touch.ConfigActualDetailsControllerBase), "SwitchSliderTypeProcess")]
     public static class ConfigActualDetailsTouch_SwitchSliderType_Patch
     {
-        private static string lastTouchSliderPercentage = "";
         private static Il2CppLast.UI.Touch.ConfigCommandController lastTouchController = null;
 
         [HarmonyPostfix]
@@ -417,24 +392,18 @@ namespace FFI_ScreenReader.Patches
                 string percentage = ConfigMenuReader.GetSliderPercentage(slider);
                 if (string.IsNullOrEmpty(percentage)) return;
 
-                // Only announce if value changed for the SAME controller
-                // This prevents announcements when navigating between different sliders
-                if (controller == lastTouchController && percentage == lastTouchSliderPercentage)
-                {
-                    return;
-                }
-
                 // If we moved to a different controller (different option), don't announce
                 // Let SetFocus handle the full "Name: Value" announcement
                 if (controller != lastTouchController)
                 {
                     lastTouchController = controller;
-                    lastTouchSliderPercentage = percentage;
+                    AnnouncementDeduplicator.ShouldAnnounce("Config.TouchSlider", percentage); // Update tracker without announcing
                     return;
                 }
 
-                // Same controller, value changed - announce just the new value
-                lastTouchSliderPercentage = percentage;
+                // Same controller - use central deduplicator to check if value changed
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.TouchSlider", percentage))
+                    return;
 
                 MelonLogger.Msg($"[ConfigMenu] Touch slider value changed: {percentage}");
                 FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);

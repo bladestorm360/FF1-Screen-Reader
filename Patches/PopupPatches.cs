@@ -111,9 +111,6 @@ namespace FFI_ScreenReader.Patches
     {
         private static bool isPatched = false;
 
-        // Track last announced button to avoid duplicates
-        private static int lastAnnouncedButtonIndex = -1;
-
         // --- Memory offsets ---
 
         // IconTextView.nameText offset
@@ -574,11 +571,9 @@ namespace FFI_ScreenReader.Patches
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
 
-                // Skip if same button as last announced
-                if (cursorIndex == lastAnnouncedButtonIndex)
+                // Use central deduplicator - skip if same button as last announced
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Popup.Button", cursorIndex))
                     return;
-
-                lastAnnouncedButtonIndex = cursorIndex;
 
                 // Read commandList at offset 0x70
                 IntPtr listPtr = Marshal.ReadIntPtr(popupPtr + COMMON_CMDLIST_OFFSET);
@@ -775,8 +770,8 @@ namespace FFI_ScreenReader.Patches
                     MelonLogger.Msg($"[Popup] Close - clearing state for {PopupState.CurrentPopupType}");
                     PopupState.Clear();
                 }
-                // Always reset button index on popup close to ensure fresh state for next popup
-                lastAnnouncedButtonIndex = -1;
+                // Always reset button tracking on popup close to ensure fresh state for next popup
+                AnnouncementDeduplicator.Reset("Popup.Button");
             }
             catch (Exception ex)
             {

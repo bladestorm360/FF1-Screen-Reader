@@ -284,6 +284,7 @@ namespace FFI_ScreenReader.Patches
         public static void ResetMapTracking()
         {
             LocationMessageTracker.Reset();
+            EntityTranslator.ClearUntranslatedTracking();
         }
     }
 }

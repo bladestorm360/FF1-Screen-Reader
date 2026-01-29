@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
@@ -17,13 +16,11 @@ using ShopMagicTargetSelectController = Il2CppLast.UI.KeyInput.ShopMagicTargetSe
 using ShopMagicTargetSelectContentController = Il2CppLast.UI.KeyInput.ShopMagicTargetSelectContentController;
 using ShopCommandId = Il2CppLast.Defaine.ShopCommandId;
 using GameCursor = Il2CppLast.UI.Cursor;
+using ShopInfoController = Il2CppLast.UI.KeyInput.ShopInfoController;
 
-// Master data types for item stats
+// Master data types for spell name lookup
 using MasterManager = Il2CppLast.Data.Master.MasterManager;
-using Weapon = Il2CppLast.Data.Master.Weapon;
-using Armor = Il2CppLast.Data.Master.Armor;
 using Content = Il2CppLast.Data.Master.Content;
-using ContentType = Il2CppLast.Defaine.Content.ContentType;
 using MessageManager = Il2CppLast.Management.MessageManager;
 
 namespace FFI_ScreenReader.Patches
@@ -37,9 +34,7 @@ namespace FFI_ScreenReader.Patches
     {
         public static bool IsShopMenuActive { get; set; }
         public static string LastItemName { get; set; }
-        public static string LastItemDescription { get; set; }
         public static string LastItemPrice { get; set; }
-        public static string LastItemStats { get; set; }
 
         /// <summary>
         /// Tracks when we're actively in the magic spell slot selection grid.
@@ -48,11 +43,21 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static bool IsInMagicSlotSelection { get; set; }
 
+        /// <summary>
+        /// Tracks when we've entered Equipment submenu from shop.
+        /// Used to restore ShopState when returning from equipment command bar.
+        /// </summary>
+        public static bool EnteredEquipmentSubmenu { get; set; }
+
         // Cached controller reference to avoid expensive FindObjectOfType calls
         private static ShopController cachedShopController = null;
 
         // State machine offset - use centralized offsets
         private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Shop;
+
+        // IL2CPP offsets for reading description panel directly from ShopInfoController
+        private const int OFFSET_INFO_VIEW = 0x18;        // ShopInfoController.view
+        private const int OFFSET_DESCRIPTION_TEXT = 0x38; // ShopInfoView.descriptionText
 
         // ShopController.State values (from dump.cs line 423102-423116)
         private const int STATE_NONE = 0;
@@ -167,26 +172,75 @@ namespace FFI_ScreenReader.Patches
             return StateMachineHelper.ReadState(controller.Pointer, OFFSET_STATE_MACHINE);
         }
 
+        /// <summary>
+        /// Reads the description text directly from the shop UI panel.
+        /// Uses pointer access: ShopInfoController -> view (0x18) -> descriptionText (0x38) -> text
+        /// </summary>
+        public static string GetDescriptionFromUI()
+        {
+            try
+            {
+                var shopInfoController = UnityEngine.Object.FindObjectOfType<ShopInfoController>();
+                if (shopInfoController == null)
+                    return null;
+
+                unsafe
+                {
+                    IntPtr controllerPtr = shopInfoController.Pointer;
+                    if (controllerPtr == IntPtr.Zero) return null;
+
+                    // Read view pointer at offset 0x18
+                    IntPtr viewPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_INFO_VIEW);
+                    if (viewPtr == IntPtr.Zero) return null;
+
+                    // Read descriptionText pointer at offset 0x38
+                    IntPtr textPtr = *(IntPtr*)((byte*)viewPtr.ToPointer() + OFFSET_DESCRIPTION_TEXT);
+                    if (textPtr == IntPtr.Zero) return null;
+
+                    // Wrap as Text component and read text property
+                    var textComponent = new UnityEngine.UI.Text(textPtr);
+                    return textComponent?.text;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Clears IsShopMenuActive but preserves EnteredEquipmentSubmenu flag.
+        /// Called when entering Equipment submenu so generic cursor can read command bar.
+        /// </summary>
+        public static void ClearForEquipmentSubmenu()
+        {
+            EnteredEquipmentSubmenu = true;
+            IsShopMenuActive = false;
+            IsInMagicSlotSelection = false;
+        }
+
         public static void ClearState()
         {
             IsShopMenuActive = false;
             IsInMagicSlotSelection = false;
+            EnteredEquipmentSubmenu = false;
             cachedShopController = null;
             LastItemName = null;
-            LastItemDescription = null;
             LastItemPrice = null;
-            LastItemStats = null;
             ShopPatches.ResetQuantityTracking();
         }
     }
 
     /// <summary>
     /// Announces shop item details when 'I' key is pressed.
-    /// Announces stats first, then description.
-    /// Format: "Defense 3, Magic Defense 1. Armor made of leather."
+    /// Reads the description directly from the shop UI panel (ShopInfoView.descriptionText).
     /// </summary>
     public static class ShopDetailsAnnouncer
     {
+        /// <summary>
+        /// Announces the item description from the UI panel.
+        /// Reads directly from ShopInfoController -> view -> descriptionText.
+        /// </summary>
         public static void AnnounceCurrentItemDetails()
         {
             try
@@ -196,38 +250,13 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Build announcement: Stats first, then description
-                string stats = ShopMenuTracker.LastItemStats;
-                string description = ShopMenuTracker.LastItemDescription;
-
-                string announcement = "";
-
-                // Add stats if available
-                if (!string.IsNullOrEmpty(stats))
-                {
-                    announcement = stats;
-                }
-
-                // Add description
-                if (!string.IsNullOrEmpty(description))
-                {
-                    if (!string.IsNullOrEmpty(announcement))
-                    {
-                        announcement += ". " + description;
-                    }
-                    else
-                    {
-                        announcement = description;
-                    }
-                }
-
+                // Read description directly from UI panel (not cached value)
+                string announcement = ShopMenuTracker.GetDescriptionFromUI();
                 if (string.IsNullOrEmpty(announcement))
-                {
-                    announcement = "No item details available";
-                }
+                    announcement = "No description available";
 
                 MelonLogger.Msg($"[Shop Details] {announcement}");
-                FFI_ScreenReaderMod.SpeakText(announcement);
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -456,12 +485,6 @@ namespace FFI_ScreenReader.Patches
 
         // ============ Postfix Methods ============
 
-        // Track last announcement to prevent duplicates (string-only deduplication)
-        private static string lastAnnouncedItemText = "";
-
-        // Track last command to prevent duplicates
-        private static string lastAnnouncedCommand = "";
-
         /// <summary>
         /// Called when an item in the shop list gains/loses focus.
         /// Announces item name, price, and caches description and stats for 'I' key.
@@ -595,42 +618,16 @@ namespace FFI_ScreenReader.Patches
                     MelonLogger.Msg($"[Shop] Price not found for item: {itemName}");
                 }
 
-                // Get description from Message property (cached for 'I' key)
-                string description = null;
-                try
-                {
-                    description = __instance.Message;
-                }
-                catch { }
-
-                // Get item stats from master data (cached for 'I' key)
-                string stats = null;
-                try
-                {
-                    int contentId = __instance.ContentId;
-                    if (contentId > 0)
-                    {
-                        stats = GetItemStats(contentId);
-                    }
-                }
-                catch { }
-
-                // Cache for 'I' key
+                // Cache item info (description now read directly from UI panel by GetDescriptionFromUI())
                 ShopMenuTracker.LastItemName = itemName;
                 ShopMenuTracker.LastItemPrice = price;
-                ShopMenuTracker.LastItemDescription = description;
-                ShopMenuTracker.LastItemStats = stats;
 
                 // Build announcement: "Item Name, Price"
                 string announcement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
 
-                // String-only deduplication - skip if same announcement
-                if (announcement == lastAnnouncedItemText)
-                {
+                // Use central deduplicator - skip if same announcement
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Shop.Item", announcement))
                     return;
-                }
-
-                lastAnnouncedItemText = announcement;
 
                 MelonLogger.Msg($"[Shop Item] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement);
@@ -653,6 +650,15 @@ namespace FFI_ScreenReader.Patches
 
                 if (__instance == null)
                     return;
+
+                // Restore ShopState if returning from Equipment submenu
+                if (ShopMenuTracker.EnteredEquipmentSubmenu)
+                {
+                    MelonLogger.Msg("[Shop Command] Returning from Equipment submenu - restoring shop state");
+                    ShopMenuTracker.EnteredEquipmentSubmenu = false;
+                    ShopMenuTracker.IsShopMenuActive = true;
+                    return; // Generic cursor already announced in equipment, don't duplicate
+                }
 
                 // Mark shop as active and cache controller for fast validation
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Shop");
@@ -686,14 +692,12 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(commandName))
                     return;
 
-                // String-only deduplication
-                if (commandName == lastAnnouncedCommand)
+                // Use central deduplicator
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Shop.Command", commandName))
                 {
                     MelonLogger.Msg($"[Shop Command] Skipping duplicate: {commandName}");
                     return;
                 }
-
-                lastAnnouncedCommand = commandName;
 
                 MelonLogger.Msg($"[Shop Command] Announcing: {commandName}");
                 FFI_ScreenReaderMod.SpeakText(commandName);
@@ -719,144 +723,10 @@ namespace FFI_ScreenReader.Patches
             };
         }
 
-        /// <summary>
-        /// Gets item stats by looking up master data.
-        /// ContentId is the Content system ID - we need to look up the Content
-        /// to get TypeValue (the actual weapon/armor ID for master data).
-        /// </summary>
-        private static string GetItemStats(int contentId)
-        {
-            try
-            {
-                var masterManager = MasterManager.Instance;
-                if (masterManager == null)
-                    return null;
-
-                // Look up the Content to get the actual item ID (TypeValue) and type (TypeId)
-                var content = masterManager.GetData<Content>(contentId);
-                if (content == null)
-                    return null;
-
-                int typeId = content.TypeId;           // ContentType: 1=Item, 2=Weapon, 3=Armor
-                int actualItemId = content.TypeValue;  // The actual weapon/armor/item ID
-
-                // Look up stats based on content type
-                switch ((ContentType)typeId)
-                {
-                    case ContentType.Weapon:
-                        return GetWeaponStats(masterManager, actualItemId);
-
-                    case ContentType.Armor:
-                        return GetArmorStats(masterManager, actualItemId);
-
-                    default:
-                        // Regular items and other types don't have equipment stats
-                        return null;
-                }
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Gets stats string for a weapon.
-        /// Format: "Attack X" (with optional additional stats)
-        /// </summary>
-        private static string GetWeaponStats(MasterManager masterManager, int weaponId)
-        {
-            try
-            {
-                var weapon = masterManager.GetData<Weapon>(weaponId);
-                if (weapon == null)
-                    return null;
-
-                var stats = new List<string>();
-
-                int attack = weapon.Attack;
-                if (attack > 0)
-                    stats.Add($"Attack {attack}");
-
-                int accuracy = weapon.AccuracyRate;
-                if (accuracy > 0)
-                    stats.Add($"Accuracy {accuracy}");
-
-                int evasion = weapon.EvasionRate;
-                if (evasion > 0)
-                    stats.Add($"Evasion {evasion}");
-
-                // Stat bonuses
-                if (weapon.Strength > 0) stats.Add($"Strength +{weapon.Strength}");
-                if (weapon.Vitality > 0) stats.Add($"Vitality +{weapon.Vitality}");
-                if (weapon.Agility > 0) stats.Add($"Agility +{weapon.Agility}");
-                if (weapon.Intelligence > 0) stats.Add($"Intelligence +{weapon.Intelligence}");
-                if (weapon.Spirit > 0) stats.Add($"Spirit +{weapon.Spirit}");
-                if (weapon.Magic > 0) stats.Add($"Magic +{weapon.Magic}");
-
-                return stats.Count > 0 ? string.Join(", ", stats) : null;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Shop] Error getting weapon stats: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Gets stats string for armor.
-        /// Format: "Defense X, Magic Defense Y" (with optional additional stats)
-        /// </summary>
-        private static string GetArmorStats(MasterManager masterManager, int armorId)
-        {
-            try
-            {
-                var armor = masterManager.GetData<Armor>(armorId);
-                if (armor == null)
-                    return null;
-
-                var stats = new List<string>();
-
-                int defense = armor.Defense;
-                if (defense > 0)
-                    stats.Add($"Defense {defense}");
-
-                int magicDefense = armor.AbilityDefense;
-                if (magicDefense > 0)
-                    stats.Add($"Magic Defense {magicDefense}");
-
-                int evasion = armor.EvasionRate;
-                if (evasion > 0)
-                    stats.Add($"Evasion {evasion}");
-
-                int magicEvasion = armor.AbilityEvasionRate;
-                if (magicEvasion > 0)
-                    stats.Add($"Magic Evasion {magicEvasion}");
-
-                // Stat bonuses
-                if (armor.Strength > 0) stats.Add($"Strength +{armor.Strength}");
-                if (armor.Vitality > 0) stats.Add($"Vitality +{armor.Vitality}");
-                if (armor.Agility > 0) stats.Add($"Agility +{armor.Agility}");
-                if (armor.Intelligence > 0) stats.Add($"Intelligence +{armor.Intelligence}");
-                if (armor.Spirit > 0) stats.Add($"Spirit +{armor.Spirit}");
-                if (armor.Magic > 0) stats.Add($"Magic +{armor.Magic}");
-
-                return stats.Count > 0 ? string.Join(", ", stats) : null;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Shop] Error getting armor stats: {ex.Message}");
-                return null;
-            }
-        }
-
         // Memory offsets - use centralized offsets
         private const int OFFSET_SELECTED_COUNT = IL2CppOffsets.Shop.SelectedCount;
         private const int OFFSET_TRADE_VIEW = IL2CppOffsets.Shop.TradeView;
         private const int OFFSET_TOTAL_PRICE_TEXT = IL2CppOffsets.Shop.TotalPriceText;
-
-        // Track last quantity to avoid duplicate announcements
-        private static int lastAnnouncedQuantity = -1;
 
         /// <summary>
         /// Called when the trade window updates (after quantity changes).
@@ -880,11 +750,9 @@ namespace FFI_ScreenReader.Patches
                 // Read selectedCount via pointer (offset 0x3C in FF1 KeyInput)
                 int selectedCount = GetSelectedCount(__instance);
 
-                // Skip if quantity hasn't changed (UpdateCotroller is called frequently)
-                if (selectedCount == lastAnnouncedQuantity)
+                // Use central deduplicator - skip if quantity hasn't changed
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Shop.Quantity", selectedCount))
                     return;
-
-                lastAnnouncedQuantity = selectedCount;
 
                 // Read total price text via pointer chain
                 string totalPrice = GetTotalPriceText(__instance);
@@ -1027,8 +895,6 @@ namespace FFI_ScreenReader.Patches
         private const int OFFSET_SLOT_VIEW = IL2CppOffsets.ShopMagic.View;
         private const int OFFSET_SLOT_ICON_TEXT_VIEW = IL2CppOffsets.ShopMagic.View; // Same as view offset
 
-        // Track last announced slot to prevent duplicates
-        private static string lastAnnouncedSlot = "";
         // Track last character to only announce name when switching characters
         private static int lastAnnouncedCharacterId = -1;
 
@@ -1045,7 +911,7 @@ namespace FFI_ScreenReader.Patches
                     // Only reset slot tracking, NOT character ID
                     // Keeping lastAnnouncedCharacterId prevents double character name when navigating
                     // (SetFocus(false) fires immediately after Show() due to game timing quirk)
-                    lastAnnouncedSlot = "";
+                    AnnouncementDeduplicator.Reset("Shop.Slot");
                     // Don't clear IsInMagicSlotSelection here - it fires too early
                     // Flag is cleared in ItemSetFocus_Postfix when spell list receives focus
                     MelonLogger.Msg("[Shop Magic] SetFocus(false) called");
@@ -1055,7 +921,7 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Msg("[Shop Magic] SetFocus(true) - spell slot menu opened");
                 ShopMenuTracker.IsShopMenuActive = true;
                 ShopMenuTracker.IsInMagicSlotSelection = true;
-                lastAnnouncedSlot = ""; // Reset to force first announcement
+                AnnouncementDeduplicator.Reset("Shop.Slot"); // Reset to force first announcement
                 lastAnnouncedCharacterId = -1; // Reset to announce first character name
             }
             catch (Exception ex)
@@ -1088,7 +954,7 @@ namespace FFI_ScreenReader.Patches
                 ShopMenuTracker.IsInMagicSlotSelection = true;
 
                 // Reset tracking for new spell selection
-                lastAnnouncedSlot = "";
+                AnnouncementDeduplicator.Reset("Shop.Slot");
                 lastAnnouncedCharacterId = -1;
                 announcedNoLearnersThisSession = false;
 
@@ -1200,11 +1066,9 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"Slot {slotType}: {spellName}";
                 }
 
-                // Skip if same announcement (prevents duplicate announcements)
-                if (announcement == lastAnnouncedSlot)
+                // Use central deduplicator - skip if same announcement
+                if (!AnnouncementDeduplicator.ShouldAnnounce("Shop.Slot", announcement))
                     return;
-
-                lastAnnouncedSlot = announcement;
 
                 MelonLogger.Msg($"[Shop Magic] Announcing: {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement);
@@ -1302,12 +1166,13 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Resets the quantity tracking when leaving the trade window.
+        /// Resets shop tracking state when leaving.
         /// Called from ShopMenuTracker.ClearState().
         /// </summary>
         public static void ResetQuantityTracking()
         {
-            lastAnnouncedQuantity = -1;
+            AnnouncementDeduplicator.Reset("Shop.Item", "Shop.Command", "Shop.Quantity", "Shop.Slot");
+            lastAnnouncedCharacterId = -1;
         }
     }
 }

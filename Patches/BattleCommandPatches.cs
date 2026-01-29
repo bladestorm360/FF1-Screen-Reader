@@ -24,9 +24,6 @@ namespace FFI_ScreenReader.Patches
     public static class BattleCommandPatches
     {
         private static int lastCharacterId = -1;
-        private static int lastAnnouncedCommandIndex = -1;
-        private static int lastAnnouncedPlayerIndex = -1;
-        private static int lastAnnouncedEnemyIndex = -1;
 
         // Cached reference to avoid FindObjectOfType on every call
         private static BattleTargetSelectController cachedTargetController = null;
@@ -325,7 +322,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Reset tracking for new turn
                 ResetTargetTracking();
-                lastAnnouncedCommandIndex = -1;
+                AnnouncementDeduplicator.Reset("BattleCmd.Command");
 
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
@@ -428,7 +425,7 @@ namespace FFI_ScreenReader.Patches
                 bool targetActive = CheckAndUpdateTargetSelectionActive();
 
                 // Log EVERY SetCursor call to understand what's happening
-                MelonLogger.Msg($"[Battle Command] SetCursor called: index={index}, TargetActive={targetActive}, lastIndex={lastAnnouncedCommandIndex}");
+                MelonLogger.Msg($"[Battle Command] SetCursor called: index={index}, TargetActive={targetActive}");
 
                 // SUPPRESSION: If targeting is active, do not announce commands
                 if (targetActive)
@@ -437,13 +434,12 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Skip duplicate announcements
-                if (index == lastAnnouncedCommandIndex)
+                // Use central deduplicator - skip duplicate announcements
+                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleCmd.Command", index))
                 {
                     MelonLogger.Msg($"[Battle Command] SUPPRESSED - duplicate index");
                     return;
                 }
-                lastAnnouncedCommandIndex = index;
 
                 // Try direct property access first (IL2CPP exposes private fields as properties)
                 Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController> contentList = null;
@@ -530,9 +526,9 @@ namespace FFI_ScreenReader.Patches
                 // Set target selection active
                 BattleTargetState.SetTargetSelectionActive(true);
 
-                if (index == lastAnnouncedPlayerIndex) return;
-                lastAnnouncedPlayerIndex = index;
-                lastAnnouncedEnemyIndex = -1;
+                // Use central deduplicator
+                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleCmd.Player", index)) return;
+                AnnouncementDeduplicator.Reset("BattleCmd.Enemy");
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var playerList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattlePlayerData>>();
@@ -596,9 +592,9 @@ namespace FFI_ScreenReader.Patches
                 // Set target selection active
                 BattleTargetState.SetTargetSelectionActive(true);
 
-                if (index == lastAnnouncedEnemyIndex) return;
-                lastAnnouncedEnemyIndex = index;
-                lastAnnouncedPlayerIndex = -1;
+                // Use central deduplicator
+                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleCmd.Enemy", index)) return;
+                AnnouncementDeduplicator.Reset("BattleCmd.Player");
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var enemyList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattleEnemyData>>();
@@ -673,7 +669,21 @@ namespace FFI_ScreenReader.Patches
                     announcement += $" {letter}";
                 }
 
-                announcement += $": HP {currentHp}/{maxHp}";
+                // Apply enemy HP display mode setting
+                int hpMode = FFI_ScreenReaderMod.EnemyHPDisplay;
+                switch (hpMode)
+                {
+                    case 0: // Numbers (default)
+                        announcement += $": HP {currentHp}/{maxHp}";
+                        break;
+                    case 1: // Percentage
+                        int pct = maxHp > 0 ? (currentHp * 100 / maxHp) : 0;
+                        announcement += $": {pct}%";
+                        break;
+                    case 2: // Hidden
+                        // No HP appended
+                        break;
+                }
 
                 MelonLogger.Msg($"[Battle Target] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
@@ -689,8 +699,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetTargetTracking()
         {
-            lastAnnouncedPlayerIndex = -1;
-            lastAnnouncedEnemyIndex = -1;
+            AnnouncementDeduplicator.Reset("BattleCmd.Player", "BattleCmd.Enemy");
         }
 
         /// <summary>
@@ -699,9 +708,7 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             lastCharacterId = -1;
-            lastAnnouncedCommandIndex = -1;
-            lastAnnouncedPlayerIndex = -1;
-            lastAnnouncedEnemyIndex = -1;
+            AnnouncementDeduplicator.Reset("BattleCmd.Command", "BattleCmd.Player", "BattleCmd.Enemy");
         }
 
         /// <summary>

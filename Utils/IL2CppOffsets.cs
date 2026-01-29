@@ -188,5 +188,6 @@ namespace FFI_ScreenReader.Utils
             /// <summary>AbilityCharaStatusController.targetData</summary>
             public const int TargetData = 0x48;
         }
+
     }
 }
