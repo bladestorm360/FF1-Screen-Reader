@@ -40,6 +40,8 @@ namespace FFI_ScreenReader.Utils
             { "コーネリア大臣", "Chancellor of Cornelia" },
             { "ガーランド", "Garland" },
             { "セーラ", "Princess Sarah" },
+            { "コーネリア姫の妹", "Princess's Sister" },
+            { "コーネリア女王", "Queen of Cornelia" },
             { "マトーヤ", "Matoya" },
             { "ほうき", "Broom" },
             { "アストス", "Astos" },

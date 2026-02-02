@@ -44,6 +44,9 @@ namespace FFI_ScreenReader.Patches
                 // Patch Add for status effect announcements
                 PatchConditionAdd(harmony);
 
+                // Patch BattleCommandMessageController.SetMessage for system messages like "The party was defeated"
+                PatchBattleCommandMessage(harmony);
+
                 MelonLogger.Msg("[Battle Message] Battle message patches applied successfully");
             }
             catch (Exception ex)
@@ -607,6 +610,124 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             AnnouncementDeduplicator.Reset("BattleAction", "BattleStatus");
+            lastBattleCommandMessage = "";
+        }
+
+        /// <summary>
+        /// Finds a type by name across all loaded assemblies.
+        /// </summary>
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var type in assembly.GetTypes())
+                    {
+                        if (type.FullName == fullName)
+                        {
+                            return type;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Patch BattleCommandMessageController.SetMessage for system messages like "The party was defeated".
+        /// </summary>
+        private static void PatchBattleCommandMessage(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                // KeyInput version (primary)
+                var keyInputType = FindType("Il2CppLast.UI.KeyInput.BattleCommandMessageController");
+                if (keyInputType != null)
+                {
+                    var setMessageMethod = AccessTools.Method(keyInputType, "SetMessage");
+                    if (setMessageMethod != null)
+                    {
+                        var postfix = typeof(BattleMessagePatches).GetMethod(
+                            nameof(SetMessage_Postfix), BindingFlags.Public | BindingFlags.Static);
+                        harmony.Patch(setMessageMethod, postfix: new HarmonyMethod(postfix));
+                        MelonLogger.Msg("[Battle Message] Patched KeyInput.BattleCommandMessageController.SetMessage");
+                    }
+                    else
+                    {
+                        MelonLogger.Warning("[Battle Message] KeyInput.BattleCommandMessageController.SetMessage method not found");
+                    }
+                }
+                else
+                {
+                    MelonLogger.Warning("[Battle Message] KeyInput.BattleCommandMessageController type not found");
+                }
+
+                // Touch version (SetSystemMessage)
+                var touchType = FindType("Il2CppLast.UI.Touch.BattleCommandMessageController");
+                if (touchType != null)
+                {
+                    var setSystemMsgMethod = AccessTools.Method(touchType, "SetSystemMessage");
+                    if (setSystemMsgMethod != null)
+                    {
+                        var postfix = typeof(BattleMessagePatches).GetMethod(
+                            nameof(SetMessage_Postfix), BindingFlags.Public | BindingFlags.Static);
+                        harmony.Patch(setSystemMsgMethod, postfix: new HarmonyMethod(postfix));
+                        MelonLogger.Msg("[Battle Message] Patched Touch.BattleCommandMessageController.SetSystemMessage");
+                    }
+                    else
+                    {
+                        MelonLogger.Warning("[Battle Message] Touch.BattleCommandMessageController.SetSystemMessage method not found");
+                    }
+                }
+                else
+                {
+                    MelonLogger.Warning("[Battle Message] Touch.BattleCommandMessageController type not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Message] Error patching BattleCommandMessageController: {ex.Message}");
+            }
+        }
+
+        private static string lastBattleCommandMessage = "";
+
+        /// <summary>
+        /// Postfix for BattleCommandMessageController.SetMessage/SetSystemMessage.
+        /// Announces battle messages including "The party was defeated".
+        /// </summary>
+        public static void SetMessage_Postfix(object __0)
+        {
+            try
+            {
+                // __0 is the message string (using __0 to avoid IL2CPP string param crash)
+                string message = __0?.ToString();
+                if (string.IsNullOrEmpty(message)) return;
+
+                // Deduplicate
+                if (message == lastBattleCommandMessage) return;
+                lastBattleCommandMessage = message;
+
+                // Clean up the message
+                string cleanMessage = TextUtils.StripIconMarkup(message);
+                cleanMessage = cleanMessage.Replace("\n", " ").Replace("\r", " ").Trim();
+                while (cleanMessage.Contains("  "))
+                    cleanMessage = cleanMessage.Replace("  ", " ");
+
+                if (string.IsNullOrEmpty(cleanMessage)) return;
+
+                // Use interrupt for defeat message
+                bool isDefeatMessage = cleanMessage.Contains("defeated", StringComparison.OrdinalIgnoreCase);
+
+                MelonLogger.Msg($"[Battle Command Message] {cleanMessage}");
+                FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: isDefeatMessage);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Message] Error in SetMessage_Postfix: {ex.Message}");
+            }
         }
     }
 }

@@ -150,6 +150,7 @@ namespace FFI_ScreenReader.Menus
                 string location = slotData.CurrentArea;
                 string floor = slotData.CurrentLocation;
                 double playTimeSeconds = slotData.PlayTime;
+                string timeStamp = slotData.TimeStamp;
 
                 // Translate message keys to localized text
                 var msgManager = MessageManager.Instance;
@@ -214,7 +215,7 @@ namespace FFI_ScreenReader.Menus
                     location += " - " + floor;
                 }
 
-                return BuildAnnouncement(slotId, location, characterName,
+                return BuildAnnouncement(slotId, timeStamp, location, characterName,
                     level?.ToString(), hours, minutes);
             }
             catch (Exception ex)
@@ -245,22 +246,23 @@ namespace FFI_ScreenReader.Menus
 
         /// <summary>
         /// Build the announcement string from collected values.
+        /// Order matches visual display: slot name, date, character/level, location, playtime.
         /// </summary>
-        private static string BuildAnnouncement(string slotId, string location,
+        private static string BuildAnnouncement(string slotId, string timeStamp, string location,
             string characterName, string level, string hours, string minutes)
         {
             string announcement = slotId;
 
-            // Add location
-            if (!string.IsNullOrEmpty(location))
+            // Add timestamp (save date)
+            if (!string.IsNullOrEmpty(timeStamp))
             {
-                announcement += ": " + location;
+                announcement += ", " + timeStamp;
             }
 
             // Add character name and level
             if (!string.IsNullOrEmpty(characterName))
             {
-                announcement += ", " + characterName;
+                announcement += ": " + characterName;
                 if (!string.IsNullOrEmpty(level))
                 {
                     announcement += " Level " + level;
@@ -268,13 +270,19 @@ namespace FFI_ScreenReader.Menus
             }
             else if (!string.IsNullOrEmpty(level))
             {
-                announcement += ", Level " + level;
+                announcement += ": Level " + level;
+            }
+
+            // Add location
+            if (!string.IsNullOrEmpty(location))
+            {
+                announcement += ", " + location;
             }
 
             // Add play time
             if (!string.IsNullOrEmpty(hours) && !string.IsNullOrEmpty(minutes))
             {
-                announcement += $", {hours}:{minutes}";
+                announcement += $", Time {hours}:{minutes}";
             }
 
             return announcement;

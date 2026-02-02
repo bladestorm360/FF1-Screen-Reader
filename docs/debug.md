@@ -127,6 +127,8 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 **Battle Pause:** Check cursor path "curosr_parent" (typo) BEFORE `BattleCommandState.ShouldSuppress()`; `BattlePauseState.IsActive` reads memory
 
+**Battle Messages:** "The party was defeated" uses `BattleCommandMessageController.SetMessage` (KeyInput namespace), NOT LineFade. Patch both KeyInput and Touch versions.
+
 **Stale Callbacks:** `LastSelectedCommandIndex` in BattleCommandState blocks magic/item callbacks from close animations
 
 **Map Transitions:** Hook `ChangeState()`, check map ID; `LocationMessageTracker` dedupes; fade: poll `IsFadeFinish()`, suppress wall tones when fading
@@ -155,6 +157,8 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 ## Version History
 
+- **2026-02-02** — Save slot speech now includes timestamp and matches visual order (slot name, date, character/level, location, playtime)
+- **2026-01-31** — Scroll message line-by-line announcement (uses scrollTime parameter, timed coroutine speaks lines progressively); Battle defeat message fix (patch BattleCommandMessageController.SetMessage instead of LineFade; removed unused LineFadeClientPlay_Postfix)
 - **2026-01-29** — EnsureFieldContext utility integration (MenuStateRegistry short-circuit, GameObjectCache.Refresh fallback, AnnouncementDeduplicator for "Not on map" spam prevention)
 - **2026-01-28** — F1 walk/run fix, mod menu cleanup, shop descriptions via UI pointer chain, translation format fixes, wall tone/beacon toggle fixes, beacon first-load fix, performance fixes (static Vector3 direction constants, IList\<Direction\> to avoid ToArray(), config menu single-pass lookup, CoroutineManager O(1) reverse mapping)
 - **2026-01-27** — Embedded 241 translations, FootEvent.stepOnTriggerList integration, duplicate map exit name fix

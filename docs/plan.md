@@ -8,7 +8,7 @@ MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Screen reader 
 
 ## Features
 
-**Menus:** Title screen, new game, load/save, main menu (Items/Magic/Equipment/Status/Formation/Config/Save), config descriptions (I key), character creation, shops, popup confirmations, G key (gil), H key (party HP/MP)
+**Menus:** Title screen, new game, load/save (slot name/date/character/location/playtime), main menu (Items/Magic/Equipment/Status/Formation/Config/Save), config descriptions (I key), character creation, shops, popup confirmations, G key (gil), H key (party HP/MP)
 
 **Dialogue:** Scrolling intro/outro, message windows (page-by-page), speaker names
 
