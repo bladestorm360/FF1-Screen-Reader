@@ -7,6 +7,7 @@ Adds NVDA output, pathfinding, sound queues and other accessibility aides to Fin
 ## Known Issues
 
 Wall tones play brief false positives when opening doors or when transitioning between maps.
+NPCs in shops are blocked by counters, but interacting with the counter opens the shop. Usually this is straight north from the door.
 Shop menus are reading the first highlighted item on both entry and exit.
 Items that can not be purchased due to a lack of gil are not reading, either upon highlight or the description by pressing I.
 Secret passages, even when opened, do not show properly on the pathfinder. Can use wall bumps and estimation to find, usually near the opening mechanism.
