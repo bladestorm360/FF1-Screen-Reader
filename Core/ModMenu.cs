@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using UnityEngine;
 using MelonLoader;
 using FFI_ScreenReader.Patches;
@@ -142,88 +141,6 @@ namespace FFI_ScreenReader.Core
 
         #endregion
 
-        #region Windows API for Focus Control and Input
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int vKey);
-
-        // Virtual key codes for navigation
-        private const int VK_ESCAPE = 0x1B;
-        private const int VK_F8 = 0x77;
-        private const int VK_UP = 0x26;
-        private const int VK_DOWN = 0x28;
-        private const int VK_LEFT = 0x25;
-        private const int VK_RIGHT = 0x27;
-        private const int VK_RETURN = 0x0D;
-        private const int VK_SPACE = 0x20;
-
-        // Track previous key states to detect key-down transitions
-        private static Dictionary<int, bool> previousKeyStates = new Dictionary<int, bool>();
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr CreateWindowEx(
-            uint dwExStyle, string lpClassName, string lpWindowName,
-            uint dwStyle, int x, int y, int nWidth, int nHeight,
-            IntPtr hWndParent, IntPtr hMenu, IntPtr hInstance, IntPtr lpParam);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool DestroyWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-        private const uint WS_EX_TOOLWINDOW = 0x00000080;  // Hidden from taskbar
-        private const uint WS_POPUP = 0x80000000;
-        private const int SW_SHOW = 5;
-
-        private static IntPtr gameWindowHandle = IntPtr.Zero;
-        private static IntPtr focusBlockerHandle = IntPtr.Zero;
-
-        /// <summary>
-        /// Initializes key states for all tracked keys based on current pressed state.
-        /// Called when menu opens to prevent keys that opened the menu from triggering actions.
-        /// </summary>
-        private static void InitializeKeyStates()
-        {
-            previousKeyStates.Clear();
-            int[] trackedKeys = { VK_ESCAPE, VK_F8, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_RETURN, VK_SPACE };
-            foreach (int vKey in trackedKeys)
-            {
-                bool isPressed = (GetAsyncKeyState(vKey) & 0x8000) != 0;
-                previousKeyStates[vKey] = isPressed;
-            }
-        }
-
-        /// <summary>
-        /// Checks if a key was just pressed this frame using Windows API.
-        /// Works even when game window doesn't have focus.
-        /// </summary>
-        private static bool IsKeyDown(int vKey)
-        {
-            // GetAsyncKeyState returns short where high bit = currently pressed
-            bool currentlyPressed = (GetAsyncKeyState(vKey) & 0x8000) != 0;
-
-            // Get previous state (default false if not tracked)
-            previousKeyStates.TryGetValue(vKey, out bool wasPressed);
-
-            // Update state for next frame
-            previousKeyStates[vKey] = currentlyPressed;
-
-            // Key down = pressed now but wasn't pressed before
-            return currentlyPressed && !wasPressed;
-        }
-
-        #endregion
-
         /// <summary>
         /// Initializes the mod menu with all menu items.
         /// Call this once during mod initialization.
@@ -247,17 +164,17 @@ namespace FFI_ScreenReader.Core
                 // Volume Controls section
                 new SectionHeader("Volume Controls"),
                 new VolumeItem("Wall Bump Volume",
-                    () => FFI_ScreenReaderMod.WallBumpVolume,
-                    FFI_ScreenReaderMod.SetWallBumpVolume),
+                    () => PreferencesManager.WallBumpVolume,
+                    PreferencesManager.SetWallBumpVolume),
                 new VolumeItem("Footstep Volume",
-                    () => FFI_ScreenReaderMod.FootstepVolume,
-                    FFI_ScreenReaderMod.SetFootstepVolume),
+                    () => PreferencesManager.FootstepVolume,
+                    PreferencesManager.SetFootstepVolume),
                 new VolumeItem("Wall Tone Volume",
-                    () => FFI_ScreenReaderMod.WallToneVolume,
-                    FFI_ScreenReaderMod.SetWallToneVolume),
+                    () => PreferencesManager.WallToneVolume,
+                    PreferencesManager.SetWallToneVolume),
                 new VolumeItem("Beacon Volume",
-                    () => FFI_ScreenReaderMod.BeaconVolume,
-                    FFI_ScreenReaderMod.SetBeaconVolume),
+                    () => PreferencesManager.BeaconVolume,
+                    PreferencesManager.SetBeaconVolume),
 
                 // Navigation Filters section
                 new SectionHeader("Navigation Filters"),
@@ -267,19 +184,21 @@ namespace FFI_ScreenReader.Core
                 new ToggleItem("Map Exit Filter",
                     () => FFI_ScreenReaderMod.MapExitFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleMapExitFilter()),
+                new ToggleItem("Layer Transition Filter",
+                    () => FFI_ScreenReaderMod.ToLayerFilterEnabled,
+                    () => FFI_ScreenReaderMod.Instance?.ToggleToLayerFilter()),
 
                 // Battle Settings section
                 new SectionHeader("Battle Settings"),
                 new EnumItem("Enemy HP Display",
                     new[] { "Numbers", "Percentage", "Hidden" },
-                    () => FFI_ScreenReaderMod.EnemyHPDisplay,
-                    FFI_ScreenReaderMod.SetEnemyHPDisplay),
+                    () => PreferencesManager.EnemyHPDisplay,
+                    PreferencesManager.SetEnemyHPDisplay),
 
                 // Close Menu action
                 new ActionItem("Close Menu", Close)
             };
 
-            MelonLogger.Msg("[ModMenu] Initialized with " + items.Count + " items");
         }
 
         /// <summary>
@@ -297,9 +216,14 @@ namespace FFI_ScreenReader.Core
                 currentIndex = 1;
 
             // Initialize key states to current pressed state to prevent keys that opened the menu from triggering actions
-            InitializeKeyStates();
+            WindowsFocusHelper.InitializeKeyStates(new[] {
+                WindowsFocusHelper.VK_ESCAPE, WindowsFocusHelper.VK_F8,
+                WindowsFocusHelper.VK_UP, WindowsFocusHelper.VK_DOWN,
+                WindowsFocusHelper.VK_LEFT, WindowsFocusHelper.VK_RIGHT,
+                WindowsFocusHelper.VK_RETURN, WindowsFocusHelper.VK_SPACE
+            });
 
-            SetGameInputEnabled(false);
+            WindowsFocusHelper.StealFocus("FFI_ModMenu");
 
             // Window title change announces "FFI_ModMenu" via screen reader focus
             // Just announce the first item after a short delay
@@ -326,7 +250,7 @@ namespace FFI_ScreenReader.Core
             if (!IsOpen) return;
 
             IsOpen = false;
-            SetGameInputEnabled(true);
+            WindowsFocusHelper.RestoreFocus();
             // Focus returns to game window, screen reader announces the focus change
         }
 
@@ -342,42 +266,42 @@ namespace FFI_ScreenReader.Core
             if (items == null || items.Count == 0) return false;
 
             // Escape or F8 to close
-            if (IsKeyDown(VK_ESCAPE) || IsKeyDown(VK_F8))
+            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_ESCAPE) || WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_F8))
             {
                 Close();
                 return true;
             }
 
             // Up arrow - navigate to previous item
-            if (IsKeyDown(VK_UP))
+            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_UP))
             {
                 NavigatePrevious();
                 return true;
             }
 
             // Down arrow - navigate to next item
-            if (IsKeyDown(VK_DOWN))
+            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_DOWN))
             {
                 NavigateNext();
                 return true;
             }
 
             // Left arrow - decrease value
-            if (IsKeyDown(VK_LEFT))
+            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_LEFT))
             {
                 AdjustCurrentItem(-1);
                 return true;
             }
 
             // Right arrow - increase value
-            if (IsKeyDown(VK_RIGHT))
+            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_RIGHT))
             {
                 AdjustCurrentItem(1);
                 return true;
             }
 
             // Enter or Space - toggle/activate
-            if (IsKeyDown(VK_RETURN) || IsKeyDown(VK_SPACE))
+            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_RETURN) || WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_SPACE))
             {
                 ToggleCurrentItem();
                 return true;
@@ -468,60 +392,5 @@ namespace FFI_ScreenReader.Core
             FFI_ScreenReaderMod.SpeakText(announcement, interrupt: interrupt);
         }
 
-        private static void SetGameInputEnabled(bool enabled)
-        {
-            try
-            {
-                if (!enabled)
-                {
-                    // Save the game window handle before stealing focus
-                    gameWindowHandle = GetForegroundWindow();
-                    MelonLogger.Msg($"[ModMenu] Saved game window: 0x{gameWindowHandle:X}");
-
-                    // Create an invisible window to steal focus
-                    // Using "Static" class - always available in Windows
-                    focusBlockerHandle = CreateWindowEx(
-                        WS_EX_TOOLWINDOW,  // Hidden from taskbar
-                        "Static",          // Built-in window class
-                        "FFI_ModMenu",     // Window name (invisible)
-                        WS_POPUP,          // No border, no title
-                        0, 0, 1, 1,        // 1x1 pixel at origin
-                        IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-
-                    if (focusBlockerHandle != IntPtr.Zero)
-                    {
-                        ShowWindow(focusBlockerHandle, SW_SHOW);
-                        SetForegroundWindow(focusBlockerHandle);
-                        MelonLogger.Msg($"[ModMenu] Focus blocker created: 0x{focusBlockerHandle:X}");
-                    }
-                    else
-                    {
-                        MelonLogger.Warning("[ModMenu] Failed to create focus blocker window");
-                    }
-                }
-                else
-                {
-                    // Destroy the focus blocker
-                    if (focusBlockerHandle != IntPtr.Zero)
-                    {
-                        DestroyWindow(focusBlockerHandle);
-                        MelonLogger.Msg("[ModMenu] Focus blocker destroyed");
-                        focusBlockerHandle = IntPtr.Zero;
-                    }
-
-                    // Return focus to the game
-                    if (gameWindowHandle != IntPtr.Zero)
-                    {
-                        SetForegroundWindow(gameWindowHandle);
-                        MelonLogger.Msg($"[ModMenu] Focus returned to game: 0x{gameWindowHandle:X}");
-                        gameWindowHandle = IntPtr.Zero;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[ModMenu] Error in focus control: {ex.Message}");
-            }
-        }
     }
 }

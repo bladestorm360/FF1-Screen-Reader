@@ -23,14 +23,12 @@ namespace FFI_ScreenReader.Patches
         private static List<int> currentPageBreaks = new List<int>(); // Line indices where new pages start
         private static int lastAnnouncedPageIndex = -1;
 
+        // Speaker tracking
+        private static string currentSpeaker = "";
+        private static string lastAnnouncedSpeaker = "";
+
         // Track if we're in a dialogue sequence
         private static bool isInDialogue = false;
-
-        // Offsets for MessageWindowManager (from dump.cs)
-        private const int OFFSET_MESSAGE_LIST = 0x88;        // List<string> messageList
-        private const int OFFSET_NEW_PAGE_LINE_LIST = 0xA0;  // List<int> newPageLineList
-        private const int OFFSET_MESSAGE_LINE_INDEX = 0xB0;  // int messageLineIndex
-        private const int OFFSET_CURRENT_PAGE_NUMBER = 0xF8; // int currentPageNumber
 
         /// <summary>
         /// Applies message window patches using manual Harmony patching.
@@ -39,14 +37,10 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[MessageWindow] Applying message window patches...");
-
                 // Patch MessageWindowManager
                 Type mwmType = FindType("MessageWindowManager");
                 if (mwmType != null)
                 {
-                    MelonLogger.Msg($"[MessageWindow] Found MessageWindowManager: {mwmType.FullName}");
-
                     // Patch SetContent - captures dialogue text from messageList field
                     var setContentMethod = AccessTools.Method(mwmType, "SetContent");
                     if (setContentMethod != null)
@@ -54,39 +48,10 @@ namespace FFI_ScreenReader.Patches
                         var postfix = typeof(MessageWindowPatches).GetMethod("SetContent_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(setContentMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageWindowManager.SetContent");
                     }
                     else
                     {
                         MelonLogger.Warning("[MessageWindow] MessageWindowManager.SetContent method not found");
-                    }
-
-                    // Patch Play - reads speaker and announces first line
-                    var playMethod = AccessTools.Method(mwmType, "Play");
-                    if (playMethod != null)
-                    {
-                        var postfix = typeof(MessageWindowPatches).GetMethod("Play_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageWindowManager.Play");
-                    }
-                    else
-                    {
-                        MelonLogger.Warning("[MessageWindow] MessageWindowManager.Play method not found");
-                    }
-
-                    // Patch NewPageInputWaitInit - announces next line when advancing
-                    var newPageInitMethod = AccessTools.Method(mwmType, "NewPageInputWaitInit");
-                    if (newPageInitMethod != null)
-                    {
-                        var postfix = typeof(MessageWindowPatches).GetMethod("NewPageInputWaitInit_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(newPageInitMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageWindowManager.NewPageInputWaitInit");
-                    }
-                    else
-                    {
-                        MelonLogger.Warning("[MessageWindow] MessageWindowManager.NewPageInputWaitInit method not found");
                     }
 
                     // Patch PlayingInit - called when each page starts displaying (catches all pages including last)
@@ -96,7 +61,6 @@ namespace FFI_ScreenReader.Patches
                         var postfix = typeof(MessageWindowPatches).GetMethod("PlayingInit_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(playingInitMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageWindowManager.PlayingInit");
                     }
                     else
                     {
@@ -110,7 +74,6 @@ namespace FFI_ScreenReader.Patches
                         var postfix = typeof(MessageWindowPatches).GetMethod("Close_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(closeMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageWindowManager.Close");
                     }
                 }
                 else
@@ -126,8 +89,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Patch SystemMessageWindowManager for system prompts
                 PatchSystemMessageWindowManager(harmony);
-
-                MelonLogger.Msg("[MessageWindow] Message window patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -146,15 +107,12 @@ namespace FFI_ScreenReader.Patches
                 Type mmwmType = FindType("MessageMultipleWindowManager");
                 if (mmwmType != null)
                 {
-                    MelonLogger.Msg($"[MessageWindow] Found MessageMultipleWindowManager: {mmwmType.FullName}");
-
                     var playMethod = AccessTools.Method(mmwmType, "Play");
                     if (playMethod != null)
                     {
                         var postfix = typeof(MessageWindowPatches).GetMethod("MultipleWindowPlay_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageMultipleWindowManager.Play");
                     }
                 }
             }
@@ -174,15 +132,12 @@ namespace FFI_ScreenReader.Patches
                 Type mswmType = FindType("MessageSelectWindowManager");
                 if (mswmType != null)
                 {
-                    MelonLogger.Msg($"[MessageWindow] Found MessageSelectWindowManager: {mswmType.FullName}");
-
                     var playMethod = AccessTools.Method(mswmType, "Play");
                     if (playMethod != null)
                     {
                         var postfix = typeof(MessageWindowPatches).GetMethod("SelectWindowPlay_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched MessageSelectWindowManager.Play");
                     }
                 }
             }
@@ -202,15 +157,12 @@ namespace FFI_ScreenReader.Patches
                 Type smwmType = FindType("SystemMessageWindowManager");
                 if (smwmType != null)
                 {
-                    MelonLogger.Msg($"[MessageWindow] Found SystemMessageWindowManager: {smwmType.FullName}");
-
                     var openMethod = AccessTools.Method(smwmType, "Open");
                     if (openMethod != null)
                     {
                         var postfix = typeof(MessageWindowPatches).GetMethod("SystemMessageOpen_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(openMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[MessageWindow] Patched SystemMessageWindowManager.Open");
                     }
                 }
             }
@@ -237,7 +189,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch { }
+                catch { } // Assembly may throw on GetTypes
             }
             return null;
         }
@@ -283,34 +235,31 @@ namespace FFI_ScreenReader.Patches
                 if (instancePtr == IntPtr.Zero)
                     return null;
 
-                unsafe
+                // Read messageList pointer at offset 0x88
+                IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.MessageWindow.MessageList);
+                if (listPtr == IntPtr.Zero)
+                    return null;
+
+                // Wrap as IL2CPP List<string>
+                var il2cppList = new Il2CppSystem.Collections.Generic.List<string>(listPtr);
+                if (il2cppList == null)
+                    return null;
+
+                var sb = new StringBuilder();
+                int count = il2cppList.Count;
+
+                for (int i = 0; i < count; i++)
                 {
-                    // Read messageList pointer at offset 0x88
-                    IntPtr listPtr = *(IntPtr*)((byte*)instancePtr.ToPointer() + OFFSET_MESSAGE_LIST);
-                    if (listPtr == IntPtr.Zero)
-                        return null;
-
-                    // Wrap as IL2CPP List<string>
-                    var il2cppList = new Il2CppSystem.Collections.Generic.List<string>(listPtr);
-                    if (il2cppList == null)
-                        return null;
-
-                    var sb = new StringBuilder();
-                    int count = il2cppList.Count;
-
-                    for (int i = 0; i < count; i++)
+                    var msg = il2cppList[i];
+                    if (!string.IsNullOrWhiteSpace(msg))
                     {
-                        var msg = il2cppList[i];
-                        if (!string.IsNullOrWhiteSpace(msg))
-                        {
-                            if (sb.Length > 0)
-                                sb.Append(" ");
-                            sb.Append(msg.Trim());
-                        }
+                        if (sb.Length > 0)
+                            sb.Append(" ");
+                        sb.Append(msg.Trim());
                     }
-
-                    return sb.Length > 0 ? sb.ToString() : null;
                 }
+
+                return sb.Length > 0 ? sb.ToString() : null;
             }
             catch (Exception ex)
             {
@@ -338,32 +287,29 @@ namespace FFI_ScreenReader.Patches
                 if (instancePtr == IntPtr.Zero)
                     return null;
 
-                unsafe
+                // Read messageList pointer at offset 0x88
+                IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.MessageWindow.MessageList);
+                if (listPtr == IntPtr.Zero)
                 {
-                    // Read messageList pointer at offset 0x88
-                    IntPtr listPtr = *(IntPtr*)((byte*)instancePtr.ToPointer() + OFFSET_MESSAGE_LIST);
-                    if (listPtr == IntPtr.Zero)
-                    {
-                        MelonLogger.Warning("[MessageWindow] messageList pointer is null");
-                        return null;
-                    }
-
-                    // Wrap as IL2CPP List<string>
-                    var il2cppList = new Il2CppSystem.Collections.Generic.List<string>(listPtr);
-                    if (il2cppList == null)
-                        return null;
-
-                    var result = new List<string>();
-                    int count = il2cppList.Count;
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        var msg = il2cppList[i];
-                        result.Add(msg ?? "");
-                    }
-
-                    return result;
+                    MelonLogger.Warning("[MessageWindow] messageList pointer is null");
+                    return null;
                 }
+
+                // Wrap as IL2CPP List<string>
+                var il2cppList = new Il2CppSystem.Collections.Generic.List<string>(listPtr);
+                if (il2cppList == null)
+                    return null;
+
+                var result = new List<string>();
+                int count = il2cppList.Count;
+
+                for (int i = 0; i < count; i++)
+                {
+                    var msg = il2cppList[i];
+                    result.Add(msg ?? "");
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
@@ -371,9 +317,6 @@ namespace FFI_ScreenReader.Patches
                 return null;
             }
         }
-
-        // Offset for speaker value (from dump.cs: spekerValue at 0xA8)
-        private const int OFFSET_SPEAKER_VALUE = 0xA8;
 
         /// <summary>
         /// Reads the spekerValue field from a manager instance using pointer-based access.
@@ -395,16 +338,13 @@ namespace FFI_ScreenReader.Patches
                 if (instancePtr == IntPtr.Zero)
                     return null;
 
-                unsafe
-                {
-                    // Read spekerValue pointer at offset 0xA8
-                    IntPtr stringPtr = *(IntPtr*)((byte*)instancePtr.ToPointer() + OFFSET_SPEAKER_VALUE);
-                    if (stringPtr == IntPtr.Zero)
-                        return null;
+                // Read spekerValue pointer at offset 0xA8
+                IntPtr stringPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.MessageWindow.SpeakerValue);
+                if (stringPtr == IntPtr.Zero)
+                    return null;
 
-                    // Convert IL2CPP string to managed string
-                    return IL2CPP.Il2CppStringToManaged(stringPtr);
-                }
+                // Convert IL2CPP string to managed string
+                return IL2CPP.Il2CppStringToManaged(stringPtr);
             }
             catch (Exception ex)
             {
@@ -490,31 +430,27 @@ namespace FFI_ScreenReader.Patches
                 if (instancePtr == IntPtr.Zero)
                     return null;
 
-                unsafe
+                // Read newPageLineList pointer at offset 0xA0
+                IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.MessageWindow.NewPageLineList);
+                if (listPtr == IntPtr.Zero)
                 {
-                    // Read newPageLineList pointer at offset 0xA0
-                    IntPtr listPtr = *(IntPtr*)((byte*)instancePtr.ToPointer() + OFFSET_NEW_PAGE_LINE_LIST);
-                    if (listPtr == IntPtr.Zero)
-                    {
-                        MelonLogger.Msg("[MessageWindow] newPageLineList pointer is null (will use fallback)");
-                        return null;
-                    }
-
-                    // Wrap as IL2CPP List<int>
-                    var il2cppList = new Il2CppSystem.Collections.Generic.List<int>(listPtr);
-                    if (il2cppList == null)
-                        return null;
-
-                    var result = new List<int>();
-                    int count = il2cppList.Count;
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        result.Add(il2cppList[i]);
-                    }
-
-                    return result;
+                    return null;
                 }
+
+                // Wrap as IL2CPP List<int>
+                var il2cppList = new Il2CppSystem.Collections.Generic.List<int>(listPtr);
+                if (il2cppList == null)
+                    return null;
+
+                var result = new List<int>();
+                int count = il2cppList.Count;
+
+                for (int i = 0; i < count; i++)
+                {
+                    result.Add(il2cppList[i]);
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
@@ -551,80 +487,8 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Postfix for MessageWindowManager.Play - announces speaker then first page of dialogue.
-        /// Subsequent pages are announced by NewPageInputWaitInit_Postfix.
-        /// </summary>
-        public static void Play_Postfix(object __instance)
-        {
-            try
-            {
-                // Read speaker from instance
-                string speaker = ReadSpeakerFromInstance(__instance);
-
-                // Announce speaker if new (using central deduplicator)
-                if (!string.IsNullOrWhiteSpace(speaker) && AnnouncementDeduplicator.ShouldAnnounce("Message.Speaker", speaker))
-                {
-                    string cleanSpeaker = CleanMessage(speaker);
-                    if (!string.IsNullOrWhiteSpace(cleanSpeaker))
-                    {
-                        MelonLogger.Msg($"[MessageWindow] Speaker: {cleanSpeaker}");
-                        FFI_ScreenReaderMod.SpeakText(cleanSpeaker, interrupt: false);
-                    }
-                }
-
-                // Announce first page only (if we have stored messages)
-                if (currentPageBreaks.Count > 0 && lastAnnouncedPageIndex < 0)
-                {
-                    string firstPage = GetPageText(0);
-                    if (!string.IsNullOrWhiteSpace(firstPage) && AnnouncementDeduplicator.ShouldAnnounce("Message.Line", firstPage))
-                    {
-                        lastAnnouncedPageIndex = 0;
-                        MelonLogger.Msg($"[MessageWindow] Page 1/{currentPageBreaks.Count}: {firstPage}");
-                        FFI_ScreenReaderMod.SpeakText(firstPage, interrupt: false);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error in Play_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Postfix for MessageWindowManager.NewPageInputWaitInit - announces next dialogue page.
-        /// Called when advancing to a new page after user presses confirm.
-        /// </summary>
-        public static void NewPageInputWaitInit_Postfix(object __instance)
-        {
-            try
-            {
-                if (!isInDialogue || currentPageBreaks.Count == 0)
-                    return;
-
-                // Get current page number from instance
-                int currentPage = GetCurrentPageNumber(__instance);
-
-                // Announce next page if we haven't announced it yet
-                if (currentPage >= 0 && currentPage < currentPageBreaks.Count && currentPage != lastAnnouncedPageIndex)
-                {
-                    string pageText = GetPageText(currentPage);
-                    if (!string.IsNullOrWhiteSpace(pageText) && AnnouncementDeduplicator.ShouldAnnounce("Message.Line", pageText))
-                    {
-                        lastAnnouncedPageIndex = currentPage;
-                        MelonLogger.Msg($"[MessageWindow] Page {currentPage + 1}/{currentPageBreaks.Count}: {pageText}");
-                        FFI_ScreenReaderMod.SpeakText(pageText, interrupt: false);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error in NewPageInputWaitInit_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Postfix for MessageWindowManager.PlayingInit - called when each page starts displaying.
-        /// This catches all pages including the last one that NewPageInputWaitInit misses.
+        /// Catches all pages. Handles speaker tracking and page-by-page announcement.
         /// </summary>
         public static void PlayingInit_Postfix(object __instance)
         {
@@ -640,10 +504,22 @@ namespace FFI_ScreenReader.Patches
                 if (currentPage >= 0 && currentPage < currentPageBreaks.Count && currentPage != lastAnnouncedPageIndex)
                 {
                     string pageText = GetPageText(currentPage);
-                    if (!string.IsNullOrWhiteSpace(pageText) && AnnouncementDeduplicator.ShouldAnnounce("Message.Line", pageText))
+                    if (!string.IsNullOrWhiteSpace(pageText))
                     {
+                        // Read speaker from instance and prepend if changed
+                        string speaker = ReadSpeakerFromInstance(__instance);
+                        if (!string.IsNullOrWhiteSpace(speaker))
+                        {
+                            currentSpeaker = CleanMessage(speaker);
+                        }
+
+                        if (!string.IsNullOrEmpty(currentSpeaker) && currentSpeaker != lastAnnouncedSpeaker)
+                        {
+                            pageText = $"{currentSpeaker}: {pageText}";
+                            lastAnnouncedSpeaker = currentSpeaker;
+                        }
+
                         lastAnnouncedPageIndex = currentPage;
-                        MelonLogger.Msg($"[MessageWindow] Page {currentPage + 1}/{currentPageBreaks.Count}: {pageText}");
                         FFI_ScreenReaderMod.SpeakText(pageText, interrupt: false);
                     }
                 }
@@ -661,7 +537,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[MessageWindow] Close - clearing dialogue state");
                 ClearState();
             }
             catch (Exception ex)
@@ -689,16 +564,13 @@ namespace FFI_ScreenReader.Patches
                 if (instancePtr == IntPtr.Zero)
                     return -1;
 
-                unsafe
-                {
-                    // Read currentPageNumber at offset 0xF8
-                    int pageNum = *(int*)((byte*)instancePtr.ToPointer() + OFFSET_CURRENT_PAGE_NUMBER);
-                    return pageNum;
-                }
+                // Read currentPageNumber at offset 0xF8
+                int pageNum = IL2CppFieldReader.ReadInt32(instancePtr, IL2CppOffsets.MessageWindow.CurrentPageNumber);
+                return pageNum;
             }
             catch
             {
-                return -1;
+                return -1; // Pointer read may fail during transitions
             }
         }
 
@@ -716,13 +588,12 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Message.Line", fullText))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MESSAGE_LINE, fullText))
                     return;
 
                 string cleanMessage = CleanMessage(fullText);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
                 {
-                    MelonLogger.Msg($"[MessageWindow] Multiple window dialogue: {cleanMessage}");
                     FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
                 }
             }
@@ -746,13 +617,12 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Message.Line", fullText))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MESSAGE_LINE, fullText))
                     return;
 
                 string cleanMessage = CleanMessage(fullText);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
                 {
-                    MelonLogger.Msg($"[MessageWindow] Select window dialogue: {cleanMessage}");
                     FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
                 }
             }
@@ -776,13 +646,12 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Message.Line", message))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MESSAGE_LINE, message))
                     return;
 
                 string cleanMessage = CleanMessage(message);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
                 {
-                    MelonLogger.Msg($"[MessageWindow] System message: {cleanMessage}");
                     FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
                 }
             }
@@ -797,10 +666,11 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ClearState()
         {
-            AnnouncementDeduplicator.Reset("Message.Speaker", "Message.Line");
             currentMessageList.Clear();
             currentPageBreaks.Clear();
             lastAnnouncedPageIndex = -1;
+            currentSpeaker = "";
+            lastAnnouncedSpeaker = "";
             isInDialogue = false;
         }
     }

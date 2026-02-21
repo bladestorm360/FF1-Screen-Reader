@@ -72,7 +72,6 @@ namespace FFI_ScreenReader.Core.Filters
         /// </summary>
         public void OnEnabled()
         {
-            MelonLogger.Msg("[PathfindingFilter] ENABLED - only showing reachable entities");
         }
 
         /// <summary>
@@ -80,7 +79,6 @@ namespace FFI_ScreenReader.Core.Filters
         /// </summary>
         public void OnDisabled()
         {
-            MelonLogger.Msg("[PathfindingFilter] DISABLED - showing all entities");
         }
 
         /// <summary>

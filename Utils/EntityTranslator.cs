@@ -275,7 +275,6 @@ namespace FFI_ScreenReader.Utils
         public static void Initialize()
         {
             if (isInitialized) return;
-            MelonLogger.Msg($"[EntityTranslator] Initialized with {translations.Count} embedded translations");
             isInitialized = true;
         }
 

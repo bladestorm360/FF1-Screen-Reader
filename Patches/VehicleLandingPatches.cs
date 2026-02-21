@@ -65,7 +65,6 @@ namespace FFI_ScreenReader.Patches
                         var parameters = method.GetParameters();
                         if (parameters.Length == 1 && parameters[0].ParameterType == typeof(bool))
                         {
-                            MelonLogger.Msg($"[Landing] Found SwitchLandable(bool)");
                             targetMethod = method;
                             break;
                         }
@@ -78,7 +77,6 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Landing] Patched SwitchLandable successfully");
                 }
                 else
                 {
@@ -187,7 +185,6 @@ namespace FFI_ScreenReader.Patches
                         // FF1: GetOn(int typeId, bool isBackground = False) - 2 params
                         if (parameters.Length >= 1 && parameters[0].ParameterType == typeof(int))
                         {
-                            MelonLogger.Msg($"[MoveState] Found GetOn with {parameters.Length} params");
                             targetMethod = method;
                             break;
                         }
@@ -200,7 +197,6 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[MoveState] Patched GetOn successfully");
                 }
                 else
                 {
@@ -232,7 +228,6 @@ namespace FFI_ScreenReader.Patches
                         // FF1: GetOff(int typeId, int layer = -1) - 2 params
                         if (parameters.Length >= 1 && parameters[0].ParameterType == typeof(int))
                         {
-                            MelonLogger.Msg($"[MoveState] Found GetOff with {parameters.Length} params");
                             targetMethod = method;
                             break;
                         }
@@ -245,7 +240,6 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[MoveState] Patched GetOff successfully");
                 }
                 else
                 {
@@ -266,8 +260,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[MoveState] GetOn called with typeId={typeId}");
-
                 // typeId=1 (TRANSPORT_PLAYER) means returning to walking
                 // FF1 uses this instead of GetOff when disembarking
                 if (typeId == TRANSPORT_PLAYER)
@@ -277,7 +269,6 @@ namespace FFI_ScreenReader.Patches
                     {
                         MoveStateHelper.SetOnFoot();
                         FFI_ScreenReaderMod.SpeakText("On foot", interrupt: true);
-                        MelonLogger.Msg("[MoveState] Announced: On foot (disembarked via GetOn)");
                     }
                     return;
                 }
@@ -288,11 +279,6 @@ namespace FFI_ScreenReader.Patches
                     string announcement = $"On {vehicleName}";
                     MoveStateHelper.SetVehicleState(typeId);
                     FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
-                    MelonLogger.Msg($"[MoveState] Announced: {announcement}");
-                }
-                else
-                {
-                    MelonLogger.Msg($"[MoveState] Unknown vehicle typeId={typeId}");
                 }
             }
             catch (Exception ex)
@@ -308,8 +294,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[MoveState] GetOff called with typeId={typeId}");
-
                 string vehicleName = GetTransportationName(typeId);
                 MoveStateHelper.SetOnFoot();
 
@@ -317,7 +301,6 @@ namespace FFI_ScreenReader.Patches
                 if (!string.IsNullOrEmpty(vehicleName))
                 {
                     FFI_ScreenReaderMod.SpeakText("On foot", interrupt: true);
-                    MelonLogger.Msg("[MoveState] Announced: On foot");
                 }
             }
             catch (Exception ex)
@@ -400,7 +383,6 @@ namespace FFI_ScreenReader.Patches
                         var parameters = method.GetParameters();
                         if (parameters.Length == 1 && parameters[0].ParameterType == typeof(bool))
                         {
-                            MelonLogger.Msg("[DashFlag] Found SetDashFlag(bool)");
                             targetMethod = method;
                             break;
                         }
@@ -413,7 +395,6 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[DashFlag] Patched SetDashFlag successfully");
                 }
                 else
                 {

@@ -31,8 +31,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("Applying job selection patches...");
-
                 // Find JobContentListController type (KeyInput version) - this handles the job selection list
                 Type listControllerType = FindType("Il2CppLast.UI.KeyInput.JobContentListController");
                 if (listControllerType == null)
@@ -47,8 +45,6 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                MelonLogger.Msg($"Found JobContentListController: {listControllerType.FullName}");
-
                 // Patch SelectContent - called when cursor moves to a new item
                 var selectMethod = AccessTools.Method(listControllerType, "SelectContent");
                 if (selectMethod != null)
@@ -56,14 +52,12 @@ namespace FFI_ScreenReader.Patches
                     var postfix = typeof(JobSelectionPatches).GetMethod("SelectContent_Postfix",
                         BindingFlags.Public | BindingFlags.Static);
                     harmony.Patch(selectMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("Patched JobContentListController.SelectContent");
                 }
                 else
                 {
                     MelonLogger.Warning("SelectContent method not found");
                 }
 
-                MelonLogger.Msg("Job selection patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -89,7 +83,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch { }
+                catch { } // Assembly may throw on GetTypes
             }
             return null;
         }
@@ -111,22 +105,19 @@ namespace FFI_ScreenReader.Patches
                 var indexProp = AccessTools.Property(targetCursor.GetType(), "Index");
                 if (indexProp == null)
                 {
-                    MelonLogger.Msg("[JobSelection] Index property not found on cursor");
                     return;
                 }
 
                 int currentIndex = (int)indexProp.GetValue(targetCursor);
-                MelonLogger.Msg($"[JobSelection] SelectContent index: {currentIndex}");
 
                 // Use central deduplicator - skip if same index
-                if (!AnnouncementDeduplicator.ShouldAnnounce("JobSelect.Index", currentIndex))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.JOB_SELECT_INDEX, currentIndex))
                     return;
 
                 // Cast to Component to access Unity hierarchy
                 var controllerComponent = __instance as Component;
                 if (controllerComponent == null)
                 {
-                    MelonLogger.Msg("[JobSelection] Could not cast to Component");
                     return;
                 }
 
@@ -135,12 +126,11 @@ namespace FFI_ScreenReader.Patches
 
                 if (string.IsNullOrEmpty(jobName))
                 {
-                    MelonLogger.Msg("[JobSelection] Could not get job name");
                     return;
                 }
 
                 // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce("JobSelect.Name", jobName))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.JOB_SELECT_NAME, jobName))
                     return;
 
                 // Use coroutine to wait one frame before reading description (UI needs to update)
@@ -174,7 +164,6 @@ namespace FFI_ScreenReader.Patches
                     announcement = jobName;
                 }
 
-                MelonLogger.Msg($"[Job Selection] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement);
             }
             catch (Exception ex)
@@ -206,7 +195,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Strategy 1: Find all Text components and look for job names
                 var textComponents = listController.GetComponentsInChildren<Text>(true);
-                MelonLogger.Msg($"[JobSelection] Found {textComponents.Length} Text components");
 
                 // FF1 job names
                 string[] jobNames = { "Warrior", "Thief", "Monk", "Red Mage", "White Mage", "Black Mage",
@@ -224,13 +212,10 @@ namespace FFI_ScreenReader.Patches
                         if (textValue.Equals(jobName, StringComparison.OrdinalIgnoreCase))
                         {
                             jobTexts.Add(text);
-                            MelonLogger.Msg($"[JobSelection] Found job text: '{textValue}' at {text.gameObject.name}");
                             break;
                         }
                     }
                 }
-
-                MelonLogger.Msg($"[JobSelection] Found {jobTexts.Count} job name texts, looking for index {index}");
 
                 // Return the text at the given index
                 if (index >= 0 && index < jobTexts.Count)
@@ -253,7 +238,6 @@ namespace FFI_ScreenReader.Patches
                             var jobNameText = jobNameTextProp.GetValue(comp) as Text;
                             if (jobNameText != null && !string.IsNullOrWhiteSpace(jobNameText.text))
                             {
-                                MelonLogger.Msg($"[JobSelection] Found JobNameText via property: '{jobNameText.text}'");
                             }
                         }
                     }
@@ -278,17 +262,7 @@ namespace FFI_ScreenReader.Patches
             if (typesLogged) return;
             typesLogged = true;
 
-            MelonLogger.Msg($"[JobSelection] Component types in hierarchy ({components.Length} total):");
-            var typeNames = new System.Collections.Generic.HashSet<string>();
-            foreach (var comp in components)
-            {
-                if (comp == null) continue;
-                string typeName = comp.GetType().Name;
-                if (typeNames.Add(typeName))
-                {
-                    MelonLogger.Msg($"  - {typeName}");
-                }
-            }
+            // Component types logging removed
         }
 
         /// <summary>
@@ -341,7 +315,6 @@ namespace FFI_ScreenReader.Patches
 
                 if (!string.IsNullOrEmpty(bestDescription))
                 {
-                    MelonLogger.Msg($"[JobSelection] Found description: '{bestDescription}'");
                     return bestDescription;
                 }
 
@@ -359,7 +332,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset("JobSelect.Index", "JobSelect.Name");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.JOB_SELECT_INDEX, AnnouncementContexts.JOB_SELECT_NAME);
             typesLogged = false;
             IsHandlingCursor = false;
         }

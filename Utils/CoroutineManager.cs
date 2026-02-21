@@ -38,7 +38,6 @@ namespace FFI_ScreenReader.Utils
             {
                 if (activeCoroutines.Count > 0)
                 {
-                    MelonLogger.Msg($"Cleaning up {activeCoroutines.Count} active coroutines");
                     foreach (var coroutine in activeCoroutines)
                     {
                         try
@@ -78,7 +77,6 @@ namespace FFI_ScreenReader.Utils
                 // If we're at the limit, stop and remove the oldest coroutine
                 if (activeCoroutines.Count >= maxConcurrentCoroutines)
                 {
-                    MelonLogger.Msg("Too many active coroutines, stopping oldest");
                     var oldest = activeCoroutines[0];
                     activeCoroutines.RemoveAt(0);
                     // Use reverse mapping for O(1) lookup instead of O(n) dictionary scan

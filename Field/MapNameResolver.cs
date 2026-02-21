@@ -62,7 +62,7 @@ namespace FFI_ScreenReader.Field
                     }
                 }
             }
-            catch { }
+            catch { } // FieldMapProvisionInfo may not be ready yet
 
             // Fallback to UserDataManager
             try
@@ -73,7 +73,7 @@ namespace FFI_ScreenReader.Field
                     return userDataManager.CurrentMapId;
                 }
             }
-            catch { }
+            catch { } // UserDataManager may not be initialized
             return -1;
         }
 
@@ -140,7 +140,6 @@ namespace FFI_ScreenReader.Field
 
                 if (!mapList.ContainsKey(mapId))
                 {
-                    MelonLogger.Msg($"[MapNameResolver] Map ID {mapId} not found in master data");
                     return null;
                 }
 
@@ -157,7 +156,6 @@ namespace FFI_ScreenReader.Field
                 var areaList = masterManager.GetList<Area>();
                 if (areaList == null || !areaList.ContainsKey(areaId))
                 {
-                    MelonLogger.Msg($"[MapNameResolver] Area ID {areaId} not found for map {mapId}");
                     return null;
                 }
 

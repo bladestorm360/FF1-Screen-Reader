@@ -58,15 +58,6 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class SaveLoadPatches
     {
-        // SavePopup field offsets (from dump.cs)
-        private const int SAVE_POPUP_MESSAGE_TEXT_OFFSET = 0x40;
-        private const int SAVE_POPUP_COMMAND_LIST_OFFSET = 0x60;
-
-        // Controller-specific savePopup field offsets
-        private const int TITLE_LOAD_SAVE_POPUP_OFFSET = 0x58;   // LoadGameWindowController.savePopup
-        private const int MAIN_MENU_SAVE_POPUP_OFFSET = 0x28;    // Both LoadWindowController and SaveWindowController
-        private const int INTERRUPTION_SAVE_POPUP_OFFSET = 0x38; // InterruptionWindowController.savePopup (QuickSave)
-
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             try
@@ -79,7 +70,6 @@ namespace FFI_ScreenReader.Patches
                 // Patch SetEnablePopup(bool) on QuickSave controller
                 TryPatchInterruption(harmony);
 
-                MelonLogger.Msg("[SaveLoad] All save/load patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -102,7 +92,6 @@ namespace FFI_ScreenReader.Patches
                     var postfix = typeof(SaveLoadPatches).GetMethod(nameof(TitleLoadSetPopupActive_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[SaveLoad] Patched TitleLoadController.SetPopupActive");
                 }
                 else
                 {
@@ -130,7 +119,6 @@ namespace FFI_ScreenReader.Patches
                     var postfix = typeof(SaveLoadPatches).GetMethod(nameof(MainMenuLoadSetPopupActive_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[SaveLoad] Patched MainMenuLoadController.SetPopupActive");
                 }
                 else
                 {
@@ -158,7 +146,6 @@ namespace FFI_ScreenReader.Patches
                     var postfix = typeof(SaveLoadPatches).GetMethod(nameof(MainMenuSaveSetPopupActive_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[SaveLoad] Patched MainMenuSaveController.SetPopupActive");
                 }
                 else
                 {
@@ -186,7 +173,6 @@ namespace FFI_ScreenReader.Patches
                     var postfix = typeof(SaveLoadPatches).GetMethod(nameof(InterruptionSetEnablePopup_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[SaveLoad] Patched InterruptionController.SetEnablePopup (QuickSave)");
                 }
                 else
                 {
@@ -205,14 +191,12 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[SaveLoad] TitleLoad.SetPopupActive called with isEnable={isEnable}");
-
                 if (isEnable)
                 {
                     var controller = __instance as TitleLoadController;
                     if (controller != null)
                     {
-                        ReadSavePopup(controller.Pointer, TITLE_LOAD_SAVE_POPUP_OFFSET, "TitleLoad");
+                        ReadSavePopup(controller.Pointer, IL2CppOffsets.SaveLoad.TitleLoadSavePopup, "TitleLoad");
                     }
                 }
                 else
@@ -230,14 +214,12 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[SaveLoad] MainMenuLoad.SetPopupActive called with isEnable={isEnable}");
-
                 if (isEnable)
                 {
                     var controller = __instance as MainMenuLoadController;
                     if (controller != null)
                     {
-                        ReadSavePopup(controller.Pointer, MAIN_MENU_SAVE_POPUP_OFFSET, "MainMenuLoad");
+                        ReadSavePopup(controller.Pointer, IL2CppOffsets.SaveLoad.MainMenuSavePopup, "MainMenuLoad");
                     }
                 }
                 else
@@ -255,14 +237,12 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[SaveLoad] MainMenuSave.SetPopupActive called with isEnable={isEnable}");
-
                 if (isEnable)
                 {
                     var controller = __instance as MainMenuSaveController;
                     if (controller != null)
                     {
-                        ReadSavePopup(controller.Pointer, MAIN_MENU_SAVE_POPUP_OFFSET, "MainMenuSave");
+                        ReadSavePopup(controller.Pointer, IL2CppOffsets.SaveLoad.MainMenuSavePopup, "MainMenuSave");
                     }
                 }
                 else
@@ -280,14 +260,12 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[SaveLoad] Interruption.SetEnablePopup called with isEnable={isEnable}");
-
                 if (isEnable)
                 {
                     var controller = __instance as InterruptionController;
                     if (controller != null)
                     {
-                        ReadSavePopup(controller.Pointer, INTERRUPTION_SAVE_POPUP_OFFSET, "QuickSave");
+                        ReadSavePopup(controller.Pointer, IL2CppOffsets.SaveLoad.InterruptionSavePopup, "QuickSave");
                     }
                 }
                 else
@@ -315,26 +293,21 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                unsafe
+                // Read savePopup pointer from controller
+                IntPtr popupPtr = IL2CppFieldReader.ReadPointer(controllerPtr, savePopupOffset);
+                if (popupPtr == IntPtr.Zero)
                 {
-                    // Read savePopup pointer from controller
-                    IntPtr popupPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + savePopupOffset);
-                    if (popupPtr == IntPtr.Zero)
-                    {
-                        MelonLogger.Warning($"[SaveLoad] {context}: SavePopup pointer is null");
-                        return;
-                    }
-
-                    MelonLogger.Msg($"[SaveLoad] {context}: SavePopup at 0x{popupPtr.ToInt64():X}");
-
-                    // Set state for button navigation immediately
-                    SaveLoadMenuState.IsActive = true;
-                    SaveLoadMenuState.IsInConfirmation = true;
-                    PopupState.SetActive($"{context}Popup", popupPtr, SAVE_POPUP_COMMAND_LIST_OFFSET);
-
-                    // Start coroutine to read text after delay (allows UI to populate)
-                    CoroutineManager.StartManaged(ReadPopupTextDelayed(popupPtr, context));
+                    MelonLogger.Warning($"[SaveLoad] {context}: SavePopup pointer is null");
+                    return;
                 }
+
+                // Set state for button navigation immediately
+                SaveLoadMenuState.IsActive = true;
+                SaveLoadMenuState.IsInConfirmation = true;
+                PopupState.SetActive($"{context}Popup", popupPtr, IL2CppOffsets.SaveLoad.CommandList);
+
+                // Start coroutine to read text after delay (allows UI to populate)
+                CoroutineManager.StartManaged(ReadPopupTextDelayed(popupPtr, context));
             }
             catch (Exception ex)
             {
@@ -353,30 +326,26 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                unsafe
+                // Read messageText from SavePopup
+                IntPtr messageTextPtr = IL2CppFieldReader.ReadPointer(popupPtr, IL2CppOffsets.SaveLoad.MessageText);
+                if (messageTextPtr == IntPtr.Zero)
                 {
-                    // Read messageText at offset 0x40
-                    IntPtr messageTextPtr = *(IntPtr*)((byte*)popupPtr.ToPointer() + SAVE_POPUP_MESSAGE_TEXT_OFFSET);
-                    if (messageTextPtr == IntPtr.Zero)
-                    {
-                        MelonLogger.Warning($"[SaveLoad] {context}: messageText pointer is null");
-                        yield break;
-                    }
+                    MelonLogger.Warning($"[SaveLoad] {context}: messageText pointer is null");
+                    yield break;
+                }
 
-                    var textComponent = new UnityEngine.UI.Text(messageTextPtr);
-                    string message = textComponent.text;
+                var textComponent = new UnityEngine.UI.Text(messageTextPtr);
+                string message = textComponent.text;
 
-                    if (!string.IsNullOrWhiteSpace(message))
-                    {
-                        // Strip Unity rich text tags (like <color=#ff4040>...</color>)
-                        message = StripRichTextTags(message);
-                        MelonLogger.Msg($"[SaveLoad] {context}: {message}");
-                        FFI_ScreenReaderMod.SpeakText(message);
-                    }
-                    else
-                    {
-                        MelonLogger.Warning($"[SaveLoad] {context}: Message is empty");
-                    }
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    // Strip Unity rich text tags (like <color=#ff4040>...</color>)
+                    message = StripRichTextTags(message);
+                    FFI_ScreenReaderMod.SpeakText(message);
+                }
+                else
+                {
+                    MelonLogger.Warning($"[SaveLoad] {context}: Message is empty");
                 }
             }
             catch (Exception ex)
@@ -402,7 +371,6 @@ namespace FFI_ScreenReader.Patches
         {
             SaveLoadMenuState.ResetState();
             PopupState.Clear();
-            MelonLogger.Msg("[SaveLoad] Popup closed, state cleared");
         }
     }
 }

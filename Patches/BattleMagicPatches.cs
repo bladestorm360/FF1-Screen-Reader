@@ -31,8 +31,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Magic] Applying battle magic menu patches...");
-
                 var controllerType = typeof(BattleFrequencyAbilityInfomationController);
 
                 // Find SetCursor(Cursor, bool, WithinRangeType) - called on every cursor move
@@ -47,14 +45,12 @@ namespace FFI_ScreenReader.Patches
                     {
                         var parameters = m.GetParameters();
                         var paramTypes = string.Join(", ", Array.ConvertAll(parameters, p => p.ParameterType.Name));
-                        MelonLogger.Msg($"[Battle Magic] Found {m.Name}({paramTypes})");
 
                         // Look for SetCursor(Cursor, bool, WithinRangeType)
                         if (m.Name == "SetCursor" && parameters.Length >= 1 &&
                             parameters[0].ParameterType.Name == "Cursor")
                         {
                             setCursorMethod = m;
-                            MelonLogger.Msg($"[Battle Magic] Selected SetCursor for patching");
                         }
                     }
                 }
@@ -65,7 +61,6 @@ namespace FFI_ScreenReader.Patches
                         .GetMethod(nameof(SetCursor_Postfix), BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(setCursorMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Magic] Patched SetCursor successfully");
                 }
                 else
                 {
@@ -73,7 +68,6 @@ namespace FFI_ScreenReader.Patches
                     foreach (var m in methods)
                     {
                         var parms = string.Join(", ", Array.ConvertAll(m.GetParameters(), p => p.ParameterType.Name));
-                        MelonLogger.Msg($"[Battle Magic]   {m.Name}({parms})");
                     }
                 }
             }
@@ -115,7 +109,6 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 int index = cursor.Index;
-                MelonLogger.Msg($"[Battle Magic] SetCursor called, cursor index: {index}");
 
                 // NOTE: Do NOT set IsActive here - wait until AFTER validation succeeds
 
@@ -123,13 +116,10 @@ namespace FFI_ScreenReader.Patches
                 string announcement = TryGetAbilityAnnouncement(controller, index);
 
                 if (string.IsNullOrEmpty(announcement))
-                {
-                    MelonLogger.Msg("[Battle Magic] Could not get ability data");
                     return;
-                }
 
                 // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleMagic", announcement))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_MAGIC, announcement))
                     return;
 
                 // Set state AFTER successful validation - this is the key fix
@@ -137,7 +127,6 @@ namespace FFI_ScreenReader.Patches
                 BattleMagicMenuState.IsActive = true;
                 BattleTargetState.SetTargetSelectionActive(false);
 
-                MelonLogger.Msg($"[Battle Magic] Announcing: {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -166,25 +155,14 @@ namespace FFI_ScreenReader.Patches
                     IntPtr controllerPtr = controller.Pointer;
                     if (controllerPtr != IntPtr.Zero)
                     {
-                        unsafe
+                        IntPtr dataListPtr = IL2CppFieldReader.ReadPointer(controllerPtr, OFFSET_DATA_LIST);
+                        if (dataListPtr != IntPtr.Zero)
                         {
-                            IntPtr dataListPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_DATA_LIST);
-                            if (dataListPtr != IntPtr.Zero)
-                            {
-                                dataList = new Il2CppSystem.Collections.Generic.List<OwnedAbility>(dataListPtr);
-                                MelonLogger.Msg($"[Battle Magic] dataList via pointer, count: {dataList?.Count ?? -1}");
-                            }
-                            else
-                            {
-                                MelonLogger.Msg($"[Battle Magic] dataList pointer is null");
-                            }
+                            dataList = new Il2CppSystem.Collections.Generic.List<OwnedAbility>(dataListPtr);
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    MelonLogger.Msg($"[Battle Magic] Error reading dataList via pointer: {ex.Message}");
-                }
+                catch { } // IL2CPP pointer read may fail
 
                 // Only process if dataList has items - if count is 0, magic menu isn't really populated
                 // (contentList always has template entries that would cause false "Empty" announcements)
@@ -207,7 +185,6 @@ namespace FFI_ScreenReader.Patches
                         }
                         else
                         {
-                            MelonLogger.Msg($"[Battle Magic] Empty slot but not in magic menu state, skipping");
                             return null;
                         }
                     }
@@ -229,7 +206,6 @@ namespace FFI_ScreenReader.Patches
                 // contentList has template entries that would cause false announcements
                 if (dataList == null || dataList.Count == 0)
                 {
-                    MelonLogger.Msg($"[Battle Magic] dataList empty/null, skipping (not in magic menu)");
                     return null;
                 }
 
@@ -255,7 +231,7 @@ namespace FFI_ScreenReader.Patches
                                     isFocus = (bool)focusProp.GetValue(cc);
                                 }
                             }
-                            catch { }
+                            catch { } // IsFocus property may not exist
 
                             var data = cc.Data;
                             if (data != null && isFocus)
@@ -263,7 +239,7 @@ namespace FFI_ScreenReader.Patches
                                 return FormatAbilityAnnouncement(data);
                             }
                         }
-                        catch { }
+                        catch { } // Content controller data may be stale
                     }
                 }
             }
@@ -296,10 +272,7 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 if (string.IsNullOrEmpty(name))
-                {
-                    MelonLogger.Msg($"[Battle Magic] Could not get spell name from MesIdName: {mesIdName}");
                     return null;
-                }
 
                 name = TextUtils.StripIconMarkup(name);
                 if (string.IsNullOrEmpty(name))
@@ -321,10 +294,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    MelonLogger.Msg($"[Battle Magic] Error getting spell level: {ex.Message}");
-                }
+                catch { } // Ability data may not have level info
 
                 // Try to get charges (format matches out-of-battle: "MP: current/max")
                 if (spellLevel > 0 && spellLevel <= 8)
@@ -337,7 +307,7 @@ namespace FFI_ScreenReader.Patches
                             announcement += $": MP: {charges.current}/{charges.max}";
                         }
                     }
-                    catch { }
+                    catch { } // Charge lookup may fail in battle
                 }
 
                 // Try to get description
@@ -361,7 +331,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch { }
+                catch { } // Description not always available
 
                 return announcement;
             }
@@ -387,13 +357,9 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[Battle Magic] GetChargesForLevel({level}) called");
-
                 var player = CurrentPlayer;
                 if (player == null)
                 {
-                    MelonLogger.Msg("[Battle Magic] CurrentPlayer is null, trying to find from controller");
-
                     // Try to find from scene using pointer-based access
                     var controller = UnityEngine.Object.FindObjectOfType<BattleFrequencyAbilityInfomationController>();
                     if (controller != null)
@@ -403,94 +369,56 @@ namespace FFI_ScreenReader.Patches
                             IntPtr controllerPtr = controller.Pointer;
                             if (controllerPtr != IntPtr.Zero)
                             {
-                                unsafe
+                                // Read selectedBattlePlayerData at offset 0x28
+                                IntPtr playerPtr = IL2CppFieldReader.ReadPointer(controllerPtr, OFFSET_SELECTED_PLAYER);
+                                if (playerPtr != IntPtr.Zero)
                                 {
-                                    // Read selectedBattlePlayerData at offset 0x28
-                                    IntPtr playerPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_SELECTED_PLAYER);
-                                    if (playerPtr != IntPtr.Zero)
-                                    {
-                                        player = new BattlePlayerData(playerPtr);
-                                        CurrentPlayer = player;
-                                        MelonLogger.Msg("[Battle Magic] Got player via pointer access");
-                                    }
-                                    else
-                                    {
-                                        MelonLogger.Msg("[Battle Magic] playerPtr is null at offset 0x28");
-                                    }
+                                    player = new BattlePlayerData(playerPtr);
+                                    CurrentPlayer = player;
                                 }
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            MelonLogger.Msg($"[Battle Magic] Error reading player via pointer: {ex.Message}");
-                        }
-                    }
-                    else
-                    {
-                        MelonLogger.Msg("[Battle Magic] Controller not found");
+                        catch { } // IL2CPP pointer read may fail
                     }
                 }
 
                 if (player == null)
-                {
-                    MelonLogger.Msg("[Battle Magic] Player still null after lookup");
                     return (0, 0);
-                }
 
                 // Try ownedCharacterData first
                 PlayerCharacterParameter param = null;
                 var ownedCharData = player.ownedCharacterData;
                 if (ownedCharData != null)
                 {
-                    MelonLogger.Msg($"[Battle Magic] Got character via ownedCharacterData: {ownedCharData.Name}");
                     param = ownedCharData.Parameter as PlayerCharacterParameter;
                 }
 
                 // Fallback: Use BattleUnitDataInfo.Parameter path (works in battle)
                 if (param == null)
                 {
-                    MelonLogger.Msg("[Battle Magic] ownedCharacterData null, trying BattleUnitDataInfo path");
                     try
                     {
                         IntPtr playerPtr = player.Pointer;
                         if (playerPtr != IntPtr.Zero)
                         {
-                            unsafe
+                            // Read BattleUnitDataInfo at offset 0x28 (from BattleUnitData base class)
+                            IntPtr battleUnitDataInfoPtr = IL2CppFieldReader.ReadPointer(playerPtr, OFFSET_BATTLE_UNIT_DATA_INFO);
+                            if (battleUnitDataInfoPtr != IntPtr.Zero)
                             {
-                                // Read BattleUnitDataInfo at offset 0x28 (from BattleUnitData base class)
-                                IntPtr battleUnitDataInfoPtr = *(IntPtr*)((byte*)playerPtr.ToPointer() + OFFSET_BATTLE_UNIT_DATA_INFO);
-                                if (battleUnitDataInfoPtr != IntPtr.Zero)
+                                // Read Parameter at offset 0x10
+                                IntPtr parameterPtr = IL2CppFieldReader.ReadPointer(battleUnitDataInfoPtr, OFFSET_PARAMETER);
+                                if (parameterPtr != IntPtr.Zero)
                                 {
-                                    // Read Parameter at offset 0x10
-                                    IntPtr parameterPtr = *(IntPtr*)((byte*)battleUnitDataInfoPtr.ToPointer() + OFFSET_PARAMETER);
-                                    if (parameterPtr != IntPtr.Zero)
-                                    {
-                                        param = new PlayerCharacterParameter(parameterPtr);
-                                        MelonLogger.Msg("[Battle Magic] Got parameter via BattleUnitDataInfo path");
-                                    }
-                                    else
-                                    {
-                                        MelonLogger.Msg("[Battle Magic] Parameter pointer is null");
-                                    }
-                                }
-                                else
-                                {
-                                    MelonLogger.Msg("[Battle Magic] BattleUnitDataInfo pointer is null");
+                                    param = new PlayerCharacterParameter(parameterPtr);
                                 }
                             }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        MelonLogger.Msg($"[Battle Magic] Error reading via BattleUnitDataInfo path: {ex.Message}");
-                    }
+                    catch { } // IL2CPP pointer chain may fail
                 }
 
                 if (param == null)
-                {
-                    MelonLogger.Msg("[Battle Magic] Could not get PlayerCharacterParameter from either path");
                     return (0, 0);
-                }
 
                 // Get current charges
                 int current = 0;
@@ -498,11 +426,6 @@ namespace FFI_ScreenReader.Patches
                 if (currentList != null && currentList.ContainsKey(level))
                 {
                     current = currentList[level];
-                    MelonLogger.Msg($"[Battle Magic] Current charges for level {level}: {current}");
-                }
-                else
-                {
-                    MelonLogger.Msg($"[Battle Magic] CurrentMpCountList null or doesn't contain level {level}");
                 }
 
                 // Get max charges
@@ -510,26 +433,19 @@ namespace FFI_ScreenReader.Patches
                 try
                 {
                     max = param.ConfirmedMaxMpCount((AbilityLevelType)level);
-                    MelonLogger.Msg($"[Battle Magic] Max charges for level {level}: {max}");
                 }
-                catch (Exception ex)
-                {
-                    MelonLogger.Msg($"[Battle Magic] ConfirmedMaxMpCount failed: {ex.Message}, trying BaseMaxMpCountList");
+                catch
+                { // ConfirmedMaxMpCount may fail; use base list
                     var baseMaxList = param.BaseMaxMpCountList;
                     if (baseMaxList != null && baseMaxList.ContainsKey(level))
                     {
                         max = baseMaxList[level];
-                        MelonLogger.Msg($"[Battle Magic] Got max from BaseMaxMpCountList: {max}");
                     }
                 }
 
                 return (current, max);
             }
-            catch (Exception ex)
-            {
-                MelonLogger.Msg($"[Battle Magic] GetChargesForLevel exception: {ex.Message}");
-                return (0, 0);
-            }
+            catch { return (0, 0); } // Charge data unavailable
         }
 
         /// <summary>
@@ -537,7 +453,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset("BattleMagic");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_MAGIC);
             CurrentPlayer = null;
         }
     }

@@ -217,7 +217,7 @@ namespace FFI_ScreenReader.Menus
                     }
                 }
             }
-            catch { }
+            catch { } // Hierarchy traversal may hit destroyed objects
             return null;
         }
     }

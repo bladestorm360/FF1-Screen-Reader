@@ -49,7 +49,7 @@ namespace FFI_ScreenReader.Patches
                     bool isFadeFinish = (bool)isFadeFinishMethod.Invoke(instance, null);
                     return !isFadeFinish;
                 }
-                catch { return false; }
+                catch { return false; } // Reflection may fail; treat as not fading
             }
         }
 
@@ -77,8 +77,6 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                MelonLogger.Msg($"[MapTransition] Found FadeManager: {fadeManagerType.FullName}");
-
                 // Cache Instance property (inherited from SingletonMonoBehaviour<T>)
                 instanceProperty = AccessTools.Property(fadeManagerType, "Instance");
                 if (instanceProperty == null)
@@ -89,7 +87,6 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 bool hasInstance = instanceProperty != null;
-                MelonLogger.Msg($"[MapTransition] Instance property: {(hasInstance ? "found" : "NOT FOUND")}");
 
                 if (!hasInstance)
                 {
@@ -100,7 +97,6 @@ namespace FFI_ScreenReader.Patches
                 // Cache IsFadeFinish method
                 isFadeFinishMethod = AccessTools.Method(fadeManagerType, "IsFadeFinish");
                 bool hasFadeFinish = isFadeFinishMethod != null;
-                MelonLogger.Msg($"[MapTransition] IsFadeFinish method: {(hasFadeFinish ? "found" : "NOT FOUND")}");
 
                 if (!hasFadeFinish)
                 {
@@ -110,17 +106,6 @@ namespace FFI_ScreenReader.Patches
 
                 isInitialized = true;
 
-                // Log initial state
-                try
-                {
-                    object instance = instanceProperty.GetValue(null);
-                    bool initialState = instance != null && (bool)isFadeFinishMethod.Invoke(instance, null);
-                    MelonLogger.Msg($"[MapTransition] Cached reflection initialized — IsFadeFinish={initialState}");
-                }
-                catch
-                {
-                    MelonLogger.Msg("[MapTransition] Cached reflection initialized — IsFadeFinish=(no instance yet)");
-                }
             }
             catch (Exception ex)
             {
@@ -149,12 +134,11 @@ namespace FFI_ScreenReader.Patches
                         var type = asm.GetType(name);
                         if (type != null)
                         {
-                            MelonLogger.Msg($"[MapTransition] Found FadeManager in {asm.GetName().Name} as {name}");
                             return type;
                         }
                     }
                 }
-                catch { }
+                catch { } // Assembly may throw on GetType
             }
 
             // Broader search: look for any type named FadeManager
@@ -166,12 +150,11 @@ namespace FFI_ScreenReader.Patches
                     {
                         if (type.Name == "FadeManager" && !type.IsNested)
                         {
-                            MelonLogger.Msg($"[MapTransition] Found FadeManager via broad search: {type.FullName} in {asm.GetName().Name}");
                             return type;
                         }
                     }
                 }
-                catch { }
+                catch { } // Assembly may throw on GetTypes
             }
 
             return null;
@@ -197,7 +180,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     var postfix = AccessTools.Method(typeof(MapTransitionPatches), nameof(ChangeState_Postfix));
                     harmony.Patch(changeStateMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[MapTransition] Patched SubSceneManagerMainGame.ChangeState (event-driven map transitions)");
                 }
                 else
                 {
@@ -258,17 +240,13 @@ namespace FFI_ScreenReader.Patches
                 // Resolve map name
                 string mapName = MapNameResolver.GetCurrentMapName();
                 if (string.IsNullOrEmpty(mapName) || mapName == "Unknown")
-                {
-                    MelonLogger.Msg($"[MapTransition] Map ID {currentMapId} could not be resolved to a name");
                     return;
-                }
 
                 string announcement = $"Entering {mapName}";
 
                 // Record for dedup (suppresses bare name from FadeMessageManager.Play)
                 LocationMessageTracker.SetLastMapTransition(announcement);
 
-                MelonLogger.Msg($"[MapTransition] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
             catch (Exception ex)

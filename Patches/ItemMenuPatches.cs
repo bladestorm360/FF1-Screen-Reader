@@ -31,18 +31,29 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class ItemMenuState
     {
-        private const string CONTEXT = "Item.Select";
-
         /// <summary>
         /// True when item list or item target selection is active.
         /// Used to suppress generic cursor navigation announcements.
         /// </summary>
-        public static bool IsItemMenuActive { get; set; } = false;
+        public static bool IsItemMenuActive
+        {
+            get => MenuStateRegistry.IsActive(MenuStateRegistry.ITEM_MENU);
+            set => MenuStateRegistry.SetActive(MenuStateRegistry.ITEM_MENU, value);
+        }
 
         /// <summary>
         /// Stores the currently selected item data for 'I' key lookup.
         /// </summary>
         public static ItemListContentData LastSelectedItem { get; set; } = null;
+
+        static ItemMenuState()
+        {
+            MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.ITEM_MENU, () =>
+            {
+                LastSelectedItem = null;
+                AnnouncementDeduplicator.Reset(AnnouncementContexts.ITEM_SELECT);
+            });
+        }
 
         // State machine offset - use centralized offsets
         private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Item;
@@ -89,7 +100,7 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
             }
-            catch { }
+            catch { } // State machine read may fail
 
             // Fallback: clear state if we can't determine
             ClearState();
@@ -102,8 +113,6 @@ namespace FFI_ScreenReader.Patches
         public static void ClearState()
         {
             IsItemMenuActive = false;
-            LastSelectedItem = null;
-            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -114,7 +123,7 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// Check if announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.ITEM_SELECT, announcement);
 
         /// <summary>
         /// Gets the row (Front/Back) for a character.
@@ -126,34 +135,28 @@ namespace FFI_ScreenReader.Patches
                 var userDataManager = UserDataManager.Instance();
                 if (userDataManager == null)
                 {
-                    MelonLogger.Msg($"[ItemMenu] UserDataManager is null");
                     return null;
                 }
 
                 var corpsList = userDataManager.GetCorpsListClone();
                 if (corpsList == null)
                 {
-                    MelonLogger.Msg($"[ItemMenu] CorpsList is null");
                     return null;
                 }
 
                 int characterId = characterData.Id;
-                MelonLogger.Msg($"[ItemMenu] Looking for character {characterData.Name} (ID={characterId}) in {corpsList.Count} corps entries");
 
                 foreach (var corps in corpsList)
                 {
                     if (corps != null)
                     {
-                        MelonLogger.Msg($"[ItemMenu] Corps entry: CharId={corps.CharacterId}, CorpsId={corps.Id}");
                         if (corps.CharacterId == characterId)
                         {
                             string row = corps.Id == CorpsId.Front ? "Front Row" : "Back Row";
-                            MelonLogger.Msg($"[ItemMenu] Found match! {characterData.Name} is in {row}");
                             return row;
                         }
                     }
                 }
-                MelonLogger.Msg($"[ItemMenu] No matching Corps found for {characterData.Name}");
             }
             catch (Exception ex)
             {
@@ -192,7 +195,7 @@ namespace FFI_ScreenReader.Patches
                         return TextUtils.StripIconMarkup(text);
                 }
             }
-            catch { }
+            catch { } // Localization lookup may fail
             return null;
         }
 
@@ -239,7 +242,6 @@ namespace FFI_ScreenReader.Patches
         {
             if (!isActive)
             {
-                MelonLogger.Msg("[Item Menu] SetActive(false) - clearing state");
                 ItemMenuState.ResetState();
             }
         }
@@ -322,7 +324,6 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
                 ItemMenuState.IsItemMenuActive = true;
 
-                MelonLogger.Msg($"[Item Menu] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -438,7 +439,6 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
                 ItemMenuState.IsItemMenuActive = true;
 
-                MelonLogger.Msg($"[Item Target] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)

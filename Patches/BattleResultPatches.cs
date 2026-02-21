@@ -30,8 +30,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Result] Applying battle result patches...");
-
                 var controllerType = typeof(ResultMenuController);
 
                 // Patch ShowPointsInit for gil and XP announcements
@@ -43,7 +41,6 @@ namespace FFI_ScreenReader.Patches
                 // Patch ShowStatusUpInit for level up announcements
                 PatchMethod(harmony, controllerType, "ShowStatusUpInit", nameof(ShowStatusUpInit_Postfix));
 
-                MelonLogger.Msg("[Battle Result] Battle result patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -75,7 +72,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg($"[Battle Result] Patched {methodName} successfully");
                 }
                 else
                 {
@@ -101,12 +97,10 @@ namespace FFI_ScreenReader.Patches
                 var methods = controllerType.GetMethods(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly
                 );
-                MelonLogger.Msg($"[Battle Result] Available methods on {controllerType.Name}:");
                 foreach (var m in methods)
                 {
                     if (m.Name.Contains("Show") || m.Name.Contains("Init") || m.Name.Contains("Points") || m.Name.Contains("Item") || m.Name.Contains("Status"))
                     {
-                        MelonLogger.Msg($"[Battle Result]   - {m.Name}({string.Join(", ", System.Linq.Enumerable.Select(m.GetParameters(), p => p.ParameterType.Name))})");
                     }
                 }
             }
@@ -115,9 +109,6 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Battle Result] Error logging methods: {ex.Message}");
             }
         }
-
-        // Offset for targetData field in ResultMenuController (FF1 KeyInput version)
-        private const int OFFSET_TARGET_DATA = 0x60;
 
         /// <summary>
         /// Postfix for ShowPointsInit - announces gil and XP.
@@ -142,14 +133,11 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                MelonLogger.Msg("[Battle Result] Got result data via reflection");
-
                 // Read gil using IL2CPP property accessor
                 try
                 {
                     int gil = resultData.GetGil;
                     string gilAnnouncement = $"Gained {gil:N0} gil";
-                    MelonLogger.Msg($"[Battle Result] {gilAnnouncement}");
                     FFI_ScreenReaderMod.SpeakText(gilAnnouncement, interrupt: true);
                 }
                 catch (Exception ex)
@@ -184,11 +172,11 @@ namespace FFI_ScreenReader.Patches
                                     FFI_ScreenReaderMod.SpeakText(expAnnouncement, interrupt: false);
                                 }
                             }
-                            catch { }
+                            catch { } // Character data may be partially torn down
                         }
                     }
                 }
-                catch { }
+                catch { } // Result data may be partially available
             }
             catch (Exception ex)
             {
@@ -213,7 +201,6 @@ namespace FFI_ScreenReader.Patches
                     var result = field.GetValue(controller) as BattleResultData;
                     if (result != null)
                     {
-                        MelonLogger.Msg("[Battle Result] Got targetData via field reflection");
                         return result;
                     }
                 }
@@ -227,7 +214,6 @@ namespace FFI_ScreenReader.Patches
                     var result = prop.GetValue(controller) as BattleResultData;
                     if (result != null)
                     {
-                        MelonLogger.Msg("[Battle Result] Got targetData via property reflection");
                         return result;
                     }
                 }
@@ -236,14 +222,10 @@ namespace FFI_ScreenReader.Patches
                 IntPtr controllerPtr = controller.Pointer;
                 if (controllerPtr != IntPtr.Zero)
                 {
-                    unsafe
+                    IntPtr dataPtr = IL2CppFieldReader.ReadPointer(controllerPtr, IL2CppOffsets.BattleResult.TargetData);
+                    if (dataPtr != IntPtr.Zero)
                     {
-                        IntPtr dataPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_TARGET_DATA);
-                        if (dataPtr != IntPtr.Zero)
-                        {
-                            MelonLogger.Msg("[Battle Result] Got targetData via pointer access");
-                            return new BattleResultData(dataPtr);
-                        }
+                        return new BattleResultData(dataPtr);
                     }
                 }
 
@@ -297,7 +279,7 @@ namespace FFI_ScreenReader.Patches
 
                         FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
                     }
-                    catch { }
+                    catch { } // Drop item data may be partially available
                 }
             }
             catch (Exception ex)
@@ -347,7 +329,7 @@ namespace FFI_ScreenReader.Patches
                         if (afterParam != null)
                         {
                             try { newLevel = afterParam.ConfirmedLevel(); }
-                            catch { newLevel = afterParam.BaseLevel; }
+                            catch { newLevel = afterParam.BaseLevel; } // Fall back to base level
                         }
 
                         // Build announcement
@@ -356,27 +338,19 @@ namespace FFI_ScreenReader.Patches
 
                         // Calculate stat gains if we have before data
                         var beforeData = charResult.BeforData; // Note: typo in game code
-                        MelonLogger.Msg($"[Battle Result] Level up: beforeData={beforeData != null}, beforeParam={beforeData?.Parameter != null}, afterParam={afterParam != null}");
 
                         if (beforeData?.Parameter != null && afterParam != null)
                         {
                             string statGains = CalculateStatGains(beforeData.Parameter, afterParam);
-                            MelonLogger.Msg($"[Battle Result] Stat gains result: '{statGains ?? "null"}'");
                             if (!string.IsNullOrEmpty(statGains))
                             {
                                 parts.Add(statGains);
                             }
                         }
-                        else
-                        {
-                            MelonLogger.Msg("[Battle Result] Cannot calculate stat gains - missing before/after data");
-                        }
-
                         string announcement = string.Join(", ", parts);
-                        MelonLogger.Msg($"[Battle Result] Final announcement: {announcement}");
                         FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
                     }
-                    catch { }
+                    catch { } // Character data may be partially torn down
                 }
             }
             catch (Exception ex)
@@ -408,7 +382,7 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
             }
-            catch { }
+            catch { } // IL2CPP content resolution may fail
 
             return null;
         }
@@ -425,52 +399,44 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                MelonLogger.Msg($"[Battle Result] CalculateStatGains: before={before != null}, after={after != null}");
-
                 // HP
                 int hpBefore = 0, hpAfter = 0;
-                try { hpBefore = before.ConfirmedMaxHp(); } catch { try { hpBefore = before.BaseMaxHp; } catch { } }
-                try { hpAfter = after.ConfirmedMaxHp(); } catch { try { hpAfter = after.BaseMaxHp; } catch { } }
-                MelonLogger.Msg($"[Battle Result] HP: {hpBefore} -> {hpAfter}");
+                try { hpBefore = before.ConfirmedMaxHp(); } catch { try { hpBefore = before.BaseMaxHp; } catch { } } // IL2CPP accessor may fail
+                try { hpAfter = after.ConfirmedMaxHp(); } catch { try { hpAfter = after.BaseMaxHp; } catch { } } // IL2CPP accessor may fail
                 if (hpAfter > hpBefore) gains.Add($"HP +{hpAfter - hpBefore}");
 
                 // Strength (FF1 uses BasePower)
                 int strBefore = 0, strAfter = 0;
-                try { strBefore = before.BasePower; MelonLogger.Msg($"[Battle Result] Str before: {strBefore}"); }
-                catch (Exception ex) { MelonLogger.Msg($"[Battle Result] Str before failed: {ex.Message}"); }
-                try { strAfter = after.BasePower; MelonLogger.Msg($"[Battle Result] Str after: {strAfter}"); }
-                catch (Exception ex) { MelonLogger.Msg($"[Battle Result] Str after failed: {ex.Message}"); }
+                try { strBefore = before.BasePower; }
+                catch { } // IL2CPP accessor may fail
+                try { strAfter = after.BasePower; }
+                catch { } // IL2CPP accessor may fail
                 if (strAfter > strBefore) gains.Add($"Strength +{strAfter - strBefore}");
 
                 // Agility (FF1 uses BaseAgility)
                 int agiBefore = 0, agiAfter = 0;
-                try { agiBefore = before.BaseAgility; } catch { }
-                try { agiAfter = after.BaseAgility; } catch { }
-                MelonLogger.Msg($"[Battle Result] Agi: {agiBefore} -> {agiAfter}");
+                try { agiBefore = before.BaseAgility; } catch { } // IL2CPP accessor may fail
+                try { agiAfter = after.BaseAgility; } catch { } // IL2CPP accessor may fail
                 if (agiAfter > agiBefore) gains.Add($"Agility +{agiAfter - agiBefore}");
 
                 // Stamina (displayed as "Stamina" in-game, property is BaseVitality)
                 int vitBefore = 0, vitAfter = 0;
-                try { vitBefore = before.BaseVitality; } catch { }
-                try { vitAfter = after.BaseVitality; } catch { }
-                MelonLogger.Msg($"[Battle Result] Vit: {vitBefore} -> {vitAfter}");
+                try { vitBefore = before.BaseVitality; } catch { } // IL2CPP accessor may fail
+                try { vitAfter = after.BaseVitality; } catch { } // IL2CPP accessor may fail
                 if (vitAfter > vitBefore) gains.Add($"Stamina +{vitAfter - vitBefore}");
 
                 // Intellect (displayed as "Intellect" in-game, property is BaseIntelligence)
                 int intBefore = 0, intAfter = 0;
-                try { intBefore = before.BaseIntelligence; } catch { }
-                try { intAfter = after.BaseIntelligence; } catch { }
-                MelonLogger.Msg($"[Battle Result] Int: {intBefore} -> {intAfter}");
+                try { intBefore = before.BaseIntelligence; } catch { } // IL2CPP accessor may fail
+                try { intAfter = after.BaseIntelligence; } catch { } // IL2CPP accessor may fail
                 if (intAfter > intBefore) gains.Add($"Intellect +{intAfter - intBefore}");
 
                 // Luck (FF1 uses BaseLuck - same name)
                 int luckBefore = 0, luckAfter = 0;
-                try { luckBefore = before.BaseLuck; } catch { }
-                try { luckAfter = after.BaseLuck; } catch { }
-                MelonLogger.Msg($"[Battle Result] Luck: {luckBefore} -> {luckAfter}");
+                try { luckBefore = before.BaseLuck; } catch { } // IL2CPP accessor may fail
+                try { luckAfter = after.BaseLuck; } catch { } // IL2CPP accessor may fail
                 if (luckAfter > luckBefore) gains.Add($"Luck +{luckAfter - luckBefore}");
 
-                MelonLogger.Msg($"[Battle Result] Total stat gains: {gains.Count}");
             }
             catch (Exception ex)
             {

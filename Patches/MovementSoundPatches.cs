@@ -70,7 +70,6 @@ namespace FFI_ScreenReader.Patches
                 // Log once to confirm patch is working
                 if (!hasLoggedPatchActive)
                 {
-                    MelonLogger.Msg("[WallBump] Patch is active - OnTouchPadCallback intercepted");
                     hasLoggedPatchActive = true;
                 }
 
@@ -131,7 +130,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     lastTilePosition = currentTile;
                     tileTrackingInitialized = true;
-                    MelonLogger.Msg($"[Footstep] Tile tracking initialized at ({currentTile.x}, {currentTile.y})");
                 }
 
                 // If position didn't change (within small threshold), player hit a wall
@@ -170,7 +168,6 @@ namespace FFI_ScreenReader.Patches
                         yield break;
                     }
 
-                    MelonLogger.Msg($"[WallBump] Wall bump confirmed after {samePositionCount} hits");
                     PlayBumpSound();
                     lastBumpTime = currentTime;
                 }
@@ -182,7 +179,6 @@ namespace FFI_ScreenReader.Patches
                     if (currentTile != lastTilePosition)
                     {
                         // Tile changed - play footstep if enabled
-                        MelonLogger.Msg($"[Footstep] Tile changed from ({lastTilePosition.x}, {lastTilePosition.y}) to ({currentTile.x}, {currentTile.y})");
                         lastTilePosition = currentTile;
 
                         if (FFI_ScreenReaderMod.Instance != null && FFI_ScreenReaderMod.Instance.IsFootstepsEnabled())
@@ -190,7 +186,6 @@ namespace FFI_ScreenReader.Patches
                             float currentTime = Time.time;
                             if (currentTime - lastFootstepTime >= FOOTSTEP_COOLDOWN)
                             {
-                                MelonLogger.Msg("[Footstep] Playing footstep sound");
                                 SoundPlayer.PlayFootstep();
                                 lastFootstepTime = currentTime;
                             }

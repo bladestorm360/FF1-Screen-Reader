@@ -27,32 +27,18 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class StatusMenuState
     {
-        private const string CONTEXT = "Status.Select";
+        private static readonly MenuStateInstance _state = new MenuStateInstance();
+        static StatusMenuState() => _state.RegisterResetHandler();
 
-        /// <summary>
-        /// True when character selection menu is active and handling announcements.
-        /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
+        public static bool ShouldSuppress() => _state.ShouldSuppress();
+        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
+        public static void ResetState() => _state.ResetState();
 
-        public static void ResetState()
+        private class MenuStateInstance : MenuStateBase
         {
-            IsActive = false;
-            AnnouncementDeduplicator.Reset(CONTEXT);
-        }
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
-
-        /// <summary>
-        /// Returns true if generic cursor reading should be suppressed.
-        /// Called by CursorNavigation_Postfix to prevent double-reading.
-        /// Simple flag check - state clearing handled by menu transition patches.
-        /// </summary>
-        public static bool ShouldSuppress()
-        {
-            return IsActive;
+            protected override string RegistryKey => MenuStateRegistry.STATUS_MENU;
+            protected override string DeduplicationContext => AnnouncementContexts.STATUS_SELECT;
         }
     }
 
@@ -107,7 +93,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     harmony.Patch(setActiveMethod,
                         postfix: new HarmonyMethod(typeof(CharacterSelectTransitionPatches), nameof(SetActive_Postfix)));
-                    MelonLogger.Msg($"[CharSelect Transition] Patched {name}.SetActive");
                 }
             }
             catch (Exception ex)
@@ -124,7 +109,6 @@ namespace FFI_ScreenReader.Patches
         {
             if (isActive && StatusMenuState.IsActive)
             {
-                MelonLogger.Msg("[CharSelect Transition] Menu window activated, clearing StatusMenuState");
                 StatusMenuState.ResetState();
             }
         }
@@ -139,7 +123,11 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// True when status details screen is active and handling announcements.
         /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive
+        {
+            get => MenuStateRegistry.IsActive(MenuStateRegistry.STATUS_DETAILS);
+            set => MenuStateRegistry.SetActive(MenuStateRegistry.STATUS_DETAILS, value);
+        }
 
         public static void ResetState()
         {
@@ -295,8 +283,6 @@ namespace FFI_ScreenReader.Patches
                             string param0Type = parameters[0].ParameterType.Name;
                             string param1Type = parameters[1].ParameterType.Name;
 
-                            MelonLogger.Msg($"[Status Menu] Found SelectContent: params[0]={param0Type}, params[1]={param1Type}");
-
                             if (param0Type.Contains("List") && param1Type == "Int32")
                             {
                                 targetMethod = method;
@@ -312,20 +298,10 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Status Menu] Patched SelectContent successfully");
                 }
                 else
                 {
                     MelonLogger.Warning("[Status Menu] Could not find SelectContent method");
-
-                    // Log available methods for debugging
-                    foreach (var method in methods)
-                    {
-                        if (method.Name.Contains("Select") || method.Name.Contains("Content"))
-                        {
-                            MelonLogger.Msg($"[Status Menu] Available method: {method.Name}");
-                        }
-                    }
                 }
             }
             catch (Exception ex)
@@ -371,14 +347,12 @@ namespace FFI_ScreenReader.Patches
 
                 if (index < 0 || index >= contents.Count)
                 {
-                    MelonLogger.Msg($"[Status Menu] SelectContent: index {index} out of range (count={contents.Count})");
                     return;
                 }
 
                 var content = contents[index];
                 if (content == null)
                 {
-                    MelonLogger.Msg("[Status Menu] SelectContent: content at index is null");
                     return;
                 }
 
@@ -386,7 +360,6 @@ namespace FFI_ScreenReader.Patches
                 var characterData = content.CharacterData;
                 if (characterData == null)
                 {
-                    MelonLogger.Msg("[Status Menu] SelectContent: CharacterData is null");
                     return;
                 }
 
@@ -431,7 +404,6 @@ namespace FFI_ScreenReader.Patches
                 if (!StatusMenuState.ShouldAnnounce(announcement))
                     return;
 
-                MelonLogger.Msg($"[Status Menu] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -491,7 +463,6 @@ namespace FFI_ScreenReader.Patches
                         if (parameters.Length == 0)
                         {
                             targetMethod = method;
-                            MelonLogger.Msg($"[Status Details] Found InitDisplay()");
                             break;
                         }
                     }
@@ -503,7 +474,6 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Status Details] Patched InitDisplay successfully");
                 }
                 else
                 {
@@ -537,7 +507,6 @@ namespace FFI_ScreenReader.Patches
                         if (parameters.Length == 0)
                         {
                             targetMethod = method;
-                            MelonLogger.Msg($"[Status Details] Found ExitDisplay()");
                             break;
                         }
                     }
@@ -549,7 +518,6 @@ namespace FFI_ScreenReader.Patches
                         BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Status Details] Patched ExitDisplay successfully");
                 }
                 else
                 {
@@ -576,7 +544,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Set status details active state immediately
                 // Clear other states and set this one active
-                MelonLogger.Msg("[Status Details] InitDisplay - setting StatusDetailsState.IsActive = true");
                 FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("StatusDetails");
                 StatusDetailsState.IsActive = true;
 
@@ -603,8 +570,6 @@ namespace FFI_ScreenReader.Patches
                 if (controller.gameObject == null || !controller.gameObject.activeInHierarchy)
                     yield break;
 
-                MelonLogger.Msg("[Status Details] Initializing stat navigation");
-
                 // Get character data
                 var characterData = StatusDetailsHelpers.GetCharacterDataFromController(controller);
                 if (characterData == null)
@@ -630,11 +595,8 @@ namespace FFI_ScreenReader.Patches
                 string statusText = StatusDetailsReader.ReadStatusDetails(controller);
                 if (!string.IsNullOrWhiteSpace(statusText))
                 {
-                    MelonLogger.Msg($"[Status Details] {statusText}");
                     FFI_ScreenReaderMod.SpeakText(statusText);
                 }
-
-                MelonLogger.Msg("[Status Details] Navigation initialized - use Up/Down arrows to browse stats");
             }
             catch (Exception ex)
             {
@@ -657,8 +619,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Clear status details state
                 StatusDetailsState.IsActive = false;
-
-                MelonLogger.Msg("[Status Details] Menu exited, state cleared");
             }
             catch (Exception ex)
             {
@@ -689,7 +649,7 @@ namespace FFI_ScreenReader.Patches
                     return null;
 
                 // Read statusController pointer - use centralized offsets
-                IntPtr statusControllerPtr = System.Runtime.InteropServices.Marshal.ReadIntPtr(controllerPtr, IL2CppOffsets.StatusDetails.StatusController);
+                IntPtr statusControllerPtr = IL2CppFieldReader.ReadPointerSafe(controllerPtr, IL2CppOffsets.StatusDetails.StatusController);
                 if (statusControllerPtr == IntPtr.Zero)
                 {
                     MelonLogger.Warning("[Status Details] statusController is null");
@@ -697,7 +657,7 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 // Read targetData pointer from AbilityCharaStatusController
-                IntPtr targetDataPtr = System.Runtime.InteropServices.Marshal.ReadIntPtr(statusControllerPtr, IL2CppOffsets.StatusDetails.TargetData);
+                IntPtr targetDataPtr = IL2CppFieldReader.ReadPointerSafe(statusControllerPtr, IL2CppOffsets.StatusDetails.TargetData);
                 if (targetDataPtr == IntPtr.Zero)
                 {
                     MelonLogger.Warning("[Status Details] targetData is null at 0x48");
@@ -708,7 +668,6 @@ namespace FFI_ScreenReader.Patches
                 var characterData = new OwnedCharacterData(targetDataPtr);
                 if (characterData != null)
                 {
-                    MelonLogger.Msg($"[Status Details] Got character data: {characterData.Name}");
                     return characterData;
                 }
             }
@@ -726,7 +685,6 @@ namespace FFI_ScreenReader.Patches
                     var charData = userDataManager.GetMemberData(0);
                     if (charData != null)
                     {
-                        MelonLogger.Msg("[Status Details] Got character data from GetMemberData fallback");
                         return charData;
                     }
                 }
@@ -753,7 +711,6 @@ namespace FFI_ScreenReader.Patches
         {
             if (!isActive)
             {
-                MelonLogger.Msg("[Status Menu] SetActive(false) - clearing state");
                 StatusMenuState.ResetState();
             }
         }

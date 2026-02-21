@@ -301,6 +301,11 @@ namespace FFI_ScreenReader.Field
         public override Vector3 Position => position;
         public override string Name => name;
 
+        /// <summary>
+        /// The event type name (e.g., "Event", "ToLayer", "Warp Tile")
+        /// </summary>
+        public string EventTypeName => eventTypeName;
+
         public override EntityCategory Category => EntityCategory.Events;
         public override int Priority => 8;
         public override bool BlocksPathing => false;

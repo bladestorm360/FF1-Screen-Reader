@@ -24,8 +24,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Item] Applying battle item menu patches...");
-
                 var controllerType = typeof(BattleItemInfomationController);
 
                 // Find SelectContent(Cursor, WithinRangeType) - called when navigating items
@@ -38,15 +36,12 @@ namespace FFI_ScreenReader.Patches
                     if (m.Name == "SelectContent")
                     {
                         var parameters = m.GetParameters();
-                        var paramTypes = string.Join(", ", Array.ConvertAll(parameters, p => p.ParameterType.Name));
-                        MelonLogger.Msg($"[Battle Item] Found SelectContent({paramTypes})");
 
                         // Look for (Cursor, WithinRangeType) signature - first param is Cursor
                         if (parameters.Length >= 1 &&
                             parameters[0].ParameterType.Name == "Cursor")
                         {
                             selectContentMethod = m;
-                            MelonLogger.Msg($"[Battle Item] Selected this overload for patching");
                             break;
                         }
                     }
@@ -58,7 +53,6 @@ namespace FFI_ScreenReader.Patches
                         .GetMethod(nameof(SelectContent_Postfix), BindingFlags.Public | BindingFlags.Static);
 
                     harmony.Patch(selectContentMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Item] Patched SelectContent successfully");
                 }
                 else
                 {
@@ -89,7 +83,6 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 int index = cursor.Index;
-                MelonLogger.Msg($"[Battle Item] SelectContent called, cursor index: {index}");
 
                 var controller = __instance as BattleItemInfomationController;
                 if (controller == null)
@@ -107,13 +100,10 @@ namespace FFI_ScreenReader.Patches
                 string announcement = TryGetItemAnnouncement(controller, index);
 
                 if (string.IsNullOrEmpty(announcement))
-                {
-                    MelonLogger.Msg("[Battle Item] Could not get item data");
                     return;
-                }
 
                 // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleItem", announcement))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_ITEM, announcement))
                     return;
 
                 // Set state AFTER successful validation - this is the key fix
@@ -121,7 +111,6 @@ namespace FFI_ScreenReader.Patches
                 BattleItemMenuState.IsActive = true;
                 BattleTargetState.SetTargetSelectionActive(false);
 
-                MelonLogger.Msg($"[Battle Item] Announcing: {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -151,25 +140,14 @@ namespace FFI_ScreenReader.Patches
                     IntPtr controllerPtr = controller.Pointer;
                     if (controllerPtr != IntPtr.Zero)
                     {
-                        unsafe
+                        IntPtr displayListPtr = IL2CppFieldReader.ReadPointer(controllerPtr, OFFSET_DISPLAY_DATA_LIST);
+                        if (displayListPtr != IntPtr.Zero)
                         {
-                            IntPtr displayListPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_DISPLAY_DATA_LIST);
-                            if (displayListPtr != IntPtr.Zero)
-                            {
-                                displayDataList = new Il2CppSystem.Collections.Generic.List<ItemListContentData>(displayListPtr);
-                                MelonLogger.Msg($"[Battle Item] displayDataList via pointer, count: {displayDataList?.Count ?? -1}");
-                            }
-                            else
-                            {
-                                MelonLogger.Msg($"[Battle Item] displayDataList pointer is null");
-                            }
+                            displayDataList = new Il2CppSystem.Collections.Generic.List<ItemListContentData>(displayListPtr);
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    MelonLogger.Msg($"[Battle Item] Error reading displayDataList via pointer: {ex.Message}");
-                }
+                catch { } // IL2CPP pointer read may fail
 
                 if (displayDataList != null && index >= 0 && index < displayDataList.Count)
                 {
@@ -187,25 +165,14 @@ namespace FFI_ScreenReader.Patches
                     IntPtr controllerPtr = controller.Pointer;
                     if (controllerPtr != IntPtr.Zero)
                     {
-                        unsafe
+                        IntPtr dataListPtr = IL2CppFieldReader.ReadPointer(controllerPtr, OFFSET_DATA_LIST);
+                        if (dataListPtr != IntPtr.Zero)
                         {
-                            IntPtr dataListPtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + OFFSET_DATA_LIST);
-                            if (dataListPtr != IntPtr.Zero)
-                            {
-                                dataList = new Il2CppSystem.Collections.Generic.List<OwnedItemData>(dataListPtr);
-                                MelonLogger.Msg($"[Battle Item] dataList via pointer, count: {dataList?.Count ?? -1}");
-                            }
-                            else
-                            {
-                                MelonLogger.Msg($"[Battle Item] dataList pointer is null");
-                            }
+                            dataList = new Il2CppSystem.Collections.Generic.List<OwnedItemData>(dataListPtr);
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    MelonLogger.Msg($"[Battle Item] Error reading dataList via pointer: {ex.Message}");
-                }
+                catch { } // IL2CPP pointer read may fail
 
                 if (dataList != null && index >= 0 && index < dataList.Count)
                 {
@@ -238,7 +205,7 @@ namespace FFI_ScreenReader.Patches
                                 return FormatItemAnnouncement(data);
                             }
                         }
-                        catch { }
+                        catch { } // Content controller data may be stale
                     }
                 }
             }
@@ -299,7 +266,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset("BattleItem");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_ITEM);
         }
     }
 }

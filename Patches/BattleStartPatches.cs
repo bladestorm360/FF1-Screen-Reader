@@ -33,8 +33,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Start] Applying battle start patches...");
-
                 // Patch StartPreeMptiveMes for battle condition announcements
                 PatchStartPreeMptiveMes(harmony);
 
@@ -44,7 +42,6 @@ namespace FFI_ScreenReader.Patches
                 // Patch StartEscape for escape message
                 PatchStartEscape(harmony);
 
-                MelonLogger.Msg("[Battle Start] Battle start patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -81,7 +78,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Start] Patched StartPreeMptiveMes successfully");
                 }
                 else
                 {
@@ -92,7 +88,6 @@ namespace FFI_ScreenReader.Patches
                     {
                         if (m.Name.StartsWith("Start") || m.Name.Contains("PreeMptive"))
                         {
-                            MelonLogger.Msg($"[Battle Start]   - {m.Name}");
                         }
                     }
                 }
@@ -131,7 +126,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(method, prefix: new HarmonyMethod(prefix));
-                    MelonLogger.Msg("[Battle Start] Patched ExitPreeMptive successfully");
                 }
                 else
                 {
@@ -172,7 +166,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Start] Patched StartEscape successfully");
                 }
                 else
                 {
@@ -203,13 +196,11 @@ namespace FFI_ScreenReader.Patches
 
                 // Get the preemptive state
                 int state = GetPreeMptiveState(__instance);
-                MelonLogger.Msg($"[Battle Start] PreeMptiveState = {state}");
 
                 // Get announcement based on state
                 string announcement = GetBattleStartAnnouncement(state);
                 if (string.IsNullOrEmpty(announcement)) return;
 
-                MelonLogger.Msg($"[Battle Start] Announcing: {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -234,7 +225,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Start] Party escaped!");
                 FFI_ScreenReaderMod.SpeakText("The party escaped!", interrupt: true);
             }
             catch (Exception ex)

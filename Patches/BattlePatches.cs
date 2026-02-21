@@ -18,12 +18,14 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleCommandState
     {
-        private const string CONTEXT = "BattleCommand.Select";
+        private static readonly MenuStateInstance _state = new MenuStateInstance();
+        static BattleCommandState() => _state.RegisterResetHandler();
 
-        /// <summary>
-        /// True when battle command selection is active.
-        /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
+        public static bool ShouldSuppress() => _state.ShouldSuppress();
+        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
+        public static void ClearState() => _state.ClearState();
+        public static void ResetState() => _state.ResetState();
 
         /// <summary>
         /// The last selected command index (0=Attack, 1=Magic, 2=Items, 3=Defend/Run).
@@ -31,34 +33,16 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static int LastSelectedCommandIndex { get; set; } = -1;
 
-        /// <summary>
-        /// Returns true if generic cursor reading should be suppressed.
-        /// Simply returns IsActive - battle command state is cleared explicitly on battle end.
-        /// </summary>
-        public static bool ShouldSuppress()
+        private class MenuStateInstance : MenuStateBase
         {
-            return IsActive;
+            protected override string RegistryKey => MenuStateRegistry.BATTLE_COMMAND;
+            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_COMMAND;
+            protected override void OnReset()
+            {
+                LastSelectedCommandIndex = -1;
+                base.OnReset();
+            }
         }
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
-
-        /// <summary>
-        /// Clears battle command state.
-        /// </summary>
-        public static void ClearState()
-        {
-            IsActive = false;
-            LastSelectedCommandIndex = -1;
-            AnnouncementDeduplicator.Reset(CONTEXT);
-        }
-
-        /// <summary>
-        /// Alias for ClearState() for consistency with other patches.
-        /// </summary>
-        public static void ResetState() => ClearState();
     }
 
     /// <summary>
@@ -66,27 +50,20 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleTargetState
     {
-        private const string CONTEXT = "BattleTarget.Select";
+        private static readonly MenuStateInstance _state = new MenuStateInstance();
+        static BattleTargetState() => _state.RegisterResetHandler();
 
-        /// <summary>
-        /// True when target selection is active.
-        /// </summary>
-        public static bool IsTargetSelectionActive { get; set; } = false;
-
-        /// <summary>
-        /// Returns true if generic cursor reading should be suppressed.
-        /// </summary>
-        public static bool ShouldSuppress()
-        {
-            return IsTargetSelectionActive;
-        }
+        public static bool IsTargetSelectionActive { get => _state.IsActive; set => _state.IsActive = value; }
+        public static bool ShouldSuppress() => _state.ShouldSuppress();
+        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
+        public static void ClearState() => _state.ClearState();
+        public static void ResetState() => _state.ResetState();
 
         /// <summary>
         /// Sets target selection active state.
         /// </summary>
         public static void SetTargetSelectionActive(bool active)
         {
-            MelonLogger.Msg($"[Battle Target] SetTargetSelectionActive: {active}");
             IsTargetSelectionActive = active;
             if (active)
             {
@@ -95,30 +72,13 @@ namespace FFI_ScreenReader.Patches
                 BattleMagicMenuState.IsActive = false;
                 BattleItemMenuState.IsActive = false;
             }
-            else
-            {
-                AnnouncementDeduplicator.Reset(CONTEXT);
-            }
         }
 
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
-
-        /// <summary>
-        /// Clears target selection state.
-        /// </summary>
-        public static void ClearState()
+        private class MenuStateInstance : MenuStateBase
         {
-            IsTargetSelectionActive = false;
-            AnnouncementDeduplicator.Reset(CONTEXT);
+            protected override string RegistryKey => MenuStateRegistry.BATTLE_TARGET;
+            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_TARGET;
         }
-
-        /// <summary>
-        /// Alias for ClearState() for consistency with other patches.
-        /// </summary>
-        public static void ResetState() => ClearState();
     }
 
     /// <summary>
@@ -126,39 +86,20 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleItemMenuState
     {
-        private const string CONTEXT = "BattleItem.Select";
+        private static readonly MenuStateInstance _state = new MenuStateInstance();
+        static BattleItemMenuState() => _state.RegisterResetHandler();
 
-        /// <summary>
-        /// True when battle item selection is active.
-        /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
+        public static bool ShouldSuppress() => _state.ShouldSuppress();
+        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
+        public static void Reset() => _state.ClearState();
+        public static void ResetState() => _state.ResetState();
 
-        /// <summary>
-        /// Returns true if generic cursor reading should be suppressed.
-        /// </summary>
-        public static bool ShouldSuppress()
+        private class MenuStateInstance : MenuStateBase
         {
-            return IsActive;
+            protected override string RegistryKey => MenuStateRegistry.BATTLE_ITEM;
+            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_ITEM_SELECT;
         }
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
-
-        /// <summary>
-        /// Resets battle item menu state.
-        /// </summary>
-        public static void Reset()
-        {
-            IsActive = false;
-            AnnouncementDeduplicator.Reset(CONTEXT);
-        }
-
-        /// <summary>
-        /// Alias for Reset() for consistency with other patches.
-        /// </summary>
-        public static void ResetState() => Reset();
     }
 
     /// <summary>
@@ -166,39 +107,20 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class BattleMagicMenuState
     {
-        private const string CONTEXT = "BattleMagic.Select";
+        private static readonly MenuStateInstance _state = new MenuStateInstance();
+        static BattleMagicMenuState() => _state.RegisterResetHandler();
 
-        /// <summary>
-        /// True when battle magic selection is active.
-        /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
+        public static bool ShouldSuppress() => _state.ShouldSuppress();
+        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
+        public static void Reset() => _state.ClearState();
+        public static void ResetState() => _state.ResetState();
 
-        /// <summary>
-        /// Returns true if generic cursor reading should be suppressed.
-        /// </summary>
-        public static bool ShouldSuppress()
+        private class MenuStateInstance : MenuStateBase
         {
-            return IsActive;
+            protected override string RegistryKey => MenuStateRegistry.BATTLE_MAGIC;
+            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_MAGIC_SELECT;
         }
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
-
-        /// <summary>
-        /// Resets battle magic menu state.
-        /// </summary>
-        public static void Reset()
-        {
-            IsActive = false;
-            AnnouncementDeduplicator.Reset(CONTEXT);
-        }
-
-        /// <summary>
-        /// Alias for Reset() for consistency with other patches.
-        /// </summary>
-        public static void ResetState() => Reset();
     }
 
     /// <summary>
@@ -219,7 +141,6 @@ namespace FFI_ScreenReader.Patches
         public static void OnBattleStart()
         {
             IsInBattle = true;
-            MelonLogger.Msg("[Battle] Battle started - IsInBattle = true");
         }
 
         /// <summary>
@@ -228,11 +149,12 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ClearAllBattleMenuFlags()
         {
-            BattleCommandState.ClearState();
-            BattleTargetState.ClearState();
-            BattleItemMenuState.Reset();
-            BattleMagicMenuState.Reset();
-            MelonLogger.Msg("[Battle] Cleared all battle menu flags");
+            MenuStateRegistry.Reset(
+                MenuStateRegistry.BATTLE_COMMAND,
+                MenuStateRegistry.BATTLE_TARGET,
+                MenuStateRegistry.BATTLE_ITEM,
+                MenuStateRegistry.BATTLE_MAGIC
+            );
         }
 
         /// <summary>
@@ -250,7 +172,6 @@ namespace FFI_ScreenReader.Patches
             IsInBattle = false;
             ClearAllBattleMenuFlags();
             BattleStartPatches.ResetState();
-            MelonLogger.Msg("[Battle] Battle ended - IsInBattle = false");
         }
 
         /// <summary>
@@ -263,7 +184,6 @@ namespace FFI_ScreenReader.Patches
             {
                 IsInBattle = false;
                 ClearAllBattleMenuFlags();
-                MelonLogger.Msg("[Battle] Force cleared stale battle state");
             }
         }
     }
@@ -292,7 +212,6 @@ namespace FFI_ScreenReader.Patches
                 PatchFadeOutCallbacks(harmony, controllerType);
 
                 isPatched = true;
-                MelonLogger.Msg("[Battle Controller] Patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -320,7 +239,6 @@ namespace FFI_ScreenReader.Patches
                     {
                         harmony.Patch(method,
                             postfix: new HarmonyMethod(typeof(BattleControllerPatches), nameof(FadeOut_Postfix)));
-                        MelonLogger.Msg($"[Battle Controller] Patched {callbackName}");
                     }
                 }
                 catch { }
@@ -340,7 +258,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     harmony.Patch(exitMethod,
                         prefix: new HarmonyMethod(typeof(BattleControllerPatches), nameof(Exit_Prefix)));
-                    MelonLogger.Msg("[Battle Controller] Patched Exit()");
                 }
             }
             catch (Exception ex)
@@ -378,7 +295,6 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 if (__instance == null) return;
-                MelonLogger.Msg("[Battle Controller] Exit() called - clearing battle state");
                 BattleStateHelper.TryClearOnBattleEnd();
             }
             catch (Exception ex)
@@ -433,7 +349,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     harmony.Patch(showMethod,
                         postfix: new HarmonyMethod(typeof(MainMenuControllerPatches), nameof(Show_Postfix)));
-                    MelonLogger.Msg("[MainMenu Patch] Patched MainMenuController.Show successfully");
                     isPatched = true;
                 }
                 else
@@ -446,7 +361,6 @@ namespace FFI_ScreenReader.Patches
                         {
                             harmony.Patch(m,
                                 postfix: new HarmonyMethod(typeof(MainMenuControllerPatches), nameof(Show_Postfix)));
-                            MelonLogger.Msg($"[MainMenu Patch] Patched MainMenuController.Show (alt signature)");
                             isPatched = true;
                             break;
                         }
@@ -480,7 +394,6 @@ namespace FFI_ScreenReader.Patches
                 // When main menu opens after battle, also clear battle states
                 if (BattleStateHelper.IsInBattle)
                 {
-                    MelonLogger.Msg("[MainMenu] Show() while IsInBattle - clearing all battle states");
                     BattleStateHelper.TryClearOnBattleEnd();
                     BattleCommandPatches.ClearCachedTargetController();
                 }

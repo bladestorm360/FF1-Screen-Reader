@@ -189,5 +189,181 @@ namespace FFI_ScreenReader.Utils
             public const int TargetData = 0x48;
         }
 
+        /// <summary>
+        /// Battle pause menu offsets (FF1-specific).
+        /// NOTE: FF1 uses 0x98 for pauseController, FF3 uses 0x90.
+        /// </summary>
+        public static class BattlePause
+        {
+            /// <summary>BattleUIManager.pauseController (FF1)</summary>
+            public const int PauseController = 0x98;
+
+            /// <summary>BattlePauseController.isActivePauseMenu</summary>
+            public const int IsActivePauseMenu = 0x71;
+        }
+
+        /// <summary>
+        /// Battle result menu offsets.
+        /// </summary>
+        public static class BattleResult
+        {
+            /// <summary>ResultMenuController.targetData</summary>
+            public const int TargetData = 0x60;
+        }
+
+        /// <summary>
+        /// Message window (MessageWindowManager) offsets.
+        /// </summary>
+        public static class MessageWindow
+        {
+            /// <summary>List&lt;string&gt; messageList</summary>
+            public const int MessageList = 0x88;
+
+            /// <summary>List&lt;int&gt; newPageLineList</summary>
+            public const int NewPageLineList = 0xA0;
+
+            /// <summary>int messageLineIndex</summary>
+            public const int MessageLineIndex = 0xB0;
+
+            /// <summary>int currentPageNumber</summary>
+            public const int CurrentPageNumber = 0xF8;
+
+            /// <summary>Speaker value field</summary>
+            public const int SpeakerValue = 0xA8;
+        }
+
+        /// <summary>
+        /// Shop info view offsets.
+        /// </summary>
+        public static class ShopInfo
+        {
+            /// <summary>ShopInfoController.view</summary>
+            public const int InfoView = 0x18;
+
+            /// <summary>ShopInfoView.descriptionText</summary>
+            public const int DescriptionText = 0x38;
+        }
+
+        /// <summary>
+        /// Save/Load popup offsets.
+        /// </summary>
+        public static class SaveLoad
+        {
+            /// <summary>SavePopup.messageText</summary>
+            public const int MessageText = 0x40;
+
+            /// <summary>SavePopup.commandList</summary>
+            public const int CommandList = 0x60;
+
+            /// <summary>LoadGameWindowController.savePopup (title screen)</summary>
+            public const int TitleLoadSavePopup = 0x58;
+
+            /// <summary>LoadWindowController/SaveWindowController.savePopup (main menu)</summary>
+            public const int MainMenuSavePopup = 0x28;
+
+            /// <summary>InterruptionWindowController.savePopup (QuickSave)</summary>
+            public const int InterruptionSavePopup = 0x38;
+        }
+
+        /// <summary>
+        /// Popup dialog offsets.
+        /// </summary>
+        public static class Popup
+        {
+            /// <summary>IconTextView.nameText</summary>
+            public const int IconTextViewNameText = 0x20;
+
+            /// <summary>CommonCommand.text</summary>
+            public const int CommonCommandText = 0x18;
+
+            // CommonPopup (KeyInput)
+            /// <summary>CommonPopup.title (IconTextView)</summary>
+            public const int CommonTitle = 0x38;
+
+            /// <summary>CommonPopup.message (Text)</summary>
+            public const int CommonMessage = 0x40;
+
+            /// <summary>CommonPopup.selectCursor (Cursor)</summary>
+            public const int CommonSelectCursor = 0x68;
+
+            /// <summary>CommonPopup.commandList (List&lt;CommonCommand&gt;)</summary>
+            public const int CommonCommandList = 0x70;
+
+            // ChangeMagicStonePopup
+            /// <summary>ChangeMagicStonePopup.nameText (Text)</summary>
+            public const int MagicStoneName = 0x28;
+
+            /// <summary>ChangeMagicStonePopup.descriptionText (Text)</summary>
+            public const int MagicStoneDesc = 0x30;
+
+            /// <summary>ChangeMagicStonePopup.commandList</summary>
+            public const int MagicStoneCommandList = 0x58;
+
+            // GameOverSelectPopup
+            /// <summary>GameOverSelectPopup.selectCursor (Cursor)</summary>
+            public const int GameOverSelectCursor = 0x38;
+
+            /// <summary>GameOverSelectPopup.commandList</summary>
+            public const int GameOverCommandList = 0x40;
+
+            // InfomationPopup
+            /// <summary>InfomationPopup.title (IconTextView)</summary>
+            public const int InfoTitle = 0x28;
+
+            /// <summary>InfomationPopup.message (Text)</summary>
+            public const int InfoMessage = 0x30;
+
+            // InputPopup
+            /// <summary>InputPopup.descriptionText (Text)</summary>
+            public const int InputDesc = 0x30;
+
+            // ChangeNamePopup
+            /// <summary>ChangeNamePopup.descriptionText (Text)</summary>
+            public const int ChangeNameDesc = 0x30;
+
+            // GameOverLoadPopup
+            /// <summary>GameOverLoadPopup.titleText (Text)</summary>
+            public const int GameOverLoadTitle = 0x38;
+
+            /// <summary>GameOverLoadPopup.messageText (Text)</summary>
+            public const int GameOverLoadMessage = 0x40;
+
+            /// <summary>GameOverLoadPopup.selectCursor (Cursor)</summary>
+            public const int GameOverLoadSelectCursor = 0x58;
+
+            /// <summary>GameOverLoadPopup.commandList</summary>
+            public const int GameOverLoadCommandList = 0x60;
+
+            // GameOverPopupController chain
+            /// <summary>GameOverPopupController.view (GameOverPopupView)</summary>
+            public const int GameOverPopupCtrlView = 0x30;
+
+            /// <summary>GameOverPopupView.loadPopup (GameOverLoadPopup)</summary>
+            public const int GameOverPopupViewLoadPopup = 0x18;
+
+            // TitleWindowController
+            /// <summary>TitleWindowController.view (KeyInput)</summary>
+            public const int TitleViewKeyInput = 0x48;
+
+            /// <summary>TitleWindowController.view (Touch)</summary>
+            public const int TitleViewTouch = 0x50;
+
+            /// <summary>TitleWindowView.startText (Text)</summary>
+            public const int TitleViewStartText = 0x30;
+        }
+
+        /// <summary>
+        /// UserDataManager / ConfigSaveData offsets for reading game settings.
+        /// </summary>
+        public static class UserData
+        {
+            /// <summary>UserDataManager.configSaveData</summary>
+            public const int ConfigSaveData = 0xB8;
+
+            /// <summary>ConfigSaveData.isAutoDash (int: 0=off, 1=on)</summary>
+            public const int IsAutoDash = 0x40;
+        }
+
     }
 }
+

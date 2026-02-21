@@ -35,8 +35,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Command] Applying battle command patches...");
-
                 // Patch SetCommandData for turn announcements
                 PatchSetCommandData(harmony);
 
@@ -46,7 +44,6 @@ namespace FFI_ScreenReader.Patches
                 // Patch target selection
                 PatchTargetSelection(harmony);
 
-                MelonLogger.Msg("[Battle Command] Battle command patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -75,7 +72,6 @@ namespace FFI_ScreenReader.Patches
                         if (parameters.Length == 3 && parameters[0].ParameterType.Name == "OwnedCharacterData")
                         {
                             method = m;
-                            MelonLogger.Msg($"[Battle Command] Found SetCommandData with OwnedCharacterData parameter");
                             break;
                         }
                     }
@@ -89,7 +85,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Command] Patched SetCommandData successfully");
                 }
                 else
                 {
@@ -111,15 +106,6 @@ namespace FFI_ScreenReader.Patches
             {
                 var controllerType = typeof(BattleCommandSelectController);
 
-                // Debug: Log all methods on this type
-                MelonLogger.Msg($"[Battle Command] Dumping methods on {controllerType.Name}:");
-                var allMethods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-                foreach (var m in allMethods)
-                {
-                    var parms = string.Join(", ", Array.ConvertAll(m.GetParameters(), p => p.ParameterType.Name));
-                    MelonLogger.Msg($"[Battle Command]   - {m.Name}({parms})");
-                }
-
                 // Try AccessTools first (Harmony's method finder)
                 var method = AccessTools.Method(controllerType, "SetCursor", new Type[] { typeof(int) });
 
@@ -137,7 +123,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Command] Patched SetCursor successfully");
                 }
                 else
                 {
@@ -187,8 +172,6 @@ namespace FFI_ScreenReader.Patches
                                 }
                             }
 
-                            MelonLogger.Msg($"[Battle Target] Found SelectContent - FullName: {fullTypeName}, ToString: {typeString}, GenericArg: {genericArgName}");
-
                             // Check using generic argument name or type string
                             bool isEnemy = genericArgName.Contains("BattleEnemyData") || typeString.Contains("BattleEnemyData") || fullTypeName.Contains("BattleEnemyData");
                             bool isPlayer = genericArgName.Contains("BattlePlayerData") || typeString.Contains("BattlePlayerData") || fullTypeName.Contains("BattlePlayerData");
@@ -201,7 +184,6 @@ namespace FFI_ScreenReader.Patches
                                     BindingFlags.Public | BindingFlags.Static
                                 );
                                 harmony.Patch(m, postfix: new HarmonyMethod(postfix));
-                                MelonLogger.Msg("[Battle Target] Patched SelectContent(Enemy) successfully");
                                 patchedEnemy = true;
                             }
                             else if (isPlayer && !patchedPlayer)
@@ -212,7 +194,6 @@ namespace FFI_ScreenReader.Patches
                                     BindingFlags.Public | BindingFlags.Static
                                 );
                                 harmony.Patch(m, postfix: new HarmonyMethod(postfix));
-                                MelonLogger.Msg("[Battle Target] Patched SelectContent(Player) successfully");
                                 patchedPlayer = true;
                             }
                         }
@@ -232,14 +213,8 @@ namespace FFI_ScreenReader.Patches
                             BindingFlags.Public | BindingFlags.Static
                         );
                         harmony.Patch(enemysInitMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[Battle Target] Patched EnemysInit as fallback");
                     }
                 }
-                else
-                {
-                    MelonLogger.Msg($"[Battle Target] Patched: Enemy={patchedEnemy}, Player={patchedPlayer}");
-                }
-
                 // Patch ShowWindow to track when target selection window is shown/hidden
                 PatchShowWindow(harmony, controllerType);
             }
@@ -268,7 +243,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(showWindowMethod, prefix: new HarmonyMethod(prefix));
-                    MelonLogger.Msg("[Battle Target] Patched ShowWindow successfully");
                 }
                 else
                 {
@@ -289,7 +263,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[Battle Target] ShowWindow Prefix: isShow={isShow}");
                 BattleTargetState.SetTargetSelectionActive(isShow);
 
                 if (!isShow)
@@ -322,7 +295,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Reset tracking for new turn
                 ResetTargetTracking();
-                AnnouncementDeduplicator.Reset("BattleCmd.Command");
+                AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_COMMAND);
 
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
@@ -331,7 +304,6 @@ namespace FFI_ScreenReader.Patches
                 BattleItemMenuState.IsActive = false;
 
                 string announcement = $"{characterName}'s turn";
-                MelonLogger.Msg($"[Battle Turn] {announcement}");
                 // Turn announcements interrupt
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
@@ -366,7 +338,6 @@ namespace FFI_ScreenReader.Patches
 
                 if (cachedTargetController == null)
                 {
-                    MelonLogger.Msg("[Battle Target] Controller not found, resetting flag to false");
                     BattleTargetState.SetTargetSelectionActive(false);
                     return false;
                 }
@@ -385,7 +356,6 @@ namespace FFI_ScreenReader.Patches
 
                 if (!isActuallyActive)
                 {
-                    MelonLogger.Msg($"[Battle Target] State mismatch detected: flag=True, actual=False");
                     BattleTargetState.SetTargetSelectionActive(false);
                 }
 
@@ -424,20 +394,15 @@ namespace FFI_ScreenReader.Patches
                 // Actively check target selection state (more reliable than just reading the flag)
                 bool targetActive = CheckAndUpdateTargetSelectionActive();
 
-                // Log EVERY SetCursor call to understand what's happening
-                MelonLogger.Msg($"[Battle Command] SetCursor called: index={index}, TargetActive={targetActive}");
-
                 // SUPPRESSION: If targeting is active, do not announce commands
                 if (targetActive)
                 {
-                    MelonLogger.Msg($"[Battle Command] SUPPRESSED - target selection active");
                     return;
                 }
 
                 // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleCmd.Command", index))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_CMD_COMMAND, index))
                 {
-                    MelonLogger.Msg($"[Battle Command] SUPPRESSED - duplicate index");
                     return;
                 }
 
@@ -446,12 +411,9 @@ namespace FFI_ScreenReader.Patches
                 try
                 {
                     contentList = __instance.contentList;
-                    MelonLogger.Msg($"[Battle Command] Direct contentList access: {(contentList != null ? contentList.Count.ToString() + " items" : "null")}");
                 }
                 catch (Exception ex)
                 {
-                    MelonLogger.Msg($"[Battle Command] Direct access failed: {ex.Message}, trying reflection...");
-
                     // Fallback to reflection (contentList at offset 0x50 for KeyInput)
                     try
                     {
@@ -460,11 +422,6 @@ namespace FFI_ScreenReader.Patches
                         if (field != null)
                         {
                             contentList = field.GetValue(__instance) as Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController>;
-                            MelonLogger.Msg($"[Battle Command] Reflection contentList: {(contentList != null ? contentList.Count.ToString() + " items" : "null")}");
-                        }
-                        else
-                        {
-                            MelonLogger.Msg("[Battle Command] contentList field not found via reflection");
                         }
                     }
                     catch (Exception ex2)
@@ -475,12 +432,10 @@ namespace FFI_ScreenReader.Patches
 
                 if (contentList == null || contentList.Count == 0)
                 {
-                    MelonLogger.Msg("[Battle Command] contentList is null or empty, cannot announce");
                     return;
                 }
                 if (index < 0 || index >= contentList.Count)
                 {
-                    MelonLogger.Msg($"[Battle Command] index {index} out of range (count={contentList.Count})");
                     return;
                 }
 
@@ -502,7 +457,6 @@ namespace FFI_ScreenReader.Patches
 
                 commandName = TextUtils.StripIconMarkup(commandName);
 
-                MelonLogger.Msg($"[Battle Command] {commandName}");
                 // Command selection doesn't interrupt - queues after turn announcement
                 FFI_ScreenReaderMod.SpeakText(commandName, interrupt: false);
             }
@@ -521,20 +475,17 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[Battle Target] SelectContent(Player) called, index={index}");
-
                 // Set target selection active
                 BattleTargetState.SetTargetSelectionActive(true);
 
                 // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleCmd.Player", index)) return;
-                AnnouncementDeduplicator.Reset("BattleCmd.Enemy");
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_CMD_PLAYER, index)) return;
+                AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_ENEMY);
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var playerList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattlePlayerData>>();
                 if (playerList == null || playerList.Count == 0)
                 {
-                    MelonLogger.Msg("[Battle Target] Could not cast player list");
                     return;
                 }
 
@@ -569,7 +520,6 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 string announcement = $"{name}: HP {currentHp}/{maxHp}";
-                MelonLogger.Msg($"[Battle Target] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -587,20 +537,17 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg($"[Battle Target] SelectContent(Enemy) called, index={index}");
-
                 // Set target selection active
                 BattleTargetState.SetTargetSelectionActive(true);
 
                 // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleCmd.Enemy", index)) return;
-                AnnouncementDeduplicator.Reset("BattleCmd.Player");
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_CMD_ENEMY, index)) return;
+                AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_PLAYER);
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var enemyList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattleEnemyData>>();
                 if (enemyList == null || enemyList.Count == 0)
                 {
-                    MelonLogger.Msg("[Battle Target] Could not cast enemy list");
                     return;
                 }
 
@@ -670,7 +617,7 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 // Apply enemy HP display mode setting
-                int hpMode = FFI_ScreenReaderMod.EnemyHPDisplay;
+                int hpMode = PreferencesManager.EnemyHPDisplay;
                 switch (hpMode)
                 {
                     case 0: // Numbers (default)
@@ -685,7 +632,6 @@ namespace FFI_ScreenReader.Patches
                         break;
                 }
 
-                MelonLogger.Msg($"[Battle Target] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -699,7 +645,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetTargetTracking()
         {
-            AnnouncementDeduplicator.Reset("BattleCmd.Player", "BattleCmd.Enemy");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_PLAYER, AnnouncementContexts.BATTLE_CMD_ENEMY);
         }
 
         /// <summary>
@@ -708,7 +654,7 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             lastCharacterId = -1;
-            AnnouncementDeduplicator.Reset("BattleCmd.Command", "BattleCmd.Player", "BattleCmd.Enemy");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_COMMAND, AnnouncementContexts.BATTLE_CMD_PLAYER, AnnouncementContexts.BATTLE_CMD_ENEMY);
         }
 
         /// <summary>
@@ -720,7 +666,6 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 BattleTargetState.SetTargetSelectionActive(true);
-                MelonLogger.Msg("[Battle Target] EnemysInit called (fallback)");
             }
             catch (Exception ex)
             {

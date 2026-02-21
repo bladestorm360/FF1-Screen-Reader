@@ -33,8 +33,6 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("[Battle Message] Applying battle message patches...");
-
                 // Patch InitActionState for actor/action announcements
                 PatchInitActionState(harmony);
 
@@ -47,7 +45,6 @@ namespace FFI_ScreenReader.Patches
                 // Patch BattleCommandMessageController.SetMessage for system messages like "The party was defeated"
                 PatchBattleCommandMessage(harmony);
 
-                MelonLogger.Msg("[Battle Message] Battle message patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -84,7 +81,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(initActionStateMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Message] Patched InitActionState successfully");
                 }
                 else
                 {
@@ -95,7 +91,6 @@ namespace FFI_ScreenReader.Patches
                     {
                         if (m.Name.Contains("Init") || m.Name.Contains("Action"))
                         {
-                            MelonLogger.Msg($"[Battle Message]   - {m.Name}");
                         }
                     }
                 }
@@ -132,7 +127,6 @@ namespace FFI_ScreenReader.Patches
                     );
 
                     harmony.Patch(createDamageViewMethod, postfix: new HarmonyMethod(postfix));
-                    MelonLogger.Msg("[Battle Message] Patched CreateDamageView successfully");
                 }
                 else
                 {
@@ -154,13 +148,11 @@ namespace FFI_ScreenReader.Patches
             {
                 // Use typeof() with the IL2CPP alias - more reliable than Type.GetType()
                 var conditionControllerType = typeof(BattleConditionController);
-                MelonLogger.Msg($"[Battle Message] BattleConditionController type: {conditionControllerType?.FullName ?? "null"}");
 
                 if (conditionControllerType != null)
                 {
                     // List all methods for debugging
                     var allMethods = conditionControllerType.GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-                    MelonLogger.Msg($"[Battle Message] Found {allMethods.Length} methods on BattleConditionController");
 
                     // The Add method is private: Add(BattleUnitData, int)
                     MethodInfo addMethod = null;
@@ -169,11 +161,9 @@ namespace FFI_ScreenReader.Patches
                         if (method.Name == "Add")
                         {
                             var parameters = method.GetParameters();
-                            MelonLogger.Msg($"[Battle Message] Found Add method with {parameters.Length} params");
                             if (parameters.Length == 2)
                             {
                                 addMethod = method;
-                                MelonLogger.Msg($"[Battle Message] Add params: {parameters[0].ParameterType.Name}, {parameters[1].ParameterType.Name}");
                                 break;
                             }
                         }
@@ -187,7 +177,6 @@ namespace FFI_ScreenReader.Patches
                         );
 
                         harmony.Patch(addMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[Battle Message] Patched BattleConditionController.Add successfully");
                     }
                     else
                     {
@@ -229,7 +218,6 @@ namespace FFI_ScreenReader.Patches
                             );
 
                             harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                            MelonLogger.Msg("[Battle Message] Patched BattleConditionController.InterruptAddCondition (fallback)");
                             return;
                         }
                     }
@@ -259,7 +247,6 @@ namespace FFI_ScreenReader.Patches
                 var actData = actExection.InStagingBattleActData;
                 if (actData == null)
                 {
-                    MelonLogger.Msg("[Battle Action] InStagingBattleActData is null");
                     return;
                 }
 
@@ -289,11 +276,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Use object-based deduplication so different enemies with the same name
                 // attacking in succession are both announced
-                if (AnnouncementDeduplicator.ShouldAnnounce("BattleAction", actData))
-                {
-                    MelonLogger.Msg($"[Battle Action] {announcement}");
-                    FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
-                }
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.BATTLE_ACTION, actData, announcement, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -316,7 +299,6 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 int hitTypeValue = (int)hitType;
-                MelonLogger.Msg($"[Battle Damage] data={data != null}, value={value}, hitType={hitTypeValue}, isRecovery={isRecovery}");
 
                 if (data == null) return;
 
@@ -331,28 +313,23 @@ namespace FFI_ScreenReader.Patches
                 {
                     // MP RECOVERY (Ether, Turbo Ether, etc.)
                     message = $"{targetName}: Recovered {value} MP";
-                    MelonLogger.Msg($"[Battle Damage] MP RECOVERY path for {targetName}");
                 }
                 else if (hitTypeValue == HITTYPE_MP_HIT)
                 {
                     // MP DAMAGE (Osmose, Rasp, etc.)
                     message = $"{targetName}: {value} MP damage";
-                    MelonLogger.Msg($"[Battle Damage] MP DAMAGE path for {targetName}");
                 }
                 else if (hitTypeValue == HITTYPE_RECOVERY || isRecovery)
                 {
                     // HP RECOVERY (Cure, Potion, etc.)
                     message = $"{targetName}: Recovered {value} HP";
-                    MelonLogger.Msg($"[Battle Damage] HP RECOVERY path for {targetName}");
                 }
                 else
                 {
                     // HP DAMAGE
                     message = $"{targetName}: {value} damage";
-                    MelonLogger.Msg($"[Battle Damage] HP DAMAGE path for {targetName}");
                 }
 
-                MelonLogger.Msg($"[Battle Damage] {message}");
                 // Damage/healing doesn't interrupt - queues after action announcement
                 FFI_ScreenReaderMod.SpeakText(message, interrupt: false);
             }
@@ -383,7 +360,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Use object-based deduplication so different enemies with same name
                 // getting the same status are both announced
-                if (!AnnouncementDeduplicator.ShouldAnnounce("BattleStatus", battleUnitData))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_STATUS, battleUnitData))
                 {
                     return;
                 }
@@ -391,7 +368,6 @@ namespace FFI_ScreenReader.Patches
                 string targetName = GetUnitName(battleUnitData);
                 string announcement = $"{targetName}: {conditionName}";
 
-                MelonLogger.Msg($"[Battle Status] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
             catch (Exception ex)
@@ -465,10 +441,7 @@ namespace FFI_ScreenReader.Patches
 
                 return TextUtils.StripIconMarkup(messageManager.GetMessage(mesIdName));
             }
-            catch
-            {
-                return null;
-            }
+            catch { return null; } // Master data lookup may fail
         }
 
         /// <summary>
@@ -576,7 +549,7 @@ namespace FFI_ScreenReader.Patches
                         return TextUtils.StripIconMarkup(name);
                     }
                 }
-                catch { }
+                catch { } // IL2CPP method may not be available
 
                 // Fallback: Use ContentUtitlity.GetMesIdAbilityName + MessageManager
                 try
@@ -595,7 +568,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch { }
+                catch { } // Fallback lookup may fail too
             }
             catch (Exception ex)
             {
@@ -609,7 +582,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset("BattleAction", "BattleStatus");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_ACTION, AnnouncementContexts.BATTLE_STATUS);
             lastBattleCommandMessage = "";
         }
 
@@ -630,7 +603,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch { }
+                catch { } // Assembly may not expose all types
             }
             return null;
         }
@@ -652,7 +625,6 @@ namespace FFI_ScreenReader.Patches
                         var postfix = typeof(BattleMessagePatches).GetMethod(
                             nameof(SetMessage_Postfix), BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(setMessageMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[Battle Message] Patched KeyInput.BattleCommandMessageController.SetMessage");
                     }
                     else
                     {
@@ -674,7 +646,6 @@ namespace FFI_ScreenReader.Patches
                         var postfix = typeof(BattleMessagePatches).GetMethod(
                             nameof(SetMessage_Postfix), BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(setSystemMsgMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("[Battle Message] Patched Touch.BattleCommandMessageController.SetSystemMessage");
                     }
                     else
                     {
@@ -721,7 +692,6 @@ namespace FFI_ScreenReader.Patches
                 // Use interrupt for defeat message
                 bool isDefeatMessage = cleanMessage.Contains("defeated", StringComparison.OrdinalIgnoreCase);
 
-                MelonLogger.Msg($"[Battle Command Message] {cleanMessage}");
                 FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: isDefeatMessage);
             }
             catch (Exception ex)

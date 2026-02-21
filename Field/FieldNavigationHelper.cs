@@ -68,13 +68,11 @@ namespace FFI_ScreenReader.Field
 
                 if (fieldMap == null)
                 {
-                    MelonLogger.Msg("[FieldNav] FieldMap not found");
                     return results;
                 }
 
                 if (fieldMap.fieldController == null)
                 {
-                    MelonLogger.Msg("[FieldNav] fieldController is null");
                     return results;
                 }
 
@@ -115,42 +113,39 @@ namespace FFI_ScreenReader.Field
                     // This gives us the actual vehicle type information
                     try
                     {
-                        unsafe
+                        IntPtr transportControllerPtr = fieldMap.fieldController.transportation.Pointer;
+                        if (transportControllerPtr != IntPtr.Zero)
                         {
-                            IntPtr transportControllerPtr = fieldMap.fieldController.transportation.Pointer;
-                            if (transportControllerPtr != IntPtr.Zero)
+                            // Get infoData (Transportation) at offset 0x18
+                            IntPtr infoDataPtr = IL2CppFieldReader.ReadPointer(transportControllerPtr, 0x18);
+                            if (infoDataPtr != IntPtr.Zero)
                             {
-                                // Get infoData (Transportation) at offset 0x18
-                                IntPtr infoDataPtr = *(IntPtr*)(transportControllerPtr + 0x18);
-                                if (infoDataPtr != IntPtr.Zero)
+                                // Get modelList (Dictionary) at offset 0x18 in Transportation
+                                IntPtr modelListPtr = IL2CppFieldReader.ReadPointer(infoDataPtr, 0x18);
+                                if (modelListPtr != IntPtr.Zero)
                                 {
-                                    // Get modelList (Dictionary) at offset 0x18 in Transportation
-                                    IntPtr modelListPtr = *(IntPtr*)(infoDataPtr + 0x18);
-                                    if (modelListPtr != IntPtr.Zero)
+                                    var modelListObj = new Il2CppSystem.Object(modelListPtr);
+                                    var modelDict = modelListObj.TryCast<Il2CppSystem.Collections.Generic.Dictionary<int, TransportationInfo>>();
+
+                                    if (modelDict != null)
                                     {
-                                        var modelListObj = new Il2CppSystem.Object(modelListPtr);
-                                        var modelDict = modelListObj.TryCast<Il2CppSystem.Collections.Generic.Dictionary<int, TransportationInfo>>();
-
-                                        if (modelDict != null)
+                                        foreach (var kvp in modelDict)
                                         {
-                                            foreach (var kvp in modelDict)
+                                            var transportInfo = kvp.Value;
+                                            if (transportInfo == null) continue;
+
+                                            bool enabled = transportInfo.Enable;
+                                            int transportType = transportInfo.Type;
+
+                                            // Skip non-vehicle types and disabled vehicles
+                                            // Type 0 = None, Type 1 = Player; Types 2,3,5,7 are valid vehicles in FF1
+                                            if (transportType == 0 || transportType == 1 || !enabled) continue;
+
+                                            var mapObject = transportInfo.MapObject;
+                                            if (mapObject != null && !results.Contains(mapObject))
                                             {
-                                                var transportInfo = kvp.Value;
-                                                if (transportInfo == null) continue;
-
-                                                bool enabled = transportInfo.Enable;
-                                                int transportType = transportInfo.Type;
-
-                                                // Skip non-vehicle types and disabled vehicles
-                                                // Type 0 = None, Type 1 = Player; Types 2,3,5,7 are valid vehicles in FF1
-                                                if (transportType == 0 || transportType == 1 || !enabled) continue;
-
-                                                var mapObject = transportInfo.MapObject;
-                                                if (mapObject != null && !results.Contains(mapObject))
-                                                {
-                                                    results.Add(mapObject);
-                                                    VehicleTypeMap[mapObject] = transportType;
-                                                }
+                                                results.Add(mapObject);
+                                                VehicleTypeMap[mapObject] = transportType;
                                             }
                                         }
                                     }
@@ -165,50 +160,43 @@ namespace FFI_ScreenReader.Field
                 // These are stored separately from the main entityList (e.g., airship-raising tile)
                 try
                 {
-                    unsafe
+                    IntPtr fieldControllerPtr = fieldMap.fieldController.Pointer;
+                    if (fieldControllerPtr != IntPtr.Zero)
                     {
-                        IntPtr fieldControllerPtr = fieldMap.fieldController.Pointer;
-                        if (fieldControllerPtr != IntPtr.Zero)
+                        // FootEvent at offset 0x120 on FieldController
+                        IntPtr footEventPtr = IL2CppFieldReader.ReadPointer(fieldControllerPtr, 0x120);
+                        if (footEventPtr == IntPtr.Zero)
                         {
-                            // FootEvent at offset 0x120 on FieldController
-                            IntPtr footEventPtr = *(IntPtr*)(fieldControllerPtr + 0x120);
-                            if (footEventPtr == IntPtr.Zero)
+                            // FootEvent not yet initialized - normal during early load
+                        }
+                        else
+                        {
+                            // stepOnTriggerList (Dictionary<int, EventTriggerEntity>) at offset 0x10
+                            IntPtr dictPtr = IL2CppFieldReader.ReadPointer(footEventPtr, 0x10);
+                            if (dictPtr == IntPtr.Zero)
                             {
-                                MelonLogger.Msg("[FootEvent] footEventPtr is Zero — FootEvent not yet initialized");
+                                // stepOnTriggerList not available at this offset
                             }
                             else
                             {
-                                // stepOnTriggerList (Dictionary<int, EventTriggerEntity>) at offset 0x10
-                                IntPtr dictPtr = *(IntPtr*)(footEventPtr + 0x10);
-                                if (dictPtr == IntPtr.Zero)
+                                var dictObj = new Il2CppSystem.Object(dictPtr);
+                                var triggerDict = dictObj.TryCast<Il2CppSystem.Collections.Generic.Dictionary<int, EventTriggerEntity>>();
+                                if (triggerDict == null)
                                 {
-                                    MelonLogger.Msg("[FootEvent] dictPtr is Zero — offset 0x10 may be wrong");
+                                    // Dictionary cast failed - type mismatch at this offset
                                 }
                                 else
                                 {
-                                    var dictObj = new Il2CppSystem.Object(dictPtr);
-                                    var triggerDict = dictObj.TryCast<Il2CppSystem.Collections.Generic.Dictionary<int, EventTriggerEntity>>();
-                                    if (triggerDict == null)
+                                    foreach (var kvp in triggerDict)
                                     {
-                                        MelonLogger.Msg("[FootEvent] TryCast<Dictionary> returned null — wrong type assumption");
-                                    }
-                                    else
-                                    {
-                                        int added = 0;
-                                        foreach (var kvp in triggerDict)
+                                        var triggerEntity = kvp.Value;
+                                        if (triggerEntity == null) continue;
+                                        var fieldEntity = triggerEntity.TryCast<FieldEntity>();
+                                        if (fieldEntity == null) continue;
+                                        if (!results.Contains(fieldEntity))
                                         {
-                                            var triggerEntity = kvp.Value;
-                                            if (triggerEntity == null) continue;
-                                            var fieldEntity = triggerEntity.TryCast<FieldEntity>();
-                                            if (fieldEntity == null) continue;
-                                            if (!results.Contains(fieldEntity))
-                                            {
-                                                results.Add(fieldEntity);
-                                                added++;
-                                            }
+                                            results.Add(fieldEntity);
                                         }
-                                        if (added > 0)
-                                            MelonLogger.Msg($"[FootEvent] Added {added} entities from stepOnTriggerList");
                                     }
                                 }
                             }

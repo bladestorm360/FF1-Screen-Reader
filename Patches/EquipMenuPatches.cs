@@ -29,7 +29,11 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// True when equipment menu is active and handling announcements.
         /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive
+        {
+            get => MenuStateRegistry.IsActive(MenuStateRegistry.EQUIP_MENU);
+            set => MenuStateRegistry.SetActive(MenuStateRegistry.EQUIP_MENU, value);
+        }
 
         /// <summary>
         /// True when equipment menu was entered from shop menu.
@@ -37,7 +41,14 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static bool EnteredFromShop { get; set; } = false;
 
-        private const string CONTEXT = "Equip.Select";
+        static EquipMenuState()
+        {
+            MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.EQUIP_MENU, () =>
+            {
+                EnteredFromShop = false;
+                AnnouncementDeduplicator.Reset(AnnouncementContexts.EQUIP_SELECT);
+            });
+        }
 
         // State machine offset - use centralized offsets
         private const int OFFSET_STATE_MACHINE = IL2CppOffsets.MenuStateMachine.Equip;
@@ -99,7 +110,7 @@ namespace FFI_ScreenReader.Patches
                 return true;
             }
             catch
-            {
+            { // State check failed; assume menu closed
                 ClearState();
                 return false;
             }
@@ -111,8 +122,6 @@ namespace FFI_ScreenReader.Patches
         public static void ClearState()
         {
             IsActive = false;
-            EnteredFromShop = false;
-            AnnouncementDeduplicator.Reset(CONTEXT);
         }
 
         /// <summary>
@@ -123,7 +132,7 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// Check if announcement should be made (string-only deduplication).
         /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(CONTEXT, announcement);
+        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.EQUIP_SELECT, announcement);
 
         public static string GetSlotName(EquipSlotType slot)
         {
@@ -231,7 +240,7 @@ namespace FFI_ScreenReader.Patches
                             equippedItem += ", " + paramMsg;
                         }
                     }
-                    catch { }
+                    catch { } // IL2CPP item data may not resolve
                 }
 
                 // Build announcement
@@ -280,7 +289,6 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Equip");
                 EquipMenuState.IsActive = true;
 
-                MelonLogger.Msg($"[Equipment Slot] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -306,13 +314,11 @@ namespace FFI_ScreenReader.Patches
                 // Capture shop restoration flag before clearing state
                 bool shouldRestoreShop = EquipMenuState.EnteredFromShop;
 
-                MelonLogger.Msg($"[Equipment Menu] SetActive(false) - clearing state, shouldRestoreShop={shouldRestoreShop}");
                 EquipMenuState.ClearState();
 
                 // Restore shop state if we entered from shop menu
                 if (shouldRestoreShop)
                 {
-                    MelonLogger.Msg("[Equipment Menu] Restoring shop state after equipment menu close");
                     ShopMenuTracker.IsShopMenuActive = true;
                 }
             }
@@ -381,7 +387,7 @@ namespace FFI_ScreenReader.Patches
                         announcement += $", {paramMessage}";
                     }
                 }
-                catch { }
+                catch { } // Parameter stats may not be available
 
                 // Add description
                 try
@@ -393,7 +399,7 @@ namespace FFI_ScreenReader.Patches
                         announcement += $", {description}";
                     }
                 }
-                catch { }
+                catch { } // Description may not be available
 
                 // Skip duplicates
                 if (!EquipMenuState.ShouldAnnounce(announcement))
@@ -410,7 +416,6 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Equip");
                 EquipMenuState.IsActive = true;
 
-                MelonLogger.Msg($"[Equipment Item] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -440,7 +445,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     harmony.Patch(setFocusMethod,
                         postfix: new HarmonyMethod(typeof(EquipMenuPatches), nameof(CommandSetFocus_Postfix)));
-                    MelonLogger.Msg("[Equipment] Patched EquipmentCommandController.SetFocus");
                 }
                 else
                 {
@@ -464,7 +468,6 @@ namespace FFI_ScreenReader.Patches
             {
                 if (isFocus && ShopMenuTracker.IsShopMenuActive)
                 {
-                    MelonLogger.Msg("[Equipment] Command bar gained focus from shop - clearing shop state");
                     ShopMenuTracker.ClearForEquipmentSubmenu();
                 }
             }

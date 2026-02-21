@@ -9,18 +9,17 @@ namespace FFI_ScreenReader.Utils
     /// </summary>
     public static class TextUtils
     {
-        // Compiled regex for stripping icon markup (e.g., <ic_Drag>, <IC_DRAG>)
-        // Using RegexOptions.Compiled for better performance on repeated calls
         private static readonly Regex IconMarkupRegex = new Regex(
             @"<[iI][cC]_[^>]+>",
             RegexOptions.Compiled);
 
+        private static readonly Regex RichTextTagRegex = new Regex(
+            @"<[^>]+>",
+            RegexOptions.Compiled);
+
         /// <summary>
         /// Removes icon markup tags from text (e.g., &lt;ic_Drag&gt;, &lt;IC_DRAG&gt;).
-        /// Uses a pre-compiled regex for better performance.
         /// </summary>
-        /// <param name="text">The text to strip markup from.</param>
-        /// <returns>Text with icon markup removed and trimmed, or empty string if null.</returns>
         public static string StripIconMarkup(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -30,13 +29,33 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Recursively searches for a child Transform with the specified name.
-        /// More efficient than GetComponentsInChildren as it doesn't allocate an array
-        /// and stops searching once found.
+        /// Normalizes whitespace in text: replaces newlines with spaces,
+        /// collapses multiple spaces into one, and trims.
         /// </summary>
-        /// <param name="parent">The transform to search from.</param>
-        /// <param name="name">The GameObject name to find.</param>
-        /// <returns>The Transform if found, null otherwise.</returns>
+        public static string NormalizeWhitespace(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            text = text.Replace("\n", " ").Replace("\r", " ").Trim();
+            while (text.Contains("  ")) text = text.Replace("  ", " ");
+            return text;
+        }
+
+        /// <summary>
+        /// Strips all Unity rich text / XML-style tags from a string.
+        /// Removes tags like &lt;color=#xxxxxx&gt;, &lt;/color&gt;, &lt;b&gt;, &lt;/b&gt;, etc.
+        /// Different from StripIconMarkup which only strips &lt;IC_...&gt; tags.
+        /// </summary>
+        public static string StripRichTextTags(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            return RichTextTagRegex.Replace(text, string.Empty);
+        }
+
+        /// <summary>
+        /// Recursively searches for a child Transform with the specified name.
+        /// </summary>
         public static Transform FindTransformInChildren(Transform parent, string name)
         {
             if (parent == null)
@@ -48,7 +67,6 @@ namespace FFI_ScreenReader.Utils
                 if (child.name == name)
                     return child;
 
-                // Recurse into children
                 var found = FindTransformInChildren(child, name);
                 if (found != null)
                     return found;
@@ -59,12 +77,7 @@ namespace FFI_ScreenReader.Utils
 
         /// <summary>
         /// Recursively searches for a Text component with the specified GameObject name.
-        /// More efficient than GetComponentsInChildren as it doesn't allocate an array
-        /// and stops searching once found.
         /// </summary>
-        /// <param name="parent">The transform to search from.</param>
-        /// <param name="name">The GameObject name to find.</param>
-        /// <returns>The Text component if found, null otherwise.</returns>
         public static UnityEngine.UI.Text FindTextInChildren(Transform parent, string name)
         {
             if (parent == null)
@@ -80,7 +93,6 @@ namespace FFI_ScreenReader.Utils
                         return text;
                 }
 
-                // Recurse into children
                 var found = FindTextInChildren(child, name);
                 if (found != null)
                     return found;
@@ -91,11 +103,7 @@ namespace FFI_ScreenReader.Utils
 
         /// <summary>
         /// Checks if any Text component exists whose GameObject name contains the specified substring.
-        /// More efficient than GetComponentsInChildren as it stops on first match.
         /// </summary>
-        /// <param name="parent">The transform to search from.</param>
-        /// <param name="nameContains">Substring to search for in GameObject names.</param>
-        /// <returns>True if a matching Text component exists.</returns>
         public static bool HasTextWithNameContaining(Transform parent, string nameContains)
         {
             if (parent == null)
@@ -111,7 +119,6 @@ namespace FFI_ScreenReader.Utils
                         return true;
                 }
 
-                // Recurse into children
                 if (HasTextWithNameContaining(child, nameContains))
                     return true;
             }
@@ -120,12 +127,8 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Iterates through all Text components in children (depth-first order)
-        /// and invokes the callback for each one. Avoids array allocation.
+        /// Iterates through all Text components in children and invokes the callback for each one.
         /// </summary>
-        /// <param name="parent">The transform to search from.</param>
-        /// <param name="callback">Action to invoke for each Text component found.</param>
-        /// <param name="includeInactive">Whether to include inactive GameObjects.</param>
         public static void ForEachTextInChildren(Transform parent, Action<UnityEngine.UI.Text> callback, bool includeInactive = true)
         {
             if (parent == null || callback == null)
@@ -140,28 +143,20 @@ namespace FFI_ScreenReader.Utils
             {
                 var child = parent.GetChild(i);
 
-                // Check if we should process this child
                 if (!includeInactive && !child.gameObject.activeInHierarchy)
                     continue;
 
-                // Check for Text component on this child
                 var text = child.GetComponent<UnityEngine.UI.Text>();
                 if (text != null)
                     callback(text);
 
-                // Recurse into children
                 ForEachTextInChildrenInternal(child, callback, includeInactive);
             }
         }
 
         /// <summary>
-        /// Finds the first Text component in children (depth-first order) that passes the predicate.
-        /// More efficient than GetComponentsInChildren + FirstOrDefault as it stops on first match.
+        /// Finds the first Text component in children that passes the predicate.
         /// </summary>
-        /// <param name="parent">The transform to search from.</param>
-        /// <param name="predicate">Function to test each Text component.</param>
-        /// <param name="includeInactive">Whether to include inactive GameObjects.</param>
-        /// <returns>The first matching Text component, or null if none found.</returns>
         public static UnityEngine.UI.Text FindFirstText(Transform parent, Func<UnityEngine.UI.Text, bool> predicate, bool includeInactive = true)
         {
             if (parent == null || predicate == null)
@@ -176,22 +171,55 @@ namespace FFI_ScreenReader.Utils
             {
                 var child = parent.GetChild(i);
 
-                // Check if we should process this child
                 if (!includeInactive && !child.gameObject.activeInHierarchy)
                     continue;
 
-                // Check for Text component on this child
                 var text = child.GetComponent<UnityEngine.UI.Text>();
                 if (text != null && predicate(text))
                     return text;
 
-                // Recurse into children
                 var found = FindFirstTextInternal(child, predicate, includeInactive);
                 if (found != null)
                     return found;
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Finds the "Content" transform under a ScrollView/Viewport hierarchy.
+        /// </summary>
+        public static Transform FindContentList(Transform root)
+        {
+            var content = FindTransformInChildren(root, "Content");
+            if (content != null && content.parent != null &&
+                (content.parent.name == "Viewport" || content.parent.parent?.name == "Scroll View"))
+            {
+                return content;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Safely gets text from a Text component, returning null if null/empty/whitespace.
+        /// </summary>
+        public static string GetTextSafe(UnityEngine.UI.Text textComponent)
+        {
+            if (textComponent == null)
+                return null;
+
+            try
+            {
+                string text = textComponent.text;
+                if (string.IsNullOrWhiteSpace(text))
+                    return null;
+
+                return text.Trim();
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

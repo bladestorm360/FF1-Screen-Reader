@@ -49,6 +49,25 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Checks if a combined index+string announcement should be spoken.
+        /// Both must match the previous values to be considered a duplicate.
+        /// </summary>
+        public static bool ShouldAnnounce(string context, int index, string text)
+        {
+            string intKey = context + ".index";
+
+            bool indexMatch = _lastInts.TryGetValue(intKey, out var lastIdx) && lastIdx == index;
+            bool textMatch = _lastStrings.TryGetValue(context, out var lastText) && lastText == text;
+
+            if (indexMatch && textMatch)
+                return false;
+
+            _lastInts[intKey] = index;
+            _lastStrings[context] = text ?? string.Empty;
+            return true;
+        }
+
+        /// <summary>
         /// Checks if an object reference announcement should be spoken (different from last).
         /// Uses reference equality for comparison - different instances with same text will both announce.
         /// Use this for battle actions where multiple enemies with the same name should each be announced.
@@ -69,6 +88,46 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Gets the last announced string for a context without updating it.
+        /// </summary>
+        public static string GetLastString(string context)
+        {
+            return _lastStrings.TryGetValue(context, out var last) ? last : null;
+        }
+
+        /// <summary>
+        /// Gets the last announced index for a context without updating it.
+        /// </summary>
+        public static int GetLastIndex(string context)
+        {
+            return _lastInts.TryGetValue(context, out var last) ? last : -1;
+        }
+
+        /// <summary>
+        /// Convenience: checks dedup and speaks if new. Combines the common two-line pattern.
+        /// Returns true if the announcement was made.
+        /// </summary>
+        public static bool AnnounceIfNew(string context, string text, bool interrupt = true)
+        {
+            if (!ShouldAnnounce(context, text))
+                return false;
+            FFI_ScreenReader.Core.FFI_ScreenReaderMod.SpeakText(text, interrupt);
+            return true;
+        }
+
+        /// <summary>
+        /// Convenience: checks dedup with index+text and speaks if new.
+        /// Returns true if the announcement was made.
+        /// </summary>
+        public static bool AnnounceIfNew(string context, int index, string text, bool interrupt = true)
+        {
+            if (!ShouldAnnounce(context, index, text))
+                return false;
+            FFI_ScreenReader.Core.FFI_ScreenReaderMod.SpeakText(text, interrupt);
+            return true;
+        }
+
+        /// <summary>
         /// Resets tracking for a specific context.
         /// Call this when a menu opens/closes or state changes.
         /// </summary>
@@ -76,6 +135,7 @@ namespace FFI_ScreenReader.Utils
         {
             _lastStrings.Remove(context);
             _lastInts.Remove(context);
+            _lastInts.Remove(context + ".index");
             _lastObjects.Remove(context);
         }
 

@@ -25,22 +25,19 @@ namespace FFI_ScreenReader.Utils
 
             try
             {
-                unsafe
-                {
-                    // Read stateMachine pointer at the specified offset
-                    IntPtr stateMachinePtr = *(IntPtr*)((byte*)controllerPtr.ToPointer() + stateMachineOffset);
-                    if (stateMachinePtr == IntPtr.Zero)
-                        return -1;
+                // Read stateMachine pointer at the specified offset
+                IntPtr stateMachinePtr = IL2CppFieldReader.ReadPointer(controllerPtr, stateMachineOffset);
+                if (stateMachinePtr == IntPtr.Zero)
+                    return -1;
 
-                    // Read current State<T> pointer at offset 0x10
-                    IntPtr currentStatePtr = *(IntPtr*)((byte*)stateMachinePtr.ToPointer() + OFFSET_STATE_MACHINE_CURRENT);
-                    if (currentStatePtr == IntPtr.Zero)
-                        return -1;
+                // Read current State<T> pointer at offset 0x10
+                IntPtr currentStatePtr = IL2CppFieldReader.ReadPointer(stateMachinePtr, OFFSET_STATE_MACHINE_CURRENT);
+                if (currentStatePtr == IntPtr.Zero)
+                    return -1;
 
-                    // Read Tag (int) at offset 0x10
-                    int stateValue = *(int*)((byte*)currentStatePtr.ToPointer() + OFFSET_STATE_TAG);
-                    return stateValue;
-                }
+                // Read Tag (int) at offset 0x10
+                int stateValue = IL2CppFieldReader.ReadInt32(currentStatePtr, OFFSET_STATE_TAG);
+                return stateValue;
             }
             catch
             {

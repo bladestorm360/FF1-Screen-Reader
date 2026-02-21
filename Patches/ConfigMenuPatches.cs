@@ -19,7 +19,19 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// True when config menu is actively handling cursor events.
         /// </summary>
-        public static bool IsActive { get; set; } = false;
+        public static bool IsActive
+        {
+            get => MenuStateRegistry.IsActive(MenuStateRegistry.CONFIG_MENU);
+            set => MenuStateRegistry.SetActive(MenuStateRegistry.CONFIG_MENU, value);
+        }
+
+        static ConfigMenuState()
+        {
+            MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.CONFIG_MENU, () =>
+            {
+                ConfigCommandController_SetFocus_Patch.ResetState();
+            });
+        }
 
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
@@ -54,7 +66,6 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             IsActive = false;
-            ConfigCommandController_SetFocus_Patch.ResetState();
         }
     }
 
@@ -132,18 +143,17 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Text", announcement))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_TEXT, announcement))
                     return;
 
                 // Skip if same setting - value changes are handled by SwitchArrowSelectTypeProcess/SwitchSliderTypeProcess
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Setting", menuText))
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_SETTING, menuText))
                     return;
 
                 // Set active state and clear other menu states
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
                 ConfigMenuState.IsActive = true;
 
-                MelonLogger.Msg($"[Config Menu] {announcement}");
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -157,7 +167,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset("Config.Text", "Config.Setting", "Config.Arrow", "Config.Slider", "Config.TouchArrow", "Config.TouchSlider");
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.CONFIG_TEXT, AnnouncementContexts.CONFIG_SETTING, AnnouncementContexts.CONFIG_ARROW, AnnouncementContexts.CONFIG_SLIDER, AnnouncementContexts.CONFIG_TOUCH_ARROW, AnnouncementContexts.CONFIG_TOUCH_SLIDER);
         }
     }
 
@@ -198,10 +208,7 @@ namespace FFI_ScreenReader.Patches
                             if (IsValidConfigValue(textValue))
                             {
                                 // Use central deduplicator - only announce if value changed
-                                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Arrow", textValue)) return;
-
-                                MelonLogger.Msg($"[ConfigMenu] Arrow value changed: {textValue}");
-                                FFI_ScreenReaderMod.SpeakText(textValue, interrupt: true);
+                                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_ARROW, textValue, interrupt: true);
                                 return;
                             }
                         }
@@ -270,16 +277,12 @@ namespace FFI_ScreenReader.Patches
                 if (controller != lastController)
                 {
                     lastController = controller;
-                    AnnouncementDeduplicator.ShouldAnnounce("Config.Slider", percentage); // Update tracker without announcing
+                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_SLIDER, percentage); // Update tracker without announcing
                     return;
                 }
 
                 // Same controller - use central deduplicator to check if value changed
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.Slider", percentage))
-                    return;
-
-                MelonLogger.Msg($"[ConfigMenu] Slider value changed: {percentage}");
-                FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_SLIDER, percentage, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -324,10 +327,7 @@ namespace FFI_ScreenReader.Patches
                             if (IsValidTouchConfigValue(textValue))
                             {
                                 // Use central deduplicator - only announce if value changed
-                                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.TouchArrow", textValue)) return;
-
-                                MelonLogger.Msg($"[ConfigMenu] Touch arrow value changed: {textValue}");
-                                FFI_ScreenReaderMod.SpeakText(textValue, interrupt: true);
+                                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_TOUCH_ARROW, textValue, interrupt: true);
                                 return;
                             }
                         }
@@ -397,16 +397,12 @@ namespace FFI_ScreenReader.Patches
                 if (controller != lastTouchController)
                 {
                     lastTouchController = controller;
-                    AnnouncementDeduplicator.ShouldAnnounce("Config.TouchSlider", percentage); // Update tracker without announcing
+                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_TOUCH_SLIDER, percentage); // Update tracker without announcing
                     return;
                 }
 
                 // Same controller - use central deduplicator to check if value changed
-                if (!AnnouncementDeduplicator.ShouldAnnounce("Config.TouchSlider", percentage))
-                    return;
-
-                MelonLogger.Msg($"[ConfigMenu] Touch slider value changed: {percentage}");
-                FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_TOUCH_SLIDER, percentage, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -427,7 +423,6 @@ namespace FFI_ScreenReader.Patches
         {
             if (!isActive)
             {
-                MelonLogger.Msg("[Config Menu] SetActive(false) - clearing state");
                 ConfigMenuState.ResetState();
             }
         }
@@ -446,7 +441,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
-            MelonLogger.Msg("Config menu patches registered (using HarmonyPatch attributes)");
+            // Config menu patches registered (using HarmonyPatch attributes)
         }
     }
 }

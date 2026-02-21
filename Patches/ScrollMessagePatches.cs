@@ -26,21 +26,16 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                MelonLogger.Msg("Applying scroll/fade message patches...");
-
                 // Patch FadeMessageManager.Play - receives single message string
                 Type fadeManagerType = FindType("Il2CppLast.Message.FadeMessageManager");
                 if (fadeManagerType != null)
                 {
-                    MelonLogger.Msg($"Found FadeMessageManager: {fadeManagerType.FullName}");
-
                     var playMethod = AccessTools.Method(fadeManagerType, "Play");
                     if (playMethod != null)
                     {
                         var postfix = typeof(ScrollMessagePatches).GetMethod("FadeManagerPlay_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("Patched FadeMessageManager.Play");
                     }
                 }
                 else
@@ -48,51 +43,17 @@ namespace FFI_ScreenReader.Patches
                     MelonLogger.Warning("FadeMessageManager type not found");
                 }
 
-                // Patch LineFadeMessageManager.Play and AsyncPlay - receives List<string> messages
-                Type lineFadeManagerType = FindType("Il2CppLast.Message.LineFadeMessageManager");
-                if (lineFadeManagerType != null)
-                {
-                    MelonLogger.Msg($"Found LineFadeMessageManager: {lineFadeManagerType.FullName}");
-
-                    // Patch Play method
-                    var playMethod = AccessTools.Method(lineFadeManagerType, "Play");
-                    if (playMethod != null)
-                    {
-                        var postfix = typeof(ScrollMessagePatches).GetMethod("LineFadeManagerPlay_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("Patched LineFadeMessageManager.Play");
-                    }
-
-                    // Patch AsyncPlay method
-                    var asyncPlayMethod = AccessTools.Method(lineFadeManagerType, "AsyncPlay");
-                    if (asyncPlayMethod != null)
-                    {
-                        var postfix = typeof(ScrollMessagePatches).GetMethod("LineFadeManagerPlay_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(asyncPlayMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("Patched LineFadeMessageManager.AsyncPlay");
-                    }
-                }
-                else
-                {
-                    MelonLogger.Warning("LineFadeMessageManager type not found");
-                }
-
-                // Also patch LineFadeMessageWindowController.SetData directly
+                // Patch LineFadeMessageWindowController.SetData directly
                 // (some code paths bypass the Manager and call the Controller)
                 Type lineFadeControllerType = FindType("Il2CppLast.UI.Message.LineFadeMessageWindowController");
                 if (lineFadeControllerType != null)
                 {
-                    MelonLogger.Msg($"Found LineFadeMessageWindowController: {lineFadeControllerType.FullName}");
-
                     var setDataMethod = AccessTools.Method(lineFadeControllerType, "SetData");
                     if (setDataMethod != null)
                     {
                         var postfix = typeof(ScrollMessagePatches).GetMethod("LineFadeWindowController_SetData_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(setDataMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("Patched LineFadeMessageWindowController.SetData");
                     }
                 }
                 else
@@ -104,23 +65,18 @@ namespace FFI_ScreenReader.Patches
                 Type scrollManagerType = FindType("Il2CppLast.Message.ScrollMessageManager");
                 if (scrollManagerType != null)
                 {
-                    MelonLogger.Msg($"Found ScrollMessageManager: {scrollManagerType.FullName}");
-
                     var playMethod = AccessTools.Method(scrollManagerType, "Play");
                     if (playMethod != null)
                     {
                         var postfix = typeof(ScrollMessagePatches).GetMethod("ScrollManagerPlay_Postfix",
                             BindingFlags.Public | BindingFlags.Static);
                         harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                        MelonLogger.Msg("Patched ScrollMessageManager.Play");
                     }
                 }
                 else
                 {
                     MelonLogger.Warning("ScrollMessageManager type not found");
                 }
-
-                MelonLogger.Msg("Scroll/Fade message patches applied successfully");
             }
             catch (Exception ex)
             {
@@ -146,7 +102,7 @@ namespace FFI_ScreenReader.Patches
                         }
                     }
                 }
-                catch { }
+                catch { } // Assembly may throw on GetTypes
             }
             return null;
         }
@@ -185,85 +141,14 @@ namespace FFI_ScreenReader.Patches
                 // Check if this message duplicates a map transition announcement
                 if (!LocationMessageTracker.ShouldAnnounceFadeMessage(cleanMessage))
                 {
-                    MelonLogger.Msg($"[Fade Message] Skipped (duplicate of map transition): {cleanMessage}");
                     return;
                 }
 
-                MelonLogger.Msg($"[Fade Message] {cleanMessage}");
                 FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in FadeManagerPlay_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Postfix for LineFadeMessageManager.Play and AsyncPlay - captures the messages list parameter.
-        /// LineFadeMessageManager.Play(List<string> messages, Color32 color, float fadeinTime, float fadeoutTime, float waitTime)
-        /// Uses reflection to access IL2CPP List<string> since IEnumerable doesn't work.
-        /// </summary>
-        public static void LineFadeManagerPlay_Postfix(object __0)
-        {
-            try
-            {
-                // __0 is the first parameter (List<string> messages)
-                if (__0 == null) return;
-
-                // Use reflection to access IL2CPP List<string>
-                var countProp = __0.GetType().GetProperty("Count");
-                if (countProp == null)
-                {
-                    MelonLogger.Warning("[Line Fade Message] Count property not found");
-                    return;
-                }
-
-                int count = (int)countProp.GetValue(__0);
-                if (count == 0) return;
-
-                var indexer = __0.GetType().GetProperty("Item");
-                if (indexer == null)
-                {
-                    MelonLogger.Warning("[Line Fade Message] Item indexer not found");
-                    return;
-                }
-
-                string combinedMessage = "";
-                for (int i = 0; i < count; i++)
-                {
-                    string line = indexer.GetValue(__0, new object[] { i }) as string;
-                    if (!string.IsNullOrEmpty(line))
-                    {
-                        if (combinedMessage.Length > 0)
-                            combinedMessage += " ";
-                        combinedMessage += line;
-                    }
-                }
-
-                if (string.IsNullOrEmpty(combinedMessage)) return;
-
-                // Avoid duplicate announcements
-                if (combinedMessage == lastScrollMessage) return;
-
-                lastScrollMessage = combinedMessage;
-
-                // Clean up the message
-                string cleanMessage = combinedMessage.Replace("\n", " ").Replace("\r", " ");
-                while (cleanMessage.Contains("  "))
-                {
-                    cleanMessage = cleanMessage.Replace("  ", " ");
-                }
-                cleanMessage = cleanMessage.Trim();
-
-                // Use interrupt for defeat message
-                bool isDefeatMessage = cleanMessage.Contains("defeated", StringComparison.OrdinalIgnoreCase);
-
-                MelonLogger.Msg($"[Line Fade Message] {cleanMessage}");
-                FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: isDefeatMessage);
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"Error in LineFadeManagerPlay_Postfix: {ex.Message}");
             }
         }
 
@@ -320,7 +205,6 @@ namespace FFI_ScreenReader.Patches
                 // Use interrupt for defeat message to ensure it's heard over any preceding KO message
                 bool isDefeatMessage = cleanMessage.Contains("defeated", StringComparison.OrdinalIgnoreCase);
 
-                MelonLogger.Msg($"[Line Fade Controller] {cleanMessage}");
                 FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: isDefeatMessage);
             }
             catch (Exception ex)
@@ -373,8 +257,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Split by newlines
                 string[] lines = message.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-
-                MelonLogger.Msg($"[Scroll Message] Starting {lines.Length} lines over {scrollTime}s");
 
                 // Start timed coroutine
                 activeScrollCoroutine = SpeakScrollLinesWithTiming(lines, scrollTime);
