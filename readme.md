@@ -23,7 +23,7 @@ Log into desktop app.
 to purchase games, the easiest way is to use the web interface. You can search for a game when logged into the browser, purchase it there and will be asked if you want to install your games, which opens the desktop app to finish installation.
 Ensure you purchase Final Fantasy, the page should mention being remastered in the description.
 Install MelonLoader into game's installation directory. Ensure nightly builds are enabled.
-https://melonloader.co/download.html
+https://github.com/LavaGang/MelonLoader/releases
 Copy NVDAControllerClient64.dll and tolk.dll into installation directory with game executable, usually c:\\Program Files (x86)\\Steam\\Steamapps\\common\\Final Fantasy PR.
 If you created a steam library on another drive, the path will be Drive Letter\\Path to steam library\\SteamLibrary\\steamapps\\common\\Final Fantasy PR.
 FFI\_screenreader.dll   goes in MelonLoader/mods folder.
