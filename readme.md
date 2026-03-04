@@ -7,25 +7,40 @@ Adds NVDA output, pathfinding, sound queues and other accessibility aides to Fin
 ## Known Issues
 
 Wall tones play brief false positives when opening doors or when transitioning between maps.
+
 NPCs in shops are blocked by counters, but interacting with the counter opens the shop. Usually this is straight north from the door.
+
 Shop menus are reading the first highlighted item on both entry and exit.
+
 Items that can not be purchased due to a lack of gil are not reading, either upon highlight or the description by pressing I.
+
 Secret passages, even when opened, do not show properly on the pathfinder. Can use wall bumps and estimation to find, usually near the opening mechanism.
+
 H in battle announces statistics for all characters, not active character.
+
 Level ups read HP gained, but not other statistics.
+
 F1 key (walk/run toggle) only works in dungeons and towns. World map defaults to walking speed only - use vehicles (ship, canoe, airship) for faster world map travel.
 
 ## Install
 
 Create an account at store.steampowered.com, login, join steam.
+
 Once account is created, install steam download app (should be prompted to do so after account creation.)
+
 Log into desktop app.
+
 to purchase games, the easiest way is to use the web interface. You can search for a game when logged into the browser, purchase it there and will be asked if you want to install your games, which opens the desktop app to finish installation.
+
 Ensure you purchase Final Fantasy, the page should mention being remastered in the description.
+
 Install MelonLoader into game's installation directory. Ensure nightly builds are enabled.
 https://github.com/LavaGang/MelonLoader/releases
+
 Copy NVDAControllerClient64.dll and tolk.dll into installation directory with game executable, usually c:\\Program Files (x86)\\Steam\\Steamapps\\common\\Final Fantasy PR.
+
 If you created a steam library on another drive, the path will be Drive Letter\\Path to steam library\\SteamLibrary\\steamapps\\common\\Final Fantasy PR.
+
 FFI\_screenreader.dll   goes in MelonLoader/mods folder.
 
 ## Keys
