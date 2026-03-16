@@ -8,6 +8,7 @@ using PropertyGotoMap = Il2CppLast.Map.PropertyGotoMap;
 using FieldTresureBox = Il2CppLast.Entity.Field.FieldTresureBox;
 using ContentUtitlity = Il2CppLast.Systems.ContentUtitlity;
 using MessageManager = Il2CppLast.Management.MessageManager;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field
 {
@@ -330,13 +331,13 @@ namespace FFI_ScreenReader.Field
             string nameLower = goName.ToLower();
 
             if (nameLower.Contains("airship") || typeName.Contains("AirShip"))
-                return "Airship";
+                return T("Airship");
             if (nameLower.Contains("canoe"))
-                return "Canoe";
+                return T("Canoe");
             if (nameLower.Contains("ship") || nameLower.Contains("boat"))
-                return "Ship";
+                return T("Ship");
 
-            return "Vehicle";
+            return T("Vehicle");
         }
 
         /// <summary>

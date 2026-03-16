@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MelonLoader;
 using Il2CppLast.Data.User;
 using FFI_ScreenReader.Core;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Menus
 {
@@ -153,7 +154,7 @@ namespace FFI_ScreenReader.Menus
             var tracker = StatusNavigationTracker.Instance;
             if (!tracker.ValidateState())
             {
-                FFI_ScreenReaderMod.SpeakText("Navigation not available");
+                FFI_ScreenReaderMod.SpeakText(T("Navigation not available"));
                 return;
             }
 
@@ -174,7 +175,7 @@ namespace FFI_ScreenReader.Menus
 
             if (tracker.CurrentCharacterData == null)
             {
-                FFI_ScreenReaderMod.SpeakText("No character data");
+                FFI_ScreenReaderMod.SpeakText(T("No character data"));
                 return;
             }
 
@@ -187,7 +188,7 @@ namespace FFI_ScreenReader.Menus
             catch (Exception ex)
             {
                 MelonLogger.Error($"Error reading stat at index {index}: {ex.Message}");
-                FFI_ScreenReaderMod.SpeakText("Error reading stat");
+                FFI_ScreenReaderMod.SpeakText(T("Error reading stat"));
             }
         }
 
@@ -197,14 +198,14 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data == null) return "N/A";
+                if (data == null) return T("N/A");
                 string name = data.Name;
-                return !string.IsNullOrWhiteSpace(name) ? $"Name: {name}" : "N/A";
+                return !string.IsNullOrWhiteSpace(name) ? string.Format(T("Name: {0}"), name) : T("N/A");
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading name: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -212,18 +213,18 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data == null) return "N/A";
+                if (data == null) return T("N/A");
 
                 string jobName = Patches.StatusMenuHelpers.GetCurrentJobName(data);
                 if (!string.IsNullOrWhiteSpace(jobName))
-                    return $"Job: {jobName}";
+                    return string.Format(T("Job: {0}"), jobName);
 
-                return $"Job: ID {data.JobId}";
+                return string.Format(T("Job: ID {0}"), data.JobId);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading job name: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -231,13 +232,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Level: {data.Parameter.ConfirmedLevel()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Level: {0}"), data.Parameter.ConfirmedLevel());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading character level: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -245,13 +246,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data == null) return "N/A";
-                return $"Experience: {data.CurrentExp}";
+                if (data == null) return T("N/A");
+                return string.Format(T("Experience: {0}"), data.CurrentExp);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Experience: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -259,13 +260,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data == null) return "N/A";
-                return $"Next Level: {data.GetNextExp()}";
+                if (data == null) return T("N/A");
+                return string.Format(T("Next Level: {0}"), data.GetNextExp());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Next Level: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -277,13 +278,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"HP: {data.Parameter.currentHP} / {data.Parameter.ConfirmedMaxHp()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("HP: {0} / {1}"), data.Parameter.currentHP, data.Parameter.ConfirmedMaxHp());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading HP: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -291,18 +292,18 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
+                if (data?.Parameter == null) return T("N/A");
 
                 var currentCharges = data.Parameter.CurrentMpCountList;
                 int current = 0;
                 if (currentCharges != null && currentCharges.ContainsKey(level))
                     current = currentCharges[level];
-                return $"LV{level}: {current}";
+                return string.Format(T("LV{0}: {1}"), level, current);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading MP level {level}: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -323,13 +324,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Strength: {data.Parameter.ConfirmedPower()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Strength: {0}"), data.Parameter.ConfirmedPower());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Strength: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -337,13 +338,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Agility: {data.Parameter.ConfirmedAgility()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Agility: {0}"), data.Parameter.ConfirmedAgility());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Agility: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -351,13 +352,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Stamina: {data.Parameter.ConfirmedVitality()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Stamina: {0}"), data.Parameter.ConfirmedVitality());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Stamina: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -365,13 +366,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Intellect: {data.Parameter.ConfirmedIntelligence()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Intellect: {0}"), data.Parameter.ConfirmedIntelligence());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Intellect: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -379,13 +380,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Luck: {data.Parameter.ConfirmedLuck()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Luck: {0}"), data.Parameter.ConfirmedLuck());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Luck: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -397,13 +398,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Attack: {data.Parameter.ConfirmedAttack()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Attack: {0}"), data.Parameter.ConfirmedAttack());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Attack: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -411,13 +412,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Accuracy: {data.Parameter.ConfirmedAccuracyRate(false)}%";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Accuracy: {0}%"), data.Parameter.ConfirmedAccuracyRate(false));
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Accuracy: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -425,13 +426,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Defense: {data.Parameter.ConfirmedDefense()}";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Defense: {0}"), data.Parameter.ConfirmedDefense());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Defense: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 
@@ -439,13 +440,13 @@ namespace FFI_ScreenReader.Menus
         {
             try
             {
-                if (data?.Parameter == null) return "N/A";
-                return $"Evasion: {data.Parameter.ConfirmedEvasionRate(false)}%";
+                if (data?.Parameter == null) return T("N/A");
+                return string.Format(T("Evasion: {0}%"), data.Parameter.ConfirmedEvasionRate(false));
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error reading Evasion: {ex.Message}");
-                return "N/A";
+                return T("N/A");
             }
         }
 

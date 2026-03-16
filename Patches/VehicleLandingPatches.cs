@@ -6,6 +6,7 @@ using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Core;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 types
 using Il2CppLast.Map;
@@ -103,7 +104,7 @@ namespace FFI_ScreenReader.Patches
                 // Only announce when entering landable zone (false -> true)
                 if (landable && !lastLandableState)
                 {
-                    FFI_ScreenReaderMod.SpeakText("Can land", interrupt: false);
+                    FFI_ScreenReaderMod.SpeakText(T("Can land"), interrupt: false);
                 }
 
                 lastLandableState = landable;
@@ -268,7 +269,7 @@ namespace FFI_ScreenReader.Patches
                     if (!MoveStateHelper.IsOnFoot())
                     {
                         MoveStateHelper.SetOnFoot();
-                        FFI_ScreenReaderMod.SpeakText("On foot", interrupt: true);
+                        FFI_ScreenReaderMod.SpeakText(T("On foot"), interrupt: true);
                     }
                     return;
                 }
@@ -276,7 +277,7 @@ namespace FFI_ScreenReader.Patches
                 string vehicleName = GetTransportationName(typeId);
                 if (!string.IsNullOrEmpty(vehicleName))
                 {
-                    string announcement = $"On {vehicleName}";
+                    string announcement = string.Format(T("On {0}"), vehicleName);
                     MoveStateHelper.SetVehicleState(typeId);
                     FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
                 }
@@ -300,7 +301,7 @@ namespace FFI_ScreenReader.Patches
                 // Only announce "On foot" if we were on a known vehicle
                 if (!string.IsNullOrEmpty(vehicleName))
                 {
-                    FFI_ScreenReaderMod.SpeakText("On foot", interrupt: true);
+                    FFI_ScreenReaderMod.SpeakText(T("On foot"), interrupt: true);
                 }
             }
             catch (Exception ex)
@@ -317,14 +318,14 @@ namespace FFI_ScreenReader.Patches
         {
             switch (typeId)
             {
-                case TRANSPORT_SHIP: return "ship";
-                case TRANSPORT_PLANE: return "airship";
-                case TRANSPORT_CONTENT: return "canoe";           // FF1: Canoe uses Content slot
-                case TRANSPORT_SUBMARINE: return "submarine";     // May not exist in FF1, but included for completeness
-                case TRANSPORT_LOWFLYING: return "airship";       // Low flying mode of airship
-                case TRANSPORT_SPECIALPLANE: return "airship";    // Special airship variant
-                case TRANSPORT_YELLOWCHOCOBO: return "chocobo";   // May not exist in FF1
-                case TRANSPORT_BLACKCHOCOBO: return "chocobo";    // May not exist in FF1
+                case TRANSPORT_SHIP: return T("ship");
+                case TRANSPORT_PLANE: return T("airship");
+                case TRANSPORT_CONTENT: return T("canoe");           // FF1: Canoe uses Content slot
+                case TRANSPORT_SUBMARINE: return T("submarine");     // May not exist in FF1, but included for completeness
+                case TRANSPORT_LOWFLYING: return T("airship");       // Low flying mode of airship
+                case TRANSPORT_SPECIALPLANE: return T("airship");    // Special airship variant
+                case TRANSPORT_YELLOWCHOCOBO: return T("chocobo");   // May not exist in FF1
+                case TRANSPORT_BLACKCHOCOBO: return T("chocobo");    // May not exist in FF1
                 default: return null;
             }
         }

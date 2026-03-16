@@ -4,6 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 using ShopMagicTargetSelectController = Il2CppLast.UI.KeyInput.ShopMagicTargetSelectController;
 using GameCursor = Il2CppLast.UI.Cursor;
@@ -153,7 +154,7 @@ namespace FFI_ScreenReader.Patches
                 if (!isFoundEquipSlot && !announcedNoLearnersThisSession)
                 {
                     announcedNoLearnersThisSession = true;
-                    FFI_ScreenReaderMod.SpeakText("No characters can learn this spell", interrupt: true);
+                    FFI_ScreenReaderMod.SpeakText(T("No characters can learn this spell"), interrupt: true);
                 }
             }
             catch (Exception ex)
@@ -198,7 +199,7 @@ namespace FFI_ScreenReader.Patches
                 string spellName = GetSpellSlotName(slotPtr);
                 if (string.IsNullOrEmpty(spellName))
                 {
-                    spellName = "Empty";
+                    spellName = T("Empty");
                 }
 
                 string announcement;
@@ -209,15 +210,15 @@ namespace FFI_ScreenReader.Patches
                     string characterName = GetCharacterNameById(characterId);
                     if (string.IsNullOrEmpty(characterName))
                     {
-                        characterName = $"Character {characterId}";
+                        characterName = string.Format(T("Character {0}"), characterId);
                     }
 
-                    announcement = $"{characterName}: Slot {slotType}: {spellName}";
+                    announcement = string.Format(T("{0}: Slot {1}: {2}"), characterName, slotType, spellName);
                     lastAnnouncedCharacterId = characterId;
                 }
                 else
                 {
-                    announcement = $"Slot {slotType}: {spellName}";
+                    announcement = string.Format(T("Slot {0}: {1}"), slotType, spellName);
                 }
 
                 AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_SLOT, announcement);

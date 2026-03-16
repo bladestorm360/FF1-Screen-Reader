@@ -10,6 +10,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using GameCursor = Il2CppLast.UI.Cursor;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 [assembly: MelonInfo(typeof(FFI_ScreenReader.Core.FFI_ScreenReaderMod), "FFI Screen Reader", "1.0.0", "Author")]
 [assembly: MelonGame("SQUARE ENIX, Inc.", "FINAL FANTASY")]
@@ -78,6 +79,9 @@ namespace FFI_ScreenReader.Core
 
             // Subscribe to scene load events for automatic component caching
             UnityEngine.SceneManagement.SceneManager.sceneLoaded += (UnityEngine.Events.UnityAction<UnityEngine.SceneManagement.Scene, UnityEngine.SceneManagement.LoadSceneMode>)OnSceneLoaded;
+
+            // Initialize mod text translator for localization
+            ModTextTranslator.Initialize();
 
             // Initialize preferences
             PreferencesManager.Initialize();
@@ -374,7 +378,7 @@ namespace FFI_ScreenReader.Core
 
         private void SaveAndAnnounce(string featureName, bool value)
         {
-            SpeakText($"{featureName} {(value ? "on" : "off")}");
+            SpeakText($"{featureName} {(value ? T("on") : T("off"))}");
         }
 
         internal void TogglePathfindingFilter()
@@ -383,14 +387,14 @@ namespace FFI_ScreenReader.Core
             if (entityScanner != null)
                 entityScanner.FilterByPathfinding = filterByPathfinding;
             PreferencesManager.SavePathfindingFilter(filterByPathfinding);
-            SaveAndAnnounce("Pathfinding filter", filterByPathfinding);
+            SaveAndAnnounce(T("Pathfinding filter"), filterByPathfinding);
         }
 
         internal void ToggleMapExitFilter()
         {
             filterMapExits = !filterMapExits;
             PreferencesManager.SaveMapExitFilter(filterMapExits);
-            SaveAndAnnounce("Map exit filter", filterMapExits);
+            SaveAndAnnounce(T("Map exit filter"), filterMapExits);
         }
 
         internal void ToggleToLayerFilter()
@@ -399,7 +403,7 @@ namespace FFI_ScreenReader.Core
             if (entityScanner != null)
                 entityScanner.FilterToLayer = filterToLayer;
             PreferencesManager.SaveToLayerFilter(filterToLayer);
-            SaveAndAnnounce("Layer transition filter", filterToLayer);
+            SaveAndAnnounce(T("Layer transition filter"), filterToLayer);
         }
 
         internal void ToggleWallTones()
@@ -407,14 +411,14 @@ namespace FFI_ScreenReader.Core
             enableWallTones = !enableWallTones;
             if (enableWallTones) audioLoopManager?.StartWallToneLoop(); else audioLoopManager?.StopWallToneLoop();
             PreferencesManager.SaveWallTones(enableWallTones);
-            SaveAndAnnounce("Wall tones", enableWallTones);
+            SaveAndAnnounce(T("Wall tones"), enableWallTones);
         }
 
         internal void ToggleFootsteps()
         {
             enableFootsteps = !enableFootsteps;
             PreferencesManager.SaveFootsteps(enableFootsteps);
-            SaveAndAnnounce("Footsteps", enableFootsteps);
+            SaveAndAnnounce(T("Footsteps"), enableFootsteps);
         }
 
         internal void ToggleAudioBeacons()
@@ -422,7 +426,7 @@ namespace FFI_ScreenReader.Core
             enableAudioBeacons = !enableAudioBeacons;
             if (enableAudioBeacons) audioLoopManager?.StartBeaconLoop(); else audioLoopManager?.StopBeaconLoop();
             PreferencesManager.SaveAudioBeacons(enableAudioBeacons);
-            SaveAndAnnounce("Audio beacons", enableAudioBeacons);
+            SaveAndAnnounce(T("Audio beacons"), enableAudioBeacons);
         }
 
         // Accessors for audio feedback state (used by AudioLoopManager and MovementSoundPatches)
@@ -501,7 +505,7 @@ namespace FFI_ScreenReader.Core
                 var player = GetFieldPlayer();
                 if (player == null)
                 {
-                    SpeakText("Not on field map", true);
+                    SpeakText(T("Not on field map"), true);
                     return;
                 }
 
@@ -509,7 +513,7 @@ namespace FFI_ScreenReader.Core
                 var entity = entityScanner.CurrentEntity;
                 if (entity == null)
                 {
-                    SpeakText("No entity selected", true);
+                    SpeakText(T("No entity selected"), true);
                     return;
                 }
 
@@ -523,21 +527,21 @@ namespace FFI_ScreenReader.Core
                 // Announce with direction relative to entity and entity name
                 string direction = GetDirectionFromOffset(offset);
                 string entityName = entity.Name;
-                SpeakText($"Teleported to {direction} of {entityName}", true);
+                SpeakText(string.Format(T("Teleported to {0} of {1}"), direction, entityName), true);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error teleporting: {ex.Message}");
-                SpeakText("Teleport failed", true);
+                SpeakText(T("Teleport failed"), true);
             }
         }
 
         private string GetDirectionFromOffset(Vector2 offset)
         {
             if (Math.Abs(offset.x) > Math.Abs(offset.y))
-                return offset.x > 0 ? "east" : "west";
+                return offset.x > 0 ? T("east") : T("west");
             else
-                return offset.y > 0 ? "north" : "south";
+                return offset.y > 0 ? T("north") : T("south");
         }
 
         #endregion
@@ -552,7 +556,7 @@ namespace FFI_ScreenReader.Core
                 if (userDataManager != null)
                 {
                     int gil = userDataManager.OwendGil;
-                    SpeakText($"{gil} Gil", true);
+                    SpeakText(string.Format(T("{0} Gil"), gil), true);
                     return;
                 }
             }
@@ -560,7 +564,7 @@ namespace FFI_ScreenReader.Core
             {
                 MelonLogger.Warning($"[AnnounceGilAmount] Error: {ex.Message}");
             }
-            SpeakText("Gil not available", true);
+            SpeakText(T("Gil not available"), true);
         }
 
         internal void AnnounceCurrentMap()
@@ -573,7 +577,7 @@ namespace FFI_ScreenReader.Core
             catch (System.Exception ex)
             {
                 MelonLogger.Warning($"[AnnounceCurrentMap] Error: {ex.Message}");
-                SpeakText("Unknown location", true);
+                SpeakText(T("Unknown location"), true);
             }
         }
 
@@ -584,14 +588,14 @@ namespace FFI_ScreenReader.Core
                 // H key only works in battle
                 if (!Patches.BattleStateHelper.IsInBattle)
                 {
-                    SpeakText("Party status only available in battle", true);
+                    SpeakText(T("Party status only available in battle"), true);
                     return;
                 }
 
                 var userDataManager = Il2CppLast.Management.UserDataManager.Instance();
                 if (userDataManager == null)
                 {
-                    SpeakText("Character data not available", true);
+                    SpeakText(T("Character data not available"), true);
                     return;
                 }
 
@@ -599,7 +603,7 @@ namespace FFI_ScreenReader.Core
                 var partyList = userDataManager.GetOwnedCharactersClone(false);
                 if (partyList == null || partyList.Count == 0)
                 {
-                    SpeakText("No party members", true);
+                    SpeakText(T("No party members"), true);
                     return;
                 }
 
@@ -616,7 +620,7 @@ namespace FFI_ScreenReader.Core
                             {
                                 int currentHp = param.CurrentHP;
                                 int maxHp = param.ConfirmedMaxHp();
-                                sb.AppendLine($"{name}: {currentHp}/{maxHp} HP");
+                                sb.AppendLine(string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp));
                             }
                         }
                     }
@@ -627,12 +631,12 @@ namespace FFI_ScreenReader.Core
                 if (!string.IsNullOrEmpty(status))
                     SpeakText(status, true);
                 else
-                    SpeakText("No character status available", true);
+                    SpeakText(T("No character status available"), true);
             }
             catch (System.Exception ex)
             {
                 MelonLogger.Warning($"[AnnounceCharacterStatus] Error: {ex.Message}");
-                SpeakText("Character status not available", true);
+                SpeakText(T("Character status not available"), true);
             }
         }
 

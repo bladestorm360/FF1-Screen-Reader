@@ -5,6 +5,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Type aliases - FF1-specific types in Serial.FF1 namespace
 using NewGameWindowController = Il2CppSerial.FF1.UI.KeyInput.NewGameWindowController;
@@ -188,13 +189,13 @@ namespace FFI_ScreenReader.Patches
                     lastCharacterIndex = -1;
                     lastFieldType = -1;
 
-                    string doneText = "Done";
+                    string doneText = T("Done");
                     AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.NEW_GAME_FIELD, doneText);
                     yield break;
                 }
 
                 int fieldType = isClassField ? 1 : 0;
-                string fieldLabel = isClassField ? "Class" : "Name";
+                string fieldLabel = isClassField ? T("Class") : T("Name");
 
                 string formulaName = NewGameHelpers.GetCharacterSlotNameOnly(listController, characterIndex);
                 string formulaJob = isClassField ? NewGameHelpers.GetJobName(listController, characterIndex) : null;
@@ -205,11 +206,11 @@ namespace FFI_ScreenReader.Patches
                 string fieldValue;
                 if (isClassField)
                 {
-                    fieldValue = formulaJob ?? directJob ?? "unknown";
+                    fieldValue = formulaJob ?? directJob ?? T("unknown");
                 }
                 else
                 {
-                    fieldValue = formulaName ?? directName ?? "unnamed";
+                    fieldValue = formulaName ?? directName ?? T("unnamed");
                 }
 
                 bool characterChanged = (characterIndex != lastCharacterIndex);
@@ -219,7 +220,7 @@ namespace FFI_ScreenReader.Patches
 
                 if (characterChanged)
                 {
-                    announcement = $"Light Warrior {characterIndex + 1}: {fieldLabel}: {fieldValue}";
+                    announcement = string.Format(T("Light Warrior {0}: {1}: {2}"), characterIndex + 1, fieldLabel, fieldValue);
                 }
                 else if (fieldChanged)
                 {
@@ -269,7 +270,7 @@ namespace FFI_ScreenReader.Patches
 
                 AnnouncementDeduplicator.Reset(AnnouncementContexts.NEW_GAME_SLOT, AnnouncementContexts.NEW_GAME_NAME, AnnouncementContexts.NEW_GAME_AUTO_INDEX, AnnouncementContexts.NEW_GAME_FIELD);
 
-                FFI_ScreenReaderMod.SpeakText("Character selection", interrupt: false);
+                FFI_ScreenReaderMod.SpeakText(T("Character selection"), interrupt: false);
             }
             catch (Exception ex)
             {
@@ -305,16 +306,16 @@ namespace FFI_ScreenReader.Patches
                 string announcement;
                 if (!string.IsNullOrEmpty(characterName))
                 {
-                    announcement = $"Select name for {characterName}";
+                    announcement = string.Format(T("Select name for {0}"), characterName);
                 }
                 else
                 {
-                    announcement = "Select name";
+                    announcement = T("Select name");
                 }
 
                 if (!string.IsNullOrEmpty(suggestedName))
                 {
-                    announcement += $". Current: {suggestedName}";
+                    announcement += string.Format(T(". Current: {0}"), suggestedName);
                     AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.NEW_GAME_NAME, suggestedName);
                 }
 
@@ -384,11 +385,11 @@ namespace FFI_ScreenReader.Patches
                 string announcement;
                 if (!string.IsNullOrEmpty(characterName))
                 {
-                    announcement = $"Enter name for {characterName}. Type using keyboard.";
+                    announcement = string.Format(T("Enter name for {0}. Type using keyboard."), characterName);
                 }
                 else
                 {
-                    announcement = "Enter name using keyboard";
+                    announcement = T("Enter name using keyboard");
                 }
 
                 FFI_ScreenReaderMod.SpeakText(announcement);
@@ -427,7 +428,7 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
 
-                FFI_ScreenReaderMod.SpeakText("Start game?");
+                FFI_ScreenReaderMod.SpeakText(T("Start game?"));
             }
             catch (Exception ex)
             {

@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field
 {
@@ -45,16 +46,16 @@ namespace FFI_ScreenReader.Field
         {
             switch (category)
             {
-                case WaypointCategory.Landmarks: return "Landmark";
-                case WaypointCategory.Docks: return "Dock";
-                case WaypointCategory.Miscellaneous: return "Waypoint";
-                default: return "Waypoint";
+                case WaypointCategory.Landmarks: return T("Landmark");
+                case WaypointCategory.Docks: return T("Dock");
+                case WaypointCategory.Miscellaneous: return T("Waypoint");
+                default: return T("Waypoint");
             }
         }
 
         public static string[] GetCategoryNames()
         {
-            return new string[] { "All", "Landmarks", "Docks", "Miscellaneous" };
+            return new string[] { T("All"), T("Landmarks"), T("Docks"), T("Miscellaneous") };
         }
 
         /// <summary>

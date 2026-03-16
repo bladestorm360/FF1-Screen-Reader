@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Field;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -35,7 +36,7 @@ namespace FFI_ScreenReader.Core
 
             if (fieldMap == null || !fieldMap.gameObject.activeInHierarchy)
             {
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.FIELD_CHECK, "Not on map");
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.FIELD_CHECK, T("Not on map"));
                 return false;
             }
 
@@ -45,7 +46,7 @@ namespace FFI_ScreenReader.Core
 
             if (playerController?.fieldPlayer == null)
             {
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.FIELD_CHECK, "Not on map");
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.FIELD_CHECK, T("Not on map"));
                 return false;
             }
 
@@ -88,14 +89,14 @@ namespace FFI_ScreenReader.Core
             var entity = entityScanner?.CurrentEntity;
             if (entity == null)
             {
-                FFI_ScreenReaderMod.SpeakText("No entity selected");
+                FFI_ScreenReaderMod.SpeakText(T("No entity selected"));
                 return;
             }
 
             var context = new FilterContext();
             if (context.PlayerPosition == Vector3.zero)
             {
-                FFI_ScreenReaderMod.SpeakText("Cannot determine directions");
+                FFI_ScreenReaderMod.SpeakText(T("Cannot determine directions"));
                 return;
             }
 
@@ -106,7 +107,7 @@ namespace FFI_ScreenReader.Core
             if (pathInfo.Success && !string.IsNullOrEmpty(pathInfo.Description))
                 announcement = pathInfo.Description;
             else
-                announcement = "No path";
+                announcement = T("No path");
 
             FFI_ScreenReaderMod.SpeakText(announcement);
         }
@@ -120,7 +121,7 @@ namespace FFI_ScreenReader.Core
 
             if (entityScanner == null)
             {
-                FFI_ScreenReaderMod.SpeakText("Entity scanner not available");
+                FFI_ScreenReaderMod.SpeakText(T("Entity scanner not available"));
                 return;
             }
 
@@ -129,7 +130,7 @@ namespace FFI_ScreenReader.Core
 
             if (entityScanner.NoReachableEntities())
             {
-                FFI_ScreenReaderMod.SpeakText("No reachable entities");
+                FFI_ScreenReaderMod.SpeakText(T("No reachable entities"));
                 return;
             }
 
@@ -145,7 +146,7 @@ namespace FFI_ScreenReader.Core
 
             if (entityScanner == null)
             {
-                FFI_ScreenReaderMod.SpeakText("Entity scanner not available");
+                FFI_ScreenReaderMod.SpeakText(T("Entity scanner not available"));
                 return;
             }
 
@@ -154,7 +155,7 @@ namespace FFI_ScreenReader.Core
 
             if (entityScanner.NoReachableEntities())
             {
-                FFI_ScreenReaderMod.SpeakText("No reachable entities");
+                FFI_ScreenReaderMod.SpeakText(T("No reachable entities"));
                 return;
             }
 
@@ -176,9 +177,9 @@ namespace FFI_ScreenReader.Core
                 string categoryName = CategoryManager.GetCategoryName(getCategory());
                 int count = entityScanner?.Entities?.Count ?? 0;
                 if (count == 0)
-                    FFI_ScreenReaderMod.SpeakText($"No {categoryName} found");
+                    FFI_ScreenReaderMod.SpeakText(string.Format(T("No {0} found"), categoryName));
                 else
-                    FFI_ScreenReaderMod.SpeakText("No entity selected");
+                    FFI_ScreenReaderMod.SpeakText(T("No entity selected"));
                 return;
             }
 
@@ -187,7 +188,7 @@ namespace FFI_ScreenReader.Core
 
             int index = entityScanner.CurrentIndex + 1;
             int total = entityScanner.Entities.Count;
-            announcement += $" ({index} of {total})";
+            announcement += " " + string.Format(T("({0} of {1})"), index, total);
 
             FFI_ScreenReaderMod.SpeakText(announcement);
         }

@@ -2,6 +2,7 @@ using System;
 using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Field;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -30,7 +31,7 @@ namespace FFI_ScreenReader.Core
 
             if (waypointNavigator.Count == 0)
             {
-                FFI_ScreenReaderMod.SpeakText("No waypoints on this map");
+                FFI_ScreenReaderMod.SpeakText(T("No waypoints on this map"));
                 return;
             }
 
@@ -47,7 +48,7 @@ namespace FFI_ScreenReader.Core
 
             if (waypointNavigator.Count == 0)
             {
-                FFI_ScreenReaderMod.SpeakText("No waypoints on this map");
+                FFI_ScreenReaderMod.SpeakText(T("No waypoints on this map"));
                 return;
             }
 
@@ -80,7 +81,7 @@ namespace FFI_ScreenReader.Core
             var waypoint = waypointNavigator.SelectedWaypoint;
             if (waypoint == null)
             {
-                FFI_ScreenReaderMod.SpeakText("No waypoint selected");
+                FFI_ScreenReaderMod.SpeakText(T("No waypoint selected"));
                 return;
             }
 
@@ -103,7 +104,7 @@ namespace FFI_ScreenReader.Core
             var player = FFI_ScreenReaderMod.GetFieldPlayer();
             if (player == null)
             {
-                FFI_ScreenReaderMod.SpeakText("Cannot get player position");
+                FFI_ScreenReaderMod.SpeakText(T("Cannot get player position"));
                 return;
             }
 
@@ -111,13 +112,13 @@ namespace FFI_ScreenReader.Core
             string mapId = GetMapIdString();
 
             TextInputWindow.Open(
-                "Enter waypoint name",
+                T("Enter waypoint name"),
                 "",
                 onConfirm: (name) =>
                 {
                     waypointManager.AddWaypoint(name, playerPos, mapId);
                     waypointNavigator.RefreshList(mapId);
-                    FFI_ScreenReaderMod.SpeakText($"Waypoint added: {name}");
+                    FFI_ScreenReaderMod.SpeakText(string.Format(T("Waypoint added: {0}"), name));
                 },
                 onCancel: () => { }
             );
@@ -130,25 +131,25 @@ namespace FFI_ScreenReader.Core
             var waypoint = waypointNavigator.SelectedWaypoint;
             if (waypoint == null)
             {
-                FFI_ScreenReaderMod.SpeakText("No waypoint selected");
+                FFI_ScreenReaderMod.SpeakText(T("No waypoint selected"));
                 return;
             }
 
             string mapId = GetMapIdString();
 
             TextInputWindow.Open(
-                "Enter new waypoint name",
+                T("Enter new waypoint name"),
                 waypoint.Name,
                 onConfirm: (newName) =>
                 {
                     if (waypointManager.RenameWaypoint(waypoint.WaypointId, newName))
                     {
                         waypointNavigator.RefreshList(mapId);
-                        FFI_ScreenReaderMod.SpeakText($"Waypoint renamed to: {newName}");
+                        FFI_ScreenReaderMod.SpeakText(string.Format(T("Waypoint renamed to: {0}"), newName));
                     }
                     else
                     {
-                        FFI_ScreenReaderMod.SpeakText("Failed to rename waypoint");
+                        FFI_ScreenReaderMod.SpeakText(T("Failed to rename waypoint"));
                     }
                 },
                 onCancel: () => { }
@@ -162,7 +163,7 @@ namespace FFI_ScreenReader.Core
             var waypoint = waypointNavigator.SelectedWaypoint;
             if (waypoint == null)
             {
-                FFI_ScreenReaderMod.SpeakText("No waypoint selected");
+                FFI_ScreenReaderMod.SpeakText(T("No waypoint selected"));
                 return;
             }
 
@@ -170,18 +171,18 @@ namespace FFI_ScreenReader.Core
             string waypointName = waypoint.Name;
 
             ConfirmationDialog.Open(
-                $"Delete waypoint {waypointName}?",
+                string.Format(T("Delete waypoint {0}?"), waypointName),
                 onYes: () =>
                 {
                     if (waypointManager.RemoveWaypoint(waypoint.WaypointId))
                     {
                         waypointNavigator.RefreshList(mapId);
                         waypointNavigator.ClearSelection();
-                        FFI_ScreenReaderMod.SpeakText($"Waypoint deleted: {waypointName}");
+                        FFI_ScreenReaderMod.SpeakText(string.Format(T("Waypoint deleted: {0}"), waypointName));
                     }
                     else
                     {
-                        FFI_ScreenReaderMod.SpeakText("Failed to delete waypoint");
+                        FFI_ScreenReaderMod.SpeakText(T("Failed to delete waypoint"));
                     }
                 },
                 onNo: () => { }
@@ -197,20 +198,20 @@ namespace FFI_ScreenReader.Core
 
             if (count == 0)
             {
-                FFI_ScreenReaderMod.SpeakText("No waypoints to clear on this map");
+                FFI_ScreenReaderMod.SpeakText(T("No waypoints to clear on this map"));
                 return;
             }
 
-            string plural = count == 1 ? "waypoint" : "waypoints";
+            string plural = count == 1 ? T("waypoint") : T("waypoints");
 
             ConfirmationDialog.Open(
-                $"Clear all {count} {plural} from this map?",
+                string.Format(T("Clear all {0} {1} from this map?"), count, plural),
                 onYes: () =>
                 {
                     int cleared = waypointManager.ClearMapWaypoints(mapId);
                     waypointNavigator.RefreshList(mapId);
                     waypointNavigator.ClearSelection();
-                    FFI_ScreenReaderMod.SpeakText($"Cleared {cleared} {plural}");
+                    FFI_ScreenReaderMod.SpeakText(string.Format(T("Cleared {0} {1}"), cleared, plural));
                 },
                 onNo: () => { }
             );

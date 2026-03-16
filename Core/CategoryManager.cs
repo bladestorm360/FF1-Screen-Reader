@@ -1,4 +1,5 @@
 using FFI_ScreenReader.Field;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -65,7 +66,7 @@ namespace FFI_ScreenReader.Core
 
             if (currentCategory == EntityCategory.All)
             {
-                FFI_ScreenReaderMod.SpeakText("Already in All category");
+                FFI_ScreenReaderMod.SpeakText(T("Already in All category"));
                 return;
             }
 
@@ -78,7 +79,7 @@ namespace FFI_ScreenReader.Core
         private void AnnounceCategoryChange()
         {
             string categoryName = GetCategoryName(currentCategory);
-            FFI_ScreenReaderMod.SpeakText($"Category: {categoryName}");
+            FFI_ScreenReaderMod.SpeakText(string.Format(T("Category: {0}"), categoryName));
         }
 
         /// <summary>
@@ -88,13 +89,13 @@ namespace FFI_ScreenReader.Core
         {
             switch (category)
             {
-                case EntityCategory.All: return "All";
-                case EntityCategory.Chests: return "Treasure Chests";
-                case EntityCategory.NPCs: return "NPCs";
-                case EntityCategory.MapExits: return "Map Exits";
-                case EntityCategory.Events: return "Events";
-                case EntityCategory.Vehicles: return "Vehicles";
-                default: return "Unknown";
+                case EntityCategory.All: return T("All");
+                case EntityCategory.Chests: return T("Treasure Chests");
+                case EntityCategory.NPCs: return T("NPCs");
+                case EntityCategory.MapExits: return T("Map Exits");
+                case EntityCategory.Events: return T("Events");
+                case EntityCategory.Vehicles: return T("Vehicles");
+                default: return T("Unknown");
             }
         }
     }

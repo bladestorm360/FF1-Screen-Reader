@@ -4,6 +4,7 @@ using UnityEngine;
 using MelonLoader;
 using FFI_ScreenReader.Patches;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core.Handlers
 {
@@ -23,7 +24,7 @@ namespace FFI_ScreenReader.Core.Handlers
                 }
                 else
                 {
-                    FFI_ScreenReaderMod.SpeakText("Unavailable in battle", interrupt: true);
+                    FFI_ScreenReaderMod.SpeakText(T("Unavailable in battle"), interrupt: true);
                 }
                 return true;
             }
@@ -36,12 +37,12 @@ namespace FFI_ScreenReader.Core.Handlers
                     int next = (current + 1) % 3;
                     PreferencesManager.SetEnemyHPDisplay(next);
 
-                    string[] options = { "Numbers", "Percentage", "Hidden" };
-                    FFI_ScreenReaderMod.SpeakText($"Enemy HP: {options[next]}", interrupt: true);
+                    string[] options = { T("Numbers"), T("Percentage"), T("Hidden") };
+                    FFI_ScreenReaderMod.SpeakText(string.Format(T("Enemy HP: {0}"), options[next]), interrupt: true);
                 }
                 else
                 {
-                    FFI_ScreenReaderMod.SpeakText("Unavailable in battle", interrupt: true);
+                    FFI_ScreenReaderMod.SpeakText(T("Unavailable in battle"), interrupt: true);
                 }
                 return true;
             }
@@ -70,7 +71,7 @@ namespace FFI_ScreenReader.Core.Handlers
             try
             {
                 bool isDashing = MoveStateHelper.GetDashFlag();
-                string state = isDashing ? "Run" : "Walk";
+                string state = isDashing ? T("Run") : T("Walk");
                 FFI_ScreenReaderMod.SpeakText(state, interrupt: true);
             }
             catch (Exception ex)
@@ -88,7 +89,7 @@ namespace FFI_ScreenReader.Core.Handlers
                 if (userData?.CheatSettingsData != null)
                 {
                     bool enabled = userData.CheatSettingsData.IsEnableEncount;
-                    string state = enabled ? "Encounters on" : "Encounters off";
+                    string state = enabled ? T("Encounters on") : T("Encounters off");
                     FFI_ScreenReaderMod.SpeakText(state, interrupt: true);
                 }
             }

@@ -5,6 +5,7 @@ using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 using AbilityContentListController = Il2CppSerial.FF1.UI.KeyInput.AbilityContentListController;
 using AbilityWindowController = Il2CppSerial.FF1.UI.KeyInput.AbilityWindowController;
@@ -314,7 +315,7 @@ namespace FFI_ScreenReader.Patches
         private static void AnnounceEmpty()
         {
             if (MagicMenuState.ShouldAnnounceSpell(-1))
-                FFI_ScreenReaderMod.SpeakText("Empty", interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(T("Empty"), interrupt: true);
         }
 
         private static void AnnounceSpell(OwnedAbility ability)

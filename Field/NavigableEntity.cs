@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using FFI_ScreenReader.Core;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field
 {
@@ -78,15 +79,15 @@ namespace FFI_ScreenReader.Field
             if (angle < 0) angle += 360;
 
             // Convert to cardinal/intercardinal directions
-            if (angle >= 337.5 || angle < 22.5) return "North";
-            else if (angle >= 22.5 && angle < 67.5) return "Northeast";
-            else if (angle >= 67.5 && angle < 112.5) return "East";
-            else if (angle >= 112.5 && angle < 157.5) return "Southeast";
-            else if (angle >= 157.5 && angle < 202.5) return "South";
-            else if (angle >= 202.5 && angle < 247.5) return "Southwest";
-            else if (angle >= 247.5 && angle < 292.5) return "West";
-            else if (angle >= 292.5 && angle < 337.5) return "Northwest";
-            else return "Unknown";
+            if (angle >= 337.5 || angle < 22.5) return T("North");
+            else if (angle >= 22.5 && angle < 67.5) return T("Northeast");
+            else if (angle >= 67.5 && angle < 112.5) return T("East");
+            else if (angle >= 112.5 && angle < 157.5) return T("Southeast");
+            else if (angle >= 157.5 && angle < 202.5) return T("South");
+            else if (angle >= 202.5 && angle < 247.5) return T("Southwest");
+            else if (angle >= 247.5 && angle < 292.5) return T("West");
+            else if (angle >= 292.5 && angle < 337.5) return T("Northwest");
+            else return T("Unknown");
         }
 
         /// <summary>
@@ -95,7 +96,7 @@ namespace FFI_ScreenReader.Field
         protected string FormatSteps(float distance)
         {
             float steps = distance / 16f;
-            string stepLabel = Math.Abs(steps - 1f) < 0.1f ? "step" : "steps";
+            string stepLabel = Math.Abs(steps - 1f) < 0.1f ? T("step") : T("steps");
             return $"{steps:F1} {stepLabel}";
         }
     }
@@ -395,12 +396,12 @@ namespace FFI_ScreenReader.Field
             // FF1-specific vehicle names (from docs/debug.md)
             switch (id)
             {
-                case 1: return "Player";
-                case 2: return "Ship";
-                case 3: return "Airship";
-                case 5: return "Canoe";
-                case 7: return "LowFlying Airship";
-                default: return $"Vehicle {id}";
+                case 1: return T("Player");
+                case 2: return T("Ship");
+                case 3: return T("Airship");
+                case 5: return T("Canoe");
+                case 7: return T("LowFlying Airship");
+                default: return string.Format(T("Vehicle {0}"), id);
             }
         }
     }

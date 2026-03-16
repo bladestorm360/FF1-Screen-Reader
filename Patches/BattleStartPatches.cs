@@ -4,6 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Battle types
 using BattleController = Il2CppLast.Battle.BattleController;
@@ -225,7 +226,7 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                FFI_ScreenReaderMod.SpeakText("The party escaped!", interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(T("The party escaped!"), interrupt: true);
             }
             catch (Exception ex)
             {
@@ -277,15 +278,15 @@ namespace FFI_ScreenReader.Patches
             switch (state)
             {
                 case STATE_PREEMPTIVE:
-                    return "Preemptive attack!";
+                    return T("Preemptive attack!");
                 case STATE_BACK_ATTACK:
-                    return "Back attack!";
+                    return T("Back attack!");
                 case STATE_ENEMY_PREEMPTIVE:
-                    return "Ambush!";
+                    return T("Ambush!");
                 case STATE_ENEMY_SIDE_ATTACK:
-                    return "Enemy side attack!";
+                    return T("Enemy side attack!");
                 case STATE_SIDE_ATTACK:
-                    return "Side attack!";
+                    return T("Side attack!");
                 case STATE_NORMAL:
                 case STATE_NON:
                 default:

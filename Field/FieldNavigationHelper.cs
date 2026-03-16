@@ -8,6 +8,7 @@ using Il2CppLast.Map;
 using FieldMap = Il2Cpp.FieldMap;
 using TransportationInfo = Il2CppLast.Map.TransportationInfo;
 using EventTriggerEntity = Il2CppLast.Entity.Field.EventTriggerEntity;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 using MapRouteSearcher = Il2Cpp.MapRouteSearcher;
 using FieldPlayerController = Il2CppLast.Map.FieldPlayerController;
 
@@ -608,14 +609,14 @@ namespace FFI_ScreenReader.Field
 
             if (Mathf.Abs(dir.y) > Mathf.Abs(dir.x))
             {
-                return dir.y > 0 ? "North" : "South";
+                return dir.y > 0 ? T("North") : T("South");
             }
             else if (Mathf.Abs(dir.x) > 0.1f)
             {
-                return dir.x > 0 ? "East" : "West";
+                return dir.x > 0 ? T("East") : T("West");
             }
 
-            return "Unknown";
+            return T("Unknown");
         }
 
         /// <summary>
@@ -630,15 +631,15 @@ namespace FFI_ScreenReader.Field
             if (angle < 0) angle += 360;
 
             // Convert to cardinal/intercardinal directions
-            if (angle >= 337.5 || angle < 22.5) return "North";
-            else if (angle >= 22.5 && angle < 67.5) return "Northeast";
-            else if (angle >= 67.5 && angle < 112.5) return "East";
-            else if (angle >= 112.5 && angle < 157.5) return "Southeast";
-            else if (angle >= 157.5 && angle < 202.5) return "South";
-            else if (angle >= 202.5 && angle < 247.5) return "Southwest";
-            else if (angle >= 247.5 && angle < 292.5) return "West";
-            else if (angle >= 292.5 && angle < 337.5) return "Northwest";
-            else return "Unknown";
+            if (angle >= 337.5 || angle < 22.5) return T("North");
+            else if (angle >= 22.5 && angle < 67.5) return T("Northeast");
+            else if (angle >= 67.5 && angle < 112.5) return T("East");
+            else if (angle >= 112.5 && angle < 157.5) return T("Southeast");
+            else if (angle >= 157.5 && angle < 202.5) return T("South");
+            else if (angle >= 202.5 && angle < 247.5) return T("Southwest");
+            else if (angle >= 247.5 && angle < 292.5) return T("West");
+            else if (angle >= 292.5 && angle < 337.5) return T("Northwest");
+            else return T("Unknown");
         }
 
         /// <summary>
@@ -666,7 +667,7 @@ namespace FFI_ScreenReader.Field
             float distance = GetDistance(from, to);
             string direction = GetDirection(from, to);
             float steps = DistanceToSteps(distance);
-            string stepLabel = Math.Abs(steps - 1f) < 0.1f ? "step" : "steps";
+            string stepLabel = Math.Abs(steps - 1f) < 0.1f ? T("step") : T("steps");
 
             return $"{steps:F0} {stepLabel} {direction}";
         }

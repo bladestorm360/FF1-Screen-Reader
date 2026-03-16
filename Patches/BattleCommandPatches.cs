@@ -5,6 +5,7 @@ using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Battle types - KeyInput namespace
 using BattleCommandSelectController = Il2CppLast.UI.KeyInput.BattleCommandSelectController;
@@ -494,13 +495,13 @@ namespace FFI_ScreenReader.Patches
                 var selectedPlayer = playerList[index];
                 if (selectedPlayer == null) return;
 
-                string name = "Unknown";
+                string name = T("Unknown");
                 int currentHp = 0, maxHp = 0;
 
                 var ownedCharData = selectedPlayer.ownedCharacterData;
                 if (ownedCharData != null)
                 {
-                    name = ownedCharData.Name ?? "Unknown";
+                    name = ownedCharData.Name ?? T("Unknown");
                     var charParam = ownedCharData.Parameter;
                     if (charParam != null)
                     {
@@ -519,7 +520,7 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
 
-                string announcement = $"{name}: HP {currentHp}/{maxHp}";
+                string announcement = string.Format(T("{0}: HP {1}/{2}"), name, currentHp, maxHp);
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -556,7 +557,7 @@ namespace FFI_ScreenReader.Patches
                 var selectedEnemy = enemyList[index];
                 if (selectedEnemy == null) return;
 
-                string name = "Unknown";
+                string name = T("Unknown");
                 int currentHp = 0, maxHp = 0;
 
                 try
@@ -621,7 +622,7 @@ namespace FFI_ScreenReader.Patches
                 switch (hpMode)
                 {
                     case 0: // Numbers (default)
-                        announcement += $": HP {currentHp}/{maxHp}";
+                        announcement += string.Format(T(": HP {0}/{1}"), currentHp, maxHp);
                         break;
                     case 1: // Percentage
                         int pct = maxHp > 0 ? (currentHp * 100 / maxHp) : 0;

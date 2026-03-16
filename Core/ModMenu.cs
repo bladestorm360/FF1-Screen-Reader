@@ -5,6 +5,7 @@ using UnityEngine;
 using MelonLoader;
 using FFI_ScreenReader.Patches;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -44,7 +45,7 @@ namespace FFI_ScreenReader.Core
                 this.toggle = toggle;
             }
 
-            public override string GetValueString() => getter() ? "On" : "Off";
+            public override string GetValueString() => getter() ? T("On") : T("Off");
             public override void Adjust(int delta) => toggle();
             public override void Toggle() => toggle();
         }
@@ -97,7 +98,7 @@ namespace FFI_ScreenReader.Core
                 int index = getter();
                 if (index >= 0 && index < options.Length)
                     return options[index];
-                return "Unknown";
+                return T("Unknown");
             }
 
             public override void Adjust(int delta)
@@ -150,53 +151,53 @@ namespace FFI_ScreenReader.Core
             items = new List<MenuItem>
             {
                 // Audio Feedback section
-                new SectionHeader("Audio Feedback"),
-                new ToggleItem("Wall Tones",
+                new SectionHeader(T("Audio Feedback")),
+                new ToggleItem(T("Wall Tones"),
                     () => FFI_ScreenReaderMod.WallTonesEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleWallTones()),
-                new ToggleItem("Footsteps",
+                new ToggleItem(T("Footsteps"),
                     () => FFI_ScreenReaderMod.FootstepsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleFootsteps()),
-                new ToggleItem("Audio Beacons",
+                new ToggleItem(T("Audio Beacons"),
                     () => FFI_ScreenReaderMod.AudioBeaconsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons()),
 
                 // Volume Controls section
-                new SectionHeader("Volume Controls"),
-                new VolumeItem("Wall Bump Volume",
+                new SectionHeader(T("Volume Controls")),
+                new VolumeItem(T("Wall Bump Volume"),
                     () => PreferencesManager.WallBumpVolume,
                     PreferencesManager.SetWallBumpVolume),
-                new VolumeItem("Footstep Volume",
+                new VolumeItem(T("Footstep Volume"),
                     () => PreferencesManager.FootstepVolume,
                     PreferencesManager.SetFootstepVolume),
-                new VolumeItem("Wall Tone Volume",
+                new VolumeItem(T("Wall Tone Volume"),
                     () => PreferencesManager.WallToneVolume,
                     PreferencesManager.SetWallToneVolume),
-                new VolumeItem("Beacon Volume",
+                new VolumeItem(T("Beacon Volume"),
                     () => PreferencesManager.BeaconVolume,
                     PreferencesManager.SetBeaconVolume),
 
                 // Navigation Filters section
-                new SectionHeader("Navigation Filters"),
-                new ToggleItem("Pathfinding Filter",
+                new SectionHeader(T("Navigation Filters")),
+                new ToggleItem(T("Pathfinding Filter"),
                     () => FFI_ScreenReaderMod.PathfindingFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.TogglePathfindingFilter()),
-                new ToggleItem("Map Exit Filter",
+                new ToggleItem(T("Map Exit Filter"),
                     () => FFI_ScreenReaderMod.MapExitFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleMapExitFilter()),
-                new ToggleItem("Layer Transition Filter",
+                new ToggleItem(T("Layer Transition Filter"),
                     () => FFI_ScreenReaderMod.ToLayerFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleToLayerFilter()),
 
                 // Battle Settings section
-                new SectionHeader("Battle Settings"),
-                new EnumItem("Enemy HP Display",
-                    new[] { "Numbers", "Percentage", "Hidden" },
+                new SectionHeader(T("Battle Settings")),
+                new EnumItem(T("Enemy HP Display"),
+                    new[] { T("Numbers"), T("Percentage"), T("Hidden") },
                     () => PreferencesManager.EnemyHPDisplay,
                     PreferencesManager.SetEnemyHPDisplay),
 
                 // Close Menu action
-                new ActionItem("Close Menu", Close)
+                new ActionItem(T("Close Menu"), Close)
             };
 
         }

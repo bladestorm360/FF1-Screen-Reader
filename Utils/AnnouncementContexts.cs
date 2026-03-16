@@ -65,5 +65,18 @@ namespace FFI_ScreenReader.Utils
         public const string SHOP_COMMAND = "Shop.Command";
         public const string SHOP_QUANTITY = "Shop.Quantity";
         public const string SHOP_SLOT = "Shop.Slot";
+
+        // Bestiary (extras)
+        public const string BESTIARY_LIST_ENTRY = "Bestiary.ListEntry";
+        public const string BESTIARY_DETAIL_STAT = "Bestiary.DetailStat";
+        public const string BESTIARY_FORMATION = "Bestiary.Formation";
+        public const string BESTIARY_MAP = "Bestiary.Map";
+        public const string BESTIARY_STATE = "Bestiary.State";
+
+        // Music player (extras)
+        public const string MUSIC_LIST_ENTRY = "MusicPlayer.ListEntry";
+
+        // Gallery (extras)
+        public const string GALLERY_LIST_ENTRY = "Gallery.ListEntry";
     }
 }

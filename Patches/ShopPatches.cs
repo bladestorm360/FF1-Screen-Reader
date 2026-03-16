@@ -5,6 +5,7 @@ using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Shop UI types (root namespace in IL2CPP)
 using ShopController = Il2CppLast.UI.KeyInput.ShopController;
@@ -316,10 +317,10 @@ namespace FFI_ScreenReader.Patches
         {
             return commandId switch
             {
-                ShopCommandId.Buy => "Buy",
-                ShopCommandId.Sell => "Sell",
-                ShopCommandId.Equipment => "Equipment",
-                ShopCommandId.Back => "Back",
+                ShopCommandId.Buy => T("Buy"),
+                ShopCommandId.Sell => T("Sell"),
+                ShopCommandId.Equipment => T("Equipment"),
+                ShopCommandId.Back => T("Back"),
                 _ => null
             };
         }
@@ -354,8 +355,8 @@ namespace FFI_ScreenReader.Patches
                 string totalPrice = GetTotalPriceText(__instance);
 
                 string announcement = string.IsNullOrEmpty(totalPrice)
-                    ? $"Quantity: {selectedCount}"
-                    : $"Quantity: {selectedCount}, Total: {totalPrice}";
+                    ? string.Format(T("Quantity: {0}"), selectedCount)
+                    : string.Format(T("Quantity: {0}, Total: {1}"), selectedCount, totalPrice);
 
                 FFI_ScreenReaderMod.SpeakText(announcement);
             }

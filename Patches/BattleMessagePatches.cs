@@ -4,6 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Battle types
 using BattleActData = Il2CppLast.Battle.BattleActData;
@@ -381,7 +382,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static string GetUnitName(BattleUnitData data)
         {
-            if (data == null) return "Unknown";
+            if (data == null) return T("Unknown");
 
             try
             {
@@ -413,7 +414,7 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Battle Message] Error getting unit name: {ex.Message}");
             }
 
-            return "Unknown";
+            return T("Unknown");
         }
 
         /// <summary>

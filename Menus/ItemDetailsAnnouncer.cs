@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Patches;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // Type aliases for IL2CPP types
 using MasterManager = Il2CppLast.Data.Master.MasterManager;
@@ -250,10 +251,10 @@ namespace FFI_ScreenReader.Menus
         {
             if (jobNames == null || jobNames.Count == 0)
             {
-                return "No unlocked jobs can equip";
+                return T("No unlocked jobs can equip");
             }
 
-            return "Can equip: " + string.Join(", ", jobNames);
+            return T("Can equip: ") + string.Join(", ", jobNames);
         }
     }
 }

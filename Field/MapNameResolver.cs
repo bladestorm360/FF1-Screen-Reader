@@ -4,6 +4,7 @@ using MelonLoader;
 using Il2CppLast.Management;
 using Il2CppLast.Data.Master;
 using Il2CppLast.Map;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field
 {
@@ -28,19 +29,19 @@ namespace FFI_ScreenReader.Field
             {
                 int currentMapId = GetCurrentMapIdInternal();
                 if (currentMapId <= 0)
-                    return "Unknown";
+                    return T("Unknown");
 
                 string resolvedName = TryResolveMapNameById(currentMapId);
 
                 if (!string.IsNullOrEmpty(resolvedName))
                     return resolvedName;
 
-                return $"Map {currentMapId}";
+                return string.Format(T("Map {0}"), currentMapId);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[MapNameResolver] Error getting current map name: {ex.Message}");
-                return "Unknown";
+                return T("Unknown");
             }
         }
 

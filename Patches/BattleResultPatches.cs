@@ -5,6 +5,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Battle types - KeyInput namespace
 using ResultMenuController = Il2CppLast.UI.KeyInput.ResultMenuController;
@@ -137,7 +138,7 @@ namespace FFI_ScreenReader.Patches
                 try
                 {
                     int gil = resultData.GetGil;
-                    string gilAnnouncement = $"Gained {gil:N0} gil";
+                    string gilAnnouncement = string.Format(T("Gained {0} gil"), gil.ToString("N0"));
                     FFI_ScreenReaderMod.SpeakText(gilAnnouncement, interrupt: true);
                 }
                 catch (Exception ex)
@@ -168,7 +169,7 @@ namespace FFI_ScreenReader.Patches
                                 int charExp = charResult.GetExp;
                                 if (charExp > 0)
                                 {
-                                    string expAnnouncement = $"{charName} gained {charExp:N0} XP";
+                                    string expAnnouncement = string.Format(T("{0} gained {1} XP"), charName, charExp.ToString("N0"));
                                     FFI_ScreenReaderMod.SpeakText(expAnnouncement, interrupt: false);
                                 }
                             }
@@ -274,8 +275,8 @@ namespace FFI_ScreenReader.Patches
 
                         int dropCount = dropItem.DropValue;
                         string announcement = dropCount > 1
-                            ? $"Found {itemName} x{dropCount}"
-                            : $"Found {itemName}";
+                            ? string.Format(T("Found {0} x{1}"), itemName, dropCount)
+                            : string.Format(T("Found {0}"), itemName);
 
                         FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
                     }
@@ -334,7 +335,7 @@ namespace FFI_ScreenReader.Patches
 
                         // Build announcement
                         var parts = new List<string>();
-                        parts.Add($"{charName} leveled up to {newLevel}");
+                        parts.Add(string.Format(T("{0} leveled up to {1}"), charName, newLevel));
 
                         // Calculate stat gains if we have before data
                         var beforeData = charResult.BeforData; // Note: typo in game code
@@ -403,7 +404,7 @@ namespace FFI_ScreenReader.Patches
                 int hpBefore = 0, hpAfter = 0;
                 try { hpBefore = before.ConfirmedMaxHp(); } catch { try { hpBefore = before.BaseMaxHp; } catch { } } // IL2CPP accessor may fail
                 try { hpAfter = after.ConfirmedMaxHp(); } catch { try { hpAfter = after.BaseMaxHp; } catch { } } // IL2CPP accessor may fail
-                if (hpAfter > hpBefore) gains.Add($"HP +{hpAfter - hpBefore}");
+                if (hpAfter > hpBefore) gains.Add(string.Format(T("HP +{0}"), hpAfter - hpBefore));
 
                 // Strength (FF1 uses BasePower)
                 int strBefore = 0, strAfter = 0;
@@ -411,31 +412,31 @@ namespace FFI_ScreenReader.Patches
                 catch { } // IL2CPP accessor may fail
                 try { strAfter = after.BasePower; }
                 catch { } // IL2CPP accessor may fail
-                if (strAfter > strBefore) gains.Add($"Strength +{strAfter - strBefore}");
+                if (strAfter > strBefore) gains.Add(string.Format(T("Strength +{0}"), strAfter - strBefore));
 
                 // Agility (FF1 uses BaseAgility)
                 int agiBefore = 0, agiAfter = 0;
                 try { agiBefore = before.BaseAgility; } catch { } // IL2CPP accessor may fail
                 try { agiAfter = after.BaseAgility; } catch { } // IL2CPP accessor may fail
-                if (agiAfter > agiBefore) gains.Add($"Agility +{agiAfter - agiBefore}");
+                if (agiAfter > agiBefore) gains.Add(string.Format(T("Agility +{0}"), agiAfter - agiBefore));
 
                 // Stamina (displayed as "Stamina" in-game, property is BaseVitality)
                 int vitBefore = 0, vitAfter = 0;
                 try { vitBefore = before.BaseVitality; } catch { } // IL2CPP accessor may fail
                 try { vitAfter = after.BaseVitality; } catch { } // IL2CPP accessor may fail
-                if (vitAfter > vitBefore) gains.Add($"Stamina +{vitAfter - vitBefore}");
+                if (vitAfter > vitBefore) gains.Add(string.Format(T("Stamina +{0}"), vitAfter - vitBefore));
 
                 // Intellect (displayed as "Intellect" in-game, property is BaseIntelligence)
                 int intBefore = 0, intAfter = 0;
                 try { intBefore = before.BaseIntelligence; } catch { } // IL2CPP accessor may fail
                 try { intAfter = after.BaseIntelligence; } catch { } // IL2CPP accessor may fail
-                if (intAfter > intBefore) gains.Add($"Intellect +{intAfter - intBefore}");
+                if (intAfter > intBefore) gains.Add(string.Format(T("Intellect +{0}"), intAfter - intBefore));
 
                 // Luck (FF1 uses BaseLuck - same name)
                 int luckBefore = 0, luckAfter = 0;
                 try { luckBefore = before.BaseLuck; } catch { } // IL2CPP accessor may fail
                 try { luckAfter = after.BaseLuck; } catch { } // IL2CPP accessor may fail
-                if (luckAfter > luckBefore) gains.Add($"Luck +{luckAfter - luckBefore}");
+                if (luckAfter > luckBefore) gains.Add(string.Format(T("Luck +{0}"), luckAfter - luckBefore));
 
             }
             catch (Exception ex)

@@ -300,8 +300,15 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(itemName))
                     return;
 
-                // Build announcement: "Item Name: Description"
+                // Build announcement: "Item Name, Count: Description"
                 string announcement = itemName;
+
+                // Add item count if more than 1
+                int count = itemData.Count;
+                if (count > 1)
+                {
+                    announcement += $", {count}";
+                }
 
                 // Add description if available
                 string description = itemData.Description;

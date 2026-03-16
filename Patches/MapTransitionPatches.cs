@@ -6,6 +6,7 @@ using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Field;
 using SubSceneManagerMainGame = Il2CppLast.Management.SubSceneManagerMainGame;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -239,10 +240,10 @@ namespace FFI_ScreenReader.Patches
 
                 // Resolve map name
                 string mapName = MapNameResolver.GetCurrentMapName();
-                if (string.IsNullOrEmpty(mapName) || mapName == "Unknown")
+                if (string.IsNullOrEmpty(mapName) || mapName == T("Unknown"))
                     return;
 
-                string announcement = $"Entering {mapName}";
+                string announcement = string.Format(T("Entering {0}"), mapName);
 
                 // Record for dedup (suppresses bare name from FadeMessageManager.Play)
                 LocationMessageTracker.SetLastMapTransition(announcement);

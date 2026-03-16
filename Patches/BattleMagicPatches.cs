@@ -4,6 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Battle types - KeyInput namespace
 using BattleFrequencyAbilityInfomationController = Il2CppSerial.FF1.UI.KeyInput.BattleFrequencyAbilityInfomationController;
@@ -181,7 +182,7 @@ namespace FFI_ScreenReader.Patches
                         // This prevents "Empty" during target selection when dataList has leftover data
                         if (BattleMagicMenuState.IsActive)
                         {
-                            return "Empty";
+                            return T("Empty");
                         }
                         else
                         {
@@ -193,7 +194,7 @@ namespace FFI_ScreenReader.Patches
                         // Index beyond list - only announce empty if already in magic menu
                         if (BattleMagicMenuState.IsActive)
                         {
-                            return "Empty";
+                            return T("Empty");
                         }
                         else
                         {

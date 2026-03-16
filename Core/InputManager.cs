@@ -7,6 +7,7 @@ using FFI_ScreenReader.Core.Handlers;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Patches;
 using FFI_ScreenReader.Menus;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -36,7 +37,7 @@ namespace FFI_ScreenReader.Core
 
         private static void NotAvailableInBattle()
         {
-            FFI_ScreenReaderMod.SpeakText("Not available in battle", interrupt: true);
+            FFI_ScreenReaderMod.SpeakText(T("Not available in battle"), interrupt: true);
         }
 
         private void InitializeBindings()
@@ -95,6 +96,9 @@ namespace FFI_ScreenReader.Core
             // --- Global: V key (movement state) ---
             registry.Register(KeyCode.V, KeyContext.Global, () => GlobalHotkeyHandler.AnnounceCurrentVehicle(), "Announce vehicle state");
 
+            // --- Global: Shift+I key (controls tooltips) ---
+            registry.Register(KeyCode.I, KeyModifier.Shift, KeyContext.Global, KeyHelpReader.AnnounceKeyHelp, "Announce controls");
+
             // --- Global: I key (cascading menu priority) ---
             registry.Register(KeyCode.I, KeyContext.Global, () => GlobalHotkeyHandler.HandleItemDetailsKey(mod), "Item details");
 
@@ -137,7 +141,7 @@ namespace FFI_ScreenReader.Core
                 if (!BattleStateHelper.IsInBattle)
                     ModMenu.Open();
                 else
-                    FFI_ScreenReaderMod.SpeakText("Unavailable in battle", interrupt: true);
+                    FFI_ScreenReaderMod.SpeakText(T("Unavailable in battle"), interrupt: true);
                 return;
             }
 
@@ -205,12 +209,12 @@ namespace FFI_ScreenReader.Core
                     int current = PreferencesManager.EnemyHPDisplay;
                     int next = (current + 1) % 3;
                     PreferencesManager.SetEnemyHPDisplay(next);
-                    string[] options = { "Numbers", "Percentage", "Hidden" };
-                    FFI_ScreenReaderMod.SpeakText($"Enemy HP: {options[next]}", interrupt: true);
+                    string[] options = { T("Numbers"), T("Percentage"), T("Hidden") };
+                    FFI_ScreenReaderMod.SpeakText(string.Format(T("Enemy HP: {0}"), options[next]), interrupt: true);
                 }
                 else
                 {
-                    FFI_ScreenReaderMod.SpeakText("Only available in battle", interrupt: true);
+                    FFI_ScreenReaderMod.SpeakText(T("Only available in battle"), interrupt: true);
                 }
             }
         }
