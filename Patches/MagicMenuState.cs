@@ -161,7 +161,7 @@ namespace FFI_ScreenReader.Patches
         // Values are English keys into ModTextTranslator (localized at call time via T()).
         private static readonly Dictionary<int, string> ConditionTypeFallbacks = new Dictionary<int, string>
         {
-            { 4, "KO" },              // Dying
+            { 4, "Critical" },        // Dying (low HP)
             { 5, "KO" },              // UnableFight
             { 6, "Silence" },
             { 7, "Sleep" },
