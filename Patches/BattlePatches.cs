@@ -371,6 +371,20 @@ namespace FFI_ScreenReader.Patches
                         MelonLogger.Warning("[MainMenu Patch] Show method not found on MainMenuController");
                     }
                 }
+
+                // Patch Close() to clear MAIN_MENU state when menu closes
+                var closeMethod = controllerType.GetMethod("Close",
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null, Type.EmptyTypes, null);
+                if (closeMethod != null)
+                {
+                    harmony.Patch(closeMethod,
+                        postfix: new HarmonyMethod(typeof(MainMenuControllerPatches), nameof(Close_Postfix)));
+                }
+                else
+                {
+                    MelonLogger.Warning("[MainMenu Patch] Close method not found on MainMenuController");
+                }
             }
             catch (Exception ex)
             {
@@ -387,9 +401,11 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                // Always clear all menu states when main menu is shown
-                // This handles backing out from character selection screens
+                // Clear sub-menu states when returning to main menu command bar
                 ManualPatches.ClearAllMenuStates();
+
+                // Mark main menu as active so ControllerRouter knows we're in a menu
+                MenuStateRegistry.SetActive(MenuStateRegistry.MAIN_MENU, true);
 
                 // When main menu opens after battle, also clear battle states
                 if (BattleStateHelper.IsInBattle)
@@ -402,6 +418,15 @@ namespace FFI_ScreenReader.Patches
             {
                 MelonLogger.Warning($"[MainMenu Patch] Error in Show_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Called when MainMenuController.Close is called.
+        /// Clears MAIN_MENU state so field controls resume.
+        /// </summary>
+        public static void Close_Postfix()
+        {
+            MenuStateRegistry.SetActive(MenuStateRegistry.MAIN_MENU, false);
         }
     }
 }

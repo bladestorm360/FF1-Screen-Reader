@@ -168,6 +168,14 @@ namespace FFI_ScreenReader.Core
                         continue;
                     }
 
+                    // Silence when any menu or battle is active (same gate as controller routing)
+                    if (!ControllerRouter.IsFieldActive)
+                    {
+                        if (SoundPlayer.IsWallTonePlaying())
+                            SoundPlayer.StopWallTone();
+                        continue;
+                    }
+
                     var player = FFI_ScreenReaderMod.GetFieldPlayer();
                     if (player == null)
                     {
@@ -233,6 +241,10 @@ namespace FFI_ScreenReader.Core
 
                 // Suppress beacons briefly after scene load
                 if (Time.time < beaconSuppressedUntil)
+                    continue;
+
+                // Silence when any menu or battle is active (same gate as controller routing)
+                if (!ControllerRouter.IsFieldActive)
                     continue;
 
                 try

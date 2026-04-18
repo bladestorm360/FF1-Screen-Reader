@@ -142,6 +142,19 @@
     "th": "ทหาร",
     "pt": "Soldado"
   },
+  "兵士(e_v_0002専用)": {
+    "en": "Soldier",
+    "fr": "Soldat",
+    "it": "Soldato",
+    "de": "Soldat",
+    "es": "Soldado",
+    "ko": "병사",
+    "zht": "士兵",
+    "zhc": "士兵",
+    "ru": "Солдат",
+    "th": "ทหาร",
+    "pt": "Soldado"
+  },
   "村人(男性)": {
     "en": "Male Villager",
     "fr": "Villageois",

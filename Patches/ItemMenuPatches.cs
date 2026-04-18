@@ -200,34 +200,10 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Gets a localized condition/status effect name from a Condition object.
+        /// Gets a localized condition/status effect name. Delegates to <see cref="MagicMenuState.GetConditionName"/>
+        /// so condition resolution has a single source of truth.
         /// </summary>
-        public static string GetConditionName(Condition condition)
-        {
-            if (condition == null)
-                return null;
-
-            try
-            {
-                string mesId = condition.MesIdName;
-                if (!string.IsNullOrEmpty(mesId))
-                {
-                    var messageManager = MessageManager.Instance;
-                    if (messageManager != null)
-                    {
-                        string localizedName = messageManager.GetMessage(mesId, false);
-                        if (!string.IsNullOrWhiteSpace(localizedName))
-                            return localizedName;
-                    }
-                }
-            }
-            catch
-            {
-                // Fall through
-            }
-
-            return null;
-        }
+        public static string GetConditionName(Condition condition) => MagicMenuState.GetConditionName(condition);
     }
 
     /// <summary>

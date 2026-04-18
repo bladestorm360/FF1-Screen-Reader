@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
@@ -35,16 +36,82 @@ namespace FFI_ScreenReader.Patches
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 1: State transitions — SubSceneManagerExtraSound.ChangeState
-    // Entry song announced via coroutine (mirrors Bestiary AnnounceListOpen).
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(SubSceneManagerExtraSound), nameof(SubSceneManagerExtraSound.ChangeState))]
-    public static class SubSceneManagerExtraSound_ChangeState_Patch
+    /// <summary>
+    /// Patches for the Music Player (Extra Sound) extras menu.
+    /// Uses manual Harmony patching to avoid silent failures from attribute-based patches.
+    /// </summary>
+    internal static class MusicPlayerManualPatches
     {
-        [HarmonyPostfix]
-        public static void Postfix(int state)
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                // Patch 1: SubSceneManagerExtraSound.ChangeState
+                var changeStateMethod = AccessTools.Method(
+                    typeof(SubSceneManagerExtraSound), "ChangeState");
+                if (changeStateMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(MusicPlayerManualPatches), nameof(ChangeState_Postfix));
+                    harmony.Patch(changeStateMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[MusicPlayer] SubSceneManagerExtraSound.ChangeState not found");
+                }
+
+                // Patch 2: ExtraSoundListContentController.SetFocus
+                var setFocusMethod = AccessTools.Method(
+                    typeof(ExtraSoundListContentController), "SetFocus");
+                if (setFocusMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(MusicPlayerManualPatches), nameof(SetFocus_Postfix));
+                    harmony.Patch(setFocusMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[MusicPlayer] ExtraSoundListContentController.SetFocus not found");
+                }
+
+                // Patch 3: ExtraSoundController.ChangeKeyHelpPlaybackIcon
+                var playbackIconMethod = AccessTools.Method(
+                    typeof(ExtraSoundController), "ChangeKeyHelpPlaybackIcon");
+                if (playbackIconMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(MusicPlayerManualPatches), nameof(ChangeKeyHelpPlaybackIcon_Postfix));
+                    harmony.Patch(playbackIconMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[MusicPlayer] ExtraSoundController.ChangeKeyHelpPlaybackIcon not found");
+                }
+
+                // Patch 4: ExtraSoundListController.SwitchOriginalArrangeList
+                var switchListMethod = AccessTools.Method(
+                    typeof(ExtraSoundListController), "SwitchOriginalArrangeList");
+                if (switchListMethod != null)
+                {
+                    var prefix = AccessTools.Method(typeof(MusicPlayerManualPatches), nameof(SwitchOriginalArrangeList_Prefix));
+                    var postfix = AccessTools.Method(typeof(MusicPlayerManualPatches), nameof(SwitchOriginalArrangeList_Postfix));
+                    harmony.Patch(switchListMethod, prefix: new HarmonyMethod(prefix), postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[MusicPlayer] ExtraSoundListController.SwitchOriginalArrangeList not found");
+                }
+
+                MelonLogger.Msg("[MusicPlayer] Patches applied");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[MusicPlayer] Error applying patches: {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 1: State transitions
+        // ─────────────────────────────────────────────────────────────────────────
+
+        public static void ChangeState_Postfix(int state)
         {
             try
             {
@@ -73,8 +140,6 @@ namespace FFI_ScreenReader.Patches
             yield return null;
             FFI_ScreenReaderMod.SpeakText(T("Music Player"), true);
 
-            // Poll CachedFocusedPtr — SetFocus fires during entry with correct pointer,
-            // cached by the suppression path in the SetFocus patch.
             float elapsed = 0f;
 
             while (elapsed < 2f)
@@ -86,12 +151,11 @@ namespace FFI_ScreenReader.Patches
                 {
                     IntPtr focusedPtr = MusicPlayerStateTracker.CachedFocusedPtr;
                     if (focusedPtr != IntPtr.Zero &&
-                        MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx))
+                        MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx, out int playTime))
                     {
-                        string entry = MusicPlayerReader.ReadSongEntry(name, bgmId, idx);
+                        string entry = MusicPlayerReader.ReadSongEntry(name, bgmId, idx, playTime);
                         if (!string.IsNullOrEmpty(entry))
                             FFI_ScreenReaderMod.SpeakText(entry, false);
-                        // Success — clear suppression and exit
                         MusicPlayerStateTracker.SuppressContentChange = false;
                         yield break;
                     }
@@ -103,22 +167,14 @@ namespace FFI_ScreenReader.Patches
                 }
             }
 
-            // Timeout or error — still clear suppression
             MusicPlayerStateTracker.SuppressContentChange = false;
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 2: Song navigation — ExtraSoundListContentController.SetFocus
-    // Fires on every cursor movement (SetFocusContent calls SetFocus(true/false)).
-    // Only announces when isFocus==true. Suppressed during entry/toggle.
-    // ─────────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 2: Song navigation
+        // ─────────────────────────────────────────────────────────────────────────
 
-    [HarmonyPatch(typeof(ExtraSoundListContentController), nameof(ExtraSoundListContentController.SetFocus))]
-    public static class ExtraSoundListContentController_SetFocus_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ExtraSoundListContentController __instance, bool isFocus)
+        public static void SetFocus_Postfix(ExtraSoundListContentController __instance, bool isFocus)
         {
             try
             {
@@ -144,10 +200,10 @@ namespace FFI_ScreenReader.Patches
                 catch { return; }
                 if (ptr == IntPtr.Zero) return;
 
-                if (!MusicPlayerReader.ReadContentFromPointer(ptr, out string musicName, out int bgmId, out int index))
+                if (!MusicPlayerReader.ReadContentFromPointer(ptr, out string musicName, out int bgmId, out int index, out int playTime))
                     return;
 
-                string entry = MusicPlayerReader.ReadSongEntry(musicName, bgmId, index);
+                string entry = MusicPlayerReader.ReadSongEntry(musicName, bgmId, index, playTime);
                 if (!string.IsNullOrEmpty(entry))
                 {
                     AnnouncementDeduplicator.AnnounceIfNew(
@@ -159,23 +215,17 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[MusicPlayer] Error in SetFocus patch: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 3: Play All toggle — ExtraSoundController.ChangeKeyHelpPlaybackIcon
-    // ─────────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 3: Play All toggle
+        // ─────────────────────────────────────────────────────────────────────────
 
-    [HarmonyPatch(typeof(ExtraSoundController), nameof(ExtraSoundController.ChangeKeyHelpPlaybackIcon))]
-    public static class ExtraSoundController_ChangeKeyHelpPlaybackIcon_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(int key)
+        public static void ChangeKeyHelpPlaybackIcon_Postfix(int key)
         {
             try
             {
                 if (!MusicPlayerStateTracker.IsInMusicPlayer) return;
 
-                // LoopKeys: PlaybackOn=0, PlaybackOff=1
                 string announcement = key == 0 ? T("Play All On") : T("Play All Off");
                 FFI_ScreenReaderMod.SpeakText(announcement, true);
             }
@@ -184,26 +234,18 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[MusicPlayer] Error in PlaybackIcon patch: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 4: Arrangement toggle — ExtraSoundListController.SwitchOriginalArrangeList
-    // Prefix suppresses SetFocus during internal list swap.
-    // Postfix announces toggle label + current song, then clears suppression.
-    // ─────────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 4: Arrangement toggle
+        // ─────────────────────────────────────────────────────────────────────────
 
-    [HarmonyPatch(typeof(ExtraSoundListController), "SwitchOriginalArrangeList")]
-    public static class ExtraSoundListController_SwitchOriginalArrangeList_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix()
+        public static void SwitchOriginalArrangeList_Prefix()
         {
             if (MusicPlayerStateTracker.IsInMusicPlayer)
                 MusicPlayerStateTracker.SuppressContentChange = true;
         }
 
-        [HarmonyPostfix]
-        public static unsafe void Postfix(ExtraSoundListController __instance)
+        public static unsafe void SwitchOriginalArrangeList_Postfix(ExtraSoundListController __instance)
         {
             try
             {
@@ -216,13 +258,12 @@ namespace FFI_ScreenReader.Patches
                 string toggleLabel = listType == 1 ? T("Original") : T("Arrangement");
                 FFI_ScreenReaderMod.SpeakText(toggleLabel, true);
 
-                // Read and announce current song from cached focused pointer
                 AnnouncementDeduplicator.Reset(AnnouncementContexts.MUSIC_LIST_ENTRY);
                 IntPtr focusedPtr = MusicPlayerStateTracker.CachedFocusedPtr;
                 if (focusedPtr != IntPtr.Zero &&
-                    MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx))
+                    MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx, out int playTime))
                 {
-                    string entry = MusicPlayerReader.ReadSongEntry(name, bgmId, idx);
+                    string entry = MusicPlayerReader.ReadSongEntry(name, bgmId, idx, playTime);
                     if (!string.IsNullOrEmpty(entry))
                         FFI_ScreenReaderMod.SpeakText(entry, false);
                 }
@@ -237,5 +278,4 @@ namespace FFI_ScreenReader.Patches
             }
         }
     }
-
 }

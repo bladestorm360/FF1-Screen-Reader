@@ -91,7 +91,7 @@ namespace FFI_ScreenReader.Patches
                 MenuStateRegistry.BESTIARY_FORMATION,
                 MenuStateRegistry.BESTIARY_MAP);
             BestiaryNavigationTracker.Instance.Reset();
-            LibraryMenuController_UpdateController_Patch.ResetState();
+            BestiaryManualPatches.ResetUpdateControllerState();
             AnnouncementDeduplicator.Reset(
                 AnnouncementContexts.BESTIARY_LIST_ENTRY,
                 AnnouncementContexts.BESTIARY_DETAIL_STAT,
@@ -101,18 +101,196 @@ namespace FFI_ScreenReader.Patches
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 1: State transitions — central dispatcher
-
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(SubSceneManagerExtraLibrary), nameof(SubSceneManagerExtraLibrary.ChangeState))]
-    public static class SubSceneManagerExtraLibrary_ChangeState_Patch
+    /// <summary>
+    /// Patches for the Bestiary (Extra Library) extras menu.
+    /// Uses manual Harmony patching to avoid silent failures from attribute-based patches.
+    /// </summary>
+    internal static class BestiaryManualPatches
     {
-        [HarmonyPostfix]
-        public static void Postfix(SubSceneManagerExtraLibrary __instance, int state)
-        {
+        private static int lastSelectState = -1;
 
+        public static void ResetUpdateControllerState()
+        {
+            lastSelectState = 0;
+        }
+
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                // Patch 1: SubSceneManagerExtraLibrary.ChangeState
+                var changeStateMethod = AccessTools.Method(
+                    typeof(SubSceneManagerExtraLibrary), "ChangeState");
+                if (changeStateMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(ChangeState_Postfix));
+                    harmony.Patch(changeStateMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Bestiary] SubSceneManagerExtraLibrary.ChangeState not found");
+                }
+
+                // Patch 2: LibraryMenuController.Show
+                var showMethod = AccessTools.Method(
+                    typeof(LibraryMenuController_KeyInput), "Show");
+                if (showMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(LibraryMenuController_Show_Postfix));
+                    harmony.Patch(showMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Bestiary] LibraryMenuController.Show not found");
+                }
+
+                // Patch 2b: LibraryMenuController.OnContentSelected
+                var onContentSelectedMethod = AccessTools.Method(
+                    typeof(LibraryMenuController_KeyInput), "OnContentSelected");
+                if (onContentSelectedMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(LibraryMenuController_OnContentSelected_Postfix));
+                    harmony.Patch(onContentSelectedMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Bestiary] LibraryMenuController.OnContentSelected not found");
+                }
+
+                // Patch 3: LibraryInfoController.SetData
+                var setDataMethod = AccessTools.Method(
+                    typeof(LibraryInfoController_KeyInput), "SetData");
+                if (setDataMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(LibraryInfoController_SetData_Postfix));
+                    harmony.Patch(setDataMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Bestiary] LibraryInfoController.SetData not found");
+                }
+
+                // Patch 4: ExtraLibraryInfo.OnNextPageButton / OnPreviousPageButton
+                Type extraLibraryInfoType = null;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        extraLibraryInfoType = asm.GetType("Il2CppLast.Scene.ExtraLibraryInfo");
+                        if (extraLibraryInfoType != null) break;
+                    }
+                    catch { }
+                }
+
+                if (extraLibraryInfoType != null)
+                {
+                    var nextPageMethod = AccessTools.Method(extraLibraryInfoType, "OnNextPageButton");
+                    if (nextPageMethod != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(OnNextPageButton_Postfix));
+                        harmony.Patch(nextPageMethod, postfix: new HarmonyMethod(postfix));
+                    }
+
+                    var prevPageMethod = AccessTools.Method(extraLibraryInfoType, "OnPreviousPageButton");
+                    if (prevPageMethod != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(OnPreviousPageButton_Postfix));
+                        harmony.Patch(prevPageMethod, postfix: new HarmonyMethod(postfix));
+                    }
+
+                    // Patch 5: ExtraLibraryInfo.OnChangedMonster
+                    var onChangedMonsterMethod = AccessTools.Method(extraLibraryInfoType, "OnChangedMonster");
+                    if (onChangedMonsterMethod != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(OnChangedMonster_Postfix));
+                        harmony.Patch(onChangedMonsterMethod, postfix: new HarmonyMethod(postfix));
+                    }
+                }
+
+                // Patch 6: LibraryMenuController.UpdateController
+                var updateControllerMethod = AccessTools.Method(
+                    typeof(LibraryMenuController_KeyInput), "UpdateController");
+                if (updateControllerMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(UpdateController_Postfix));
+                    harmony.Patch(updateControllerMethod, postfix: new HarmonyMethod(postfix));
+                }
+
+                // Patch 7: ArBattleTopController.ChangeMonsterParty
+                var changeMonsterPartyMethod = AccessTools.Method(
+                    typeof(ArBattleTopController), "ChangeMonsterParty");
+                if (changeMonsterPartyMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(ChangeMonsterParty_Postfix));
+                    harmony.Patch(changeMonsterPartyMethod, postfix: new HarmonyMethod(postfix));
+                }
+
+                // Patch 8: ExtraLibraryField.NextMap / PreviousMap
+                Type extraLibraryFieldType = null;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        extraLibraryFieldType = asm.GetType("Il2CppLast.Scene.ExtraLibraryField");
+                        if (extraLibraryFieldType != null) break;
+                    }
+                    catch { }
+                }
+
+                if (extraLibraryFieldType != null)
+                {
+                    var nextMapMethod = AccessTools.Method(extraLibraryFieldType, "NextMap");
+                    if (nextMapMethod != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(NextMap_Postfix));
+                        harmony.Patch(nextMapMethod, postfix: new HarmonyMethod(postfix));
+                    }
+
+                    var prevMapMethod = AccessTools.Method(extraLibraryFieldType, "PreviousMap");
+                    if (prevMapMethod != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(PreviousMap_Postfix));
+                        harmony.Patch(prevMapMethod, postfix: new HarmonyMethod(postfix));
+                    }
+                }
+
+                // Patch 9: MenuExtraLibraryInfo.OnChangedMonster (config menu bestiary)
+                Type menuExtraLibraryInfoType = null;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        menuExtraLibraryInfoType = asm.GetType("Il2CppLast.Scene.MenuExtraLibraryInfo");
+                        if (menuExtraLibraryInfoType != null) break;
+                    }
+                    catch { }
+                }
+
+                if (menuExtraLibraryInfoType != null)
+                {
+                    var onChangedMonsterMethod = AccessTools.Method(menuExtraLibraryInfoType, "OnChangedMonster",
+                        new Type[] { typeof(MonsterData) });
+                    if (onChangedMonsterMethod != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(MenuExtraLibraryInfo_OnChangedMonster_Postfix));
+                        harmony.Patch(onChangedMonsterMethod, postfix: new HarmonyMethod(postfix));
+                    }
+                }
+
+                MelonLogger.Msg("[Bestiary] Patches applied");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Bestiary] Error applying patches: {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 1: State transitions
+        // ─────────────────────────────────────────────────────────────────────────
+
+        public static void ChangeState_Postfix(SubSceneManagerExtraLibrary __instance, int state)
+        {
             try
             {
                 int previousState = BestiaryStateTracker.CurrentState;
@@ -140,7 +318,6 @@ namespace FFI_ScreenReader.Patches
                             string reannounce = null;
                             if (previousState == 2 && !string.IsNullOrEmpty(BestiaryStateTracker.CachedEntryName))
                             {
-                                // Returning from full map — use cached data (MonsterData is stale)
                                 reannounce = string.Format(T("Map closed. {0}"), BestiaryStateTracker.CachedEntryName);
                                 BestiaryStateTracker.CachedEntryName = null;
                                 BestiaryStateTracker.CachedHabitatNames = null;
@@ -158,16 +335,14 @@ namespace FFI_ScreenReader.Patches
                         }
                         break;
 
-                    case 2: // Field (Map) — opens from list (state 1→2)
+                    case 2: // Field (Map)
                         MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_MAP, true);
                         BestiaryStateTracker.FullMapIndex = 0;
-                        // Cache data BEFORE coroutine — MonsterData becomes stale after scene transition
                         var mapTracker = BestiaryNavigationTracker.Instance;
                         if (mapTracker.CurrentMonsterData != null)
                         {
                             if (mapTracker.CurrentMonsterData.pictureBookData != null)
                                 BestiaryStateTracker.CachedEntryName = BestiaryReader.ReadListEntry(mapTracker.CurrentMonsterData.pictureBookData);
-                            // Cache all habitat names as plain strings
                             var habitatList = mapTracker.CurrentMonsterData.HabitatNameList;
                             if (habitatList != null && habitatList.Count > 0)
                             {
@@ -181,7 +356,6 @@ namespace FFI_ScreenReader.Patches
 
                     case 4: // Info (Detail)
                         MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_DETAIL, true);
-                        // Detail announcement handled by SetData patch
                         break;
 
                     case 5: // ArTop (Formation)
@@ -224,13 +398,11 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error announcing list summary: {ex.Message}");
             }
 
-            // Extra yields: let list controller finish populating
             yield return null;
             yield return null;
 
             try
             {
-                // Query list controller directly for initial focused entry
                 var listController = UnityEngine.Object.FindObjectOfType<LibraryMenuListController_KeyInput>();
                 if (listController != null)
                 {
@@ -264,7 +436,6 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                // Use cached habitat names — MonsterData is stale after scene transition
                 var cached = BestiaryStateTracker.CachedHabitatNames;
                 if (cached != null && cached.Count > 0)
                 {
@@ -312,7 +483,6 @@ namespace FFI_ScreenReader.Patches
                 }
             }
 
-            // Timeout — announce generic fallback
             FFI_ScreenReaderMod.SpeakText(T("Formation view"), true);
         }
 
@@ -348,9 +518,6 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        /// <summary>
-        /// Called externally to re-read the current formation (e.g., after reorganize).
-        /// </summary>
         public static void ReannounceFormation()
         {
             if (!BestiaryStateTracker.IsInFormation) return;
@@ -369,29 +536,19 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error re-announcing formation: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 2: List entry navigation — announces selected entry
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 2: List entry navigation
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(LibraryMenuController_KeyInput), nameof(LibraryMenuController_KeyInput.Show))]
-    public static class LibraryMenuController_Show_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(LibraryMenuController_KeyInput __instance, MonsterData selectData, bool isInit)
+        public static void LibraryMenuController_Show_Postfix(LibraryMenuController_KeyInput __instance, MonsterData selectData, bool isInit)
         {
-
             try
             {
                 if (selectData == null) return;
 
-                // Always cache data — Show fires inside ChangeState before our
-                // ChangeState postfix sets IsInList, so caching must be ungated
                 BestiaryNavigationTracker.Instance.CurrentMonsterData = selectData;
 
-                // Only announce when state has been set and not suppressed
                 if (!BestiaryStateTracker.IsInList) return;
                 if (BestiaryStateTracker.SuppressNextListEntry) return;
 
@@ -410,20 +567,13 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error in list Show patch: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 2b: List cursor movement — announces entry on every cursor change
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 2b: List cursor movement
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(LibraryMenuController_KeyInput), "OnContentSelected")]
-    public static class LibraryMenuController_OnContentSelected_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(int index, MonsterData monsterData)
+        public static void LibraryMenuController_OnContentSelected_Postfix(int index, MonsterData monsterData)
         {
-
             try
             {
                 if (monsterData == null) return;
@@ -431,7 +581,6 @@ namespace FFI_ScreenReader.Patches
 
                 BestiaryNavigationTracker.Instance.CurrentMonsterData = monsterData;
 
-                // Suppress speech during initial entry — AnnounceListOpen handles it
                 if (BestiaryStateTracker.SuppressNextListEntry) return;
 
                 var pbData = monsterData.pictureBookData;
@@ -449,25 +598,17 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error in list OnContentSelected patch: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 3: Detail view — build stat buffer and announce monster name
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 3: Detail view
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(LibraryInfoController_KeyInput), nameof(LibraryInfoController_KeyInput.SetData))]
-    public static class LibraryInfoController_SetData_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(LibraryInfoController_KeyInput __instance, MonsterData data)
+        public static void LibraryInfoController_SetData_Postfix(LibraryInfoController_KeyInput __instance, MonsterData data)
         {
-
             try
             {
                 if (__instance == null || data == null) return;
 
-                // Cache the controller
                 GameObjectCache.Register(__instance);
 
                 var tracker = BestiaryNavigationTracker.Instance;
@@ -484,7 +625,6 @@ namespace FFI_ScreenReader.Patches
 
         private static IEnumerator DelayedDetailAnnouncement(LibraryInfoController_KeyInput controller, MonsterData data)
         {
-            // Wait for UI to update
             yield return null;
             yield return null;
 
@@ -493,14 +633,12 @@ namespace FFI_ScreenReader.Patches
                 if (controller == null || controller.gameObject == null || !controller.gameObject.activeInHierarchy)
                     yield break;
 
-                // Announce monster name
                 var pbData = data.pictureBookData;
                 string name = pbData != null && pbData.IsRelease ? pbData.MonsterName : "Unknown";
                 string announcement = string.Format(T("{0}. Details"), name);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, true);
 
-                // Build stat buffer from UI
                 BuildAndInitializeStatBuffer();
             }
             catch (Exception ex)
@@ -509,9 +647,6 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        /// <summary>
-        /// Find LibraryInfoContent and build the stat buffer.
-        /// </summary>
         internal static void BuildAndInitializeStatBuffer()
         {
             try
@@ -539,65 +674,45 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error building stat buffer: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 4: Page turns in detail view — rebuild stat buffer
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 4: Page turns in detail view
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(Il2CppLast.Scene.ExtraLibraryInfo), "OnNextPageButton")]
-    public static class ExtraLibraryInfo_OnNextPageButton_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
+        public static void OnNextPageButton_Postfix()
         {
-
             try
             {
                 if (!BestiaryStateTracker.IsInDetail) return;
-                CoroutineManager.StartManaged(PageRebuildHelper.Execute());
+                CoroutineManager.StartManaged(PageRebuild());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Bestiary] Error in OnNextPageButton patch: {ex.Message}");
             }
         }
-    }
 
-    [HarmonyPatch(typeof(Il2CppLast.Scene.ExtraLibraryInfo), "OnPreviousPageButton")]
-    public static class ExtraLibraryInfo_OnPreviousPageButton_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
+        public static void OnPreviousPageButton_Postfix()
         {
-
             try
             {
                 if (!BestiaryStateTracker.IsInDetail) return;
-                CoroutineManager.StartManaged(PageRebuildHelper.Execute());
+                CoroutineManager.StartManaged(PageRebuild());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Bestiary] Error in OnPreviousPageButton patch: {ex.Message}");
             }
         }
-    }
 
-    /// <summary>
-    /// Helper for page turn rebuild delay. Shared between next/previous patches.
-    /// </summary>
-    internal static class PageRebuildHelper
-    {
-        internal static IEnumerator Execute()
+        private static IEnumerator PageRebuild()
         {
             yield return null;
             yield return null;
 
             try
             {
-                // Rebuild stat buffer from updated content
-                LibraryInfoController_SetData_Patch.BuildAndInitializeStatBuffer();
+                BuildAndInitializeStatBuffer();
 
                 var tracker = BestiaryNavigationTracker.Instance;
                 var data = tracker.CurrentMonsterData;
@@ -612,28 +727,19 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error rebuilding page: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 5: Monster switching in detail view (previous/next monster)
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 5: Monster switching in detail view
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(Il2CppLast.Scene.ExtraLibraryInfo), "OnChangedMonster")]
-    public static class ExtraLibraryInfo_OnChangedMonster_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(MonsterData data)
+        public static void OnChangedMonster_Postfix(MonsterData data)
         {
-
             try
             {
                 if (data == null || !BestiaryStateTracker.IsInDetail) return;
 
-                // Update tracker
                 BestiaryNavigationTracker.Instance.CurrentMonsterData = data;
 
-                // Delay to let UI update
                 CoroutineManager.StartManaged(DelayedMonsterChangeAnnouncement(data));
             }
             catch (Exception ex)
@@ -653,34 +759,24 @@ namespace FFI_ScreenReader.Patches
                 string name = pbData != null && pbData.IsRelease ? pbData.MonsterName : "Unknown";
                 FFI_ScreenReaderMod.SpeakText(string.Format(T("{0}. Details"), name), true);
 
-                LibraryInfoController_SetData_Patch.BuildAndInitializeStatBuffer();
+                BuildAndInitializeStatBuffer();
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Bestiary] Error in monster change announcement: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 6: Map change (left/right in list view changes habitat map)
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 6: Map change (list view minimap)
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(LibraryMenuController_KeyInput), nameof(LibraryMenuController_KeyInput.UpdateController))]
-    public static class LibraryMenuController_UpdateController_Patch
-    {
-        private static int lastSelectState = -1;
-
-        [HarmonyPostfix]
-        public static void Postfix(LibraryMenuController_KeyInput __instance)
+        public static void UpdateController_Postfix(LibraryMenuController_KeyInput __instance)
         {
-
             try
             {
                 if (!BestiaryStateTracker.IsInList) return;
 
-                // Direct IL2CPP property access (Traverse fails on IL2CPP enums)
                 int currentState = (int)__instance.selectState;
 
                 if (currentState != lastSelectState && lastSelectState >= 0)
@@ -688,7 +784,6 @@ namespace FFI_ScreenReader.Patches
                     if (currentState == 1) // EnlargedMap
                     {
                         var tracker = BestiaryNavigationTracker.Instance;
-                        // Cache entry name while MonsterData is still alive
                         if (tracker.CurrentMonsterData?.pictureBookData != null)
                             BestiaryStateTracker.CachedEntryName = BestiaryReader.ReadListEntry(tracker.CurrentMonsterData.pictureBookData);
 
@@ -718,73 +813,44 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        public static void ResetState()
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 7: Formation rearrange
+        // ─────────────────────────────────────────────────────────────────────────
+
+        public static void ChangeMonsterParty_Postfix()
         {
-            lastSelectState = 0;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 7: Formation rearrange — announce new formation after Q key
-
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(ArBattleTopController), nameof(ArBattleTopController.ChangeMonsterParty))]
-    public static class ArBattleTopController_ChangeMonsterParty_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-
             if (!BestiaryStateTracker.IsInFormation) return;
-            CoroutineManager.StartManaged(DelayedReannounce());
+            CoroutineManager.StartManaged(DelayedReannounceFormation());
         }
 
-        private static IEnumerator DelayedReannounce()
+        private static IEnumerator DelayedReannounceFormation()
         {
             yield return null;
-            SubSceneManagerExtraLibrary_ChangeState_Patch.ReannounceFormation();
+            ReannounceFormation();
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 8: Full map cycling — NextMap/PreviousMap in map view (state 2)
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 8: Full map cycling
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(Il2CppLast.Scene.ExtraLibraryField), "NextMap")]
-    public static class ExtraLibraryField_NextMap_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
+        public static void NextMap_Postfix()
         {
-
             if (!BestiaryStateTracker.IsInMap) return;
-            CoroutineManager.StartManaged(FullMapCycleHelper.AnnounceFullMapCycle(1));
+            CoroutineManager.StartManaged(AnnounceFullMapCycle(1));
         }
-    }
 
-    [HarmonyPatch(typeof(Il2CppLast.Scene.ExtraLibraryField), "PreviousMap")]
-    public static class ExtraLibraryField_PreviousMap_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
+        public static void PreviousMap_Postfix()
         {
-
             if (!BestiaryStateTracker.IsInMap) return;
-            CoroutineManager.StartManaged(FullMapCycleHelper.AnnounceFullMapCycle(-1));
+            CoroutineManager.StartManaged(AnnounceFullMapCycle(-1));
         }
-    }
 
-    internal static class FullMapCycleHelper
-    {
-        internal static IEnumerator AnnounceFullMapCycle(int direction)
+        private static IEnumerator AnnounceFullMapCycle(int direction)
         {
             yield return null;
 
             try
             {
-                // Use cached habitat names — MonsterData is stale after scene transition
                 var cached = BestiaryStateTracker.CachedHabitatNames;
                 if (cached == null || cached.Count == 0) yield break;
 
@@ -806,117 +872,12 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Bestiary] Error announcing map cycle: {ex.Message}");
             }
         }
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Config menu bestiary state handler
-    // Maps SubSceneManagerMainGame states 17/18 to BestiaryStateTracker states
-    // so all existing bestiary patches (list nav, detail view, page turns) work.
-    // ─────────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 9: Config menu bestiary monster switching
+        // ─────────────────────────────────────────────────────────────────────────
 
-    internal static class ConfigBestiaryStateHandler
-    {
-        private static int _previousState = -1;
-
-        /// <summary>
-        /// True while we're in the config menu bestiary (states 17 or 18).
-        /// Used by GameStatePatches to detect exit.
-        /// </summary>
-        public static bool WasInConfigBestiary { get; private set; } = false;
-
-        public static void HandleStateChange(int mainGameState)
-        {
-            try
-            {
-                int previousBestiaryState = BestiaryStateTracker.CurrentState;
-
-                if (mainGameState == 17) // MenuLibraryUi = list
-                {
-                    WasInConfigBestiary = true;
-                    BestiaryStateTracker.CurrentState = 1; // Map to extras List state
-
-                    // Clear and set menu state
-                    MenuStateRegistry.Reset(
-                        MenuStateRegistry.BESTIARY_LIST,
-                        MenuStateRegistry.BESTIARY_DETAIL);
-                    MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_LIST, true);
-
-                    if (previousBestiaryState <= 0) // Entering from outside
-                    {
-                        BestiaryNavigationTracker.Instance.Reset();
-                        BestiaryStateTracker.SuppressNextListEntry = true;
-                        CoroutineManager.StartManaged(
-                            SubSceneManagerExtraLibrary_ChangeState_Patch.AnnounceListOpen());
-                    }
-                    else if (previousBestiaryState == 4) // Returning from detail
-                    {
-                        BestiaryNavigationTracker.Instance.Reset();
-                        AnnouncementDeduplicator.Reset(AnnouncementContexts.BESTIARY_LIST_ENTRY);
-
-                        // Re-announce current entry
-                        var listController = UnityEngine.Object.FindObjectOfType<LibraryMenuListController_KeyInput>();
-                        if (listController != null)
-                        {
-                            var data = listController.GetCurrentContent();
-                            if (data != null)
-                            {
-                                BestiaryNavigationTracker.Instance.CurrentMonsterData = data;
-                                if (data.pictureBookData != null)
-                                {
-                                    string entry = BestiaryReader.ReadListEntry(data.pictureBookData);
-                                    if (!string.IsNullOrEmpty(entry))
-                                        FFI_ScreenReaderMod.SpeakText(entry, true);
-                                }
-                            }
-                        }
-                    }
-                }
-                else if (mainGameState == 18) // MenuLibraryInfo = detail
-                {
-                    WasInConfigBestiary = true;
-                    BestiaryStateTracker.CurrentState = 4; // Map to extras Info state
-
-                    MenuStateRegistry.Reset(
-                        MenuStateRegistry.BESTIARY_LIST,
-                        MenuStateRegistry.BESTIARY_DETAIL);
-                    MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_DETAIL, true);
-                    // Detail announcement handled by existing SetData patch
-                }
-
-                _previousState = mainGameState;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Bestiary] Error in ConfigBestiaryStateHandler: {ex.Message}");
-            }
-        }
-
-        public static void HandleExit()
-        {
-            try
-            {
-                WasInConfigBestiary = false;
-                _previousState = -1;
-                BestiaryStateTracker.ClearState();
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Bestiary] Error in ConfigBestiaryStateHandler exit: {ex.Message}");
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 9: Monster switching in config menu detail view
-    // MenuExtraLibraryInfo.OnChangedMonster has a different RVA than
-    // ExtraLibraryInfo.OnChangedMonster, so needs its own patch.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(Il2CppLast.Scene.MenuExtraLibraryInfo), "OnChangedMonster", new Type[] { typeof(MonsterData) })]
-    public static class MenuExtraLibraryInfo_OnChangedMonster_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(MonsterData data)
+        public static void MenuExtraLibraryInfo_OnChangedMonster_Postfix(MonsterData data)
         {
             try
             {
@@ -924,7 +885,7 @@ namespace FFI_ScreenReader.Patches
 
                 BestiaryNavigationTracker.Instance.CurrentMonsterData = data;
 
-                CoroutineManager.StartManaged(DelayedMonsterChangeAnnouncement(data));
+                CoroutineManager.StartManaged(DelayedConfigMonsterChangeAnnouncement(data));
             }
             catch (Exception ex)
             {
@@ -932,7 +893,7 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static IEnumerator DelayedMonsterChangeAnnouncement(MonsterData data)
+        private static IEnumerator DelayedConfigMonsterChangeAnnouncement(MonsterData data)
         {
             yield return null;
             yield return null;
@@ -943,13 +904,99 @@ namespace FFI_ScreenReader.Patches
                 string name = pbData != null && pbData.IsRelease ? pbData.MonsterName : "Unknown";
                 FFI_ScreenReaderMod.SpeakText(string.Format(T("{0}. Details"), name), true);
 
-                LibraryInfoController_SetData_Patch.BuildAndInitializeStatBuffer();
+                BuildAndInitializeStatBuffer();
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Bestiary] Error in config monster change announcement: {ex.Message}");
             }
         }
-    }
 
+        // ─────────────────────────────────────────────────────────────────────────
+        // Config menu bestiary state handler
+        // ─────────────────────────────────────────────────────────────────────────
+
+        internal static class ConfigBestiaryStateHandler
+        {
+            private static int _previousState = -1;
+            public static bool WasInConfigBestiary { get; private set; } = false;
+
+            public static void HandleStateChange(int mainGameState)
+            {
+                try
+                {
+                    int previousBestiaryState = BestiaryStateTracker.CurrentState;
+
+                    if (mainGameState == 17) // MenuLibraryUi = list
+                    {
+                        WasInConfigBestiary = true;
+                        BestiaryStateTracker.CurrentState = 1;
+
+                        MenuStateRegistry.Reset(
+                            MenuStateRegistry.BESTIARY_LIST,
+                            MenuStateRegistry.BESTIARY_DETAIL);
+                        MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_LIST, true);
+
+                        if (previousBestiaryState <= 0)
+                        {
+                            BestiaryNavigationTracker.Instance.Reset();
+                            BestiaryStateTracker.SuppressNextListEntry = true;
+                            CoroutineManager.StartManaged(AnnounceListOpen());
+                        }
+                        else if (previousBestiaryState == 4)
+                        {
+                            BestiaryNavigationTracker.Instance.Reset();
+                            AnnouncementDeduplicator.Reset(AnnouncementContexts.BESTIARY_LIST_ENTRY);
+
+                            var listController = UnityEngine.Object.FindObjectOfType<LibraryMenuListController_KeyInput>();
+                            if (listController != null)
+                            {
+                                var data = listController.GetCurrentContent();
+                                if (data != null)
+                                {
+                                    BestiaryNavigationTracker.Instance.CurrentMonsterData = data;
+                                    if (data.pictureBookData != null)
+                                    {
+                                        string entry = BestiaryReader.ReadListEntry(data.pictureBookData);
+                                        if (!string.IsNullOrEmpty(entry))
+                                            FFI_ScreenReaderMod.SpeakText(entry, true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (mainGameState == 18) // MenuLibraryInfo = detail
+                    {
+                        WasInConfigBestiary = true;
+                        BestiaryStateTracker.CurrentState = 4;
+
+                        MenuStateRegistry.Reset(
+                            MenuStateRegistry.BESTIARY_LIST,
+                            MenuStateRegistry.BESTIARY_DETAIL);
+                        MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_DETAIL, true);
+                    }
+
+                    _previousState = mainGameState;
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"[Bestiary] Error in ConfigBestiaryStateHandler: {ex.Message}");
+                }
+            }
+
+            public static void HandleExit()
+            {
+                try
+                {
+                    WasInConfigBestiary = false;
+                    _previousState = -1;
+                    BestiaryStateTracker.ClearState();
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"[Bestiary] Error in ConfigBestiaryStateHandler exit: {ex.Message}");
+                }
+            }
+        }
+    }
 }

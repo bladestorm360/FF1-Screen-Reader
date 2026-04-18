@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Utils;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
@@ -7,7 +8,8 @@ using static FFI_ScreenReader.Utils.ModTextTranslator;
 namespace FFI_ScreenReader.Core
 {
     /// <summary>
-    /// Simple Yes/No confirmation dialog using Windows API focus stealing.
+    /// Simple Yes/No confirmation dialog using Unity Input.GetKeyDown.
+    /// Game input suppressed via ControllerRouter.SuppressGameInput + InputSystemManager patches.
     /// </summary>
     internal static class ConfirmationDialog
     {
@@ -28,13 +30,6 @@ namespace FFI_ScreenReader.Core
             onNoCallback = onNo;
             selectedYes = true;
 
-            WindowsFocusHelper.InitializeKeyStates(new[] {
-                WindowsFocusHelper.VK_RETURN, WindowsFocusHelper.VK_ESCAPE,
-                WindowsFocusHelper.VK_LEFT, WindowsFocusHelper.VK_RIGHT,
-                WindowsFocusHelper.VK_Y, WindowsFocusHelper.VK_N
-            });
-
-            WindowsFocusHelper.StealFocus("FFI_ConfirmDialog");
             CoroutineManager.StartManaged(DelayedPromptAnnouncement($"{prompt} {T("Yes or No")}"));
         }
 
@@ -56,40 +51,41 @@ namespace FFI_ScreenReader.Core
         {
             if (!IsOpen) return;
             IsOpen = false;
-            WindowsFocusHelper.RestoreFocus();
             onYesCallback = null;
             onNoCallback = null;
         }
 
         /// <summary>
-        /// Handles keyboard input. Returns true if input was consumed (dialog is open).
+        /// Handles keyboard input via Unity Input.GetKeyDown.
+        /// Game input suppressed via InputSystemManager patches when IsOpen.
+        /// Returns true if input was consumed (dialog is open).
         /// </summary>
         public static bool HandleInput()
         {
             if (!IsOpen) return false;
 
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_Y))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.Y))
             {
                 var callback = onYesCallback;
                 CoroutineManager.StartManaged(DelayedCloseAnnouncement(T("Yes"), callback));
                 return true;
             }
 
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_N))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.N))
             {
                 var callback = onNoCallback;
                 CoroutineManager.StartManaged(DelayedCloseAnnouncement(T("No"), callback));
                 return true;
             }
 
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_ESCAPE))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.Escape))
             {
                 var callback = onNoCallback;
                 CoroutineManager.StartManaged(DelayedCloseAnnouncement(T("Cancelled"), callback));
                 return true;
             }
 
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_RETURN))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.Return))
             {
                 if (selectedYes)
                 {
@@ -104,7 +100,7 @@ namespace FFI_ScreenReader.Core
                 return true;
             }
 
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_LEFT) || WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_RIGHT))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.LeftArrow) || GamepadManager.IsKeyCodePressed(KeyCode.RightArrow))
             {
                 selectedYes = !selectedYes;
                 string selection = selectedYes ? T("Yes") : T("No");

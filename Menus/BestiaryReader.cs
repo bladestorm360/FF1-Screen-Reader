@@ -301,20 +301,6 @@ namespace FFI_ScreenReader.Menus
                 var master = monsterData.MonsterMaster;
                 if (master == null) return;
 
-                // Stealable items (4 slots)
-                var stealNames = new List<string>();
-                int[] stealIds = { master.StealContentId1, master.StealContentId2, master.StealContentId3, master.StealContentId4 };
-                foreach (int id in stealIds)
-                {
-                    if (id <= 0) continue;
-                    string name = ResolveContentName(id);
-                    if (!string.IsNullOrEmpty(name))
-                        stealNames.Add(name);
-                }
-                entries.Add(new BestiaryStatEntry("Stealable Items",
-                    stealNames.Count > 0 ? string.Join(", ", stealNames) : "None",
-                    BestiaryStatGroup.Items));
-
                 // Dropped items (8 slots)
                 var dropNames = new List<string>();
                 int[] dropIds = { master.DropContentId1, master.DropContentId2, master.DropContentId3, master.DropContentId4,

@@ -18,6 +18,7 @@ using GameCursor = Il2CppLast.UI.Cursor;
 using CustomScrollViewWithinRangeType = Il2CppLast.UI.CustomScrollView.WithinRangeType;
 using EquipmentCommandController = Il2CppLast.UI.KeyInput.EquipmentCommandController;
 using EquipmentCommandId = Il2CppLast.UI.EquipmentCommandId;
+using EquipmentDescriptionWindowController = Il2CppLast.UI.KeyInput.EquipmentDescriptionWindowController;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -41,11 +42,19 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static bool EnteredFromShop { get; set; } = false;
 
+        /// <summary>
+        /// Last target index (party member). Used to detect tab switches in SelectContent
+        /// (event-driven: only fires when the game sends a cursor event).
+        /// Changes only on RB/LB, not on slot navigation.
+        /// </summary>
+        public static int LastTargetIndex { get; set; } = -1;
+
         static EquipMenuState()
         {
             MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.EQUIP_MENU, () =>
             {
                 EnteredFromShop = false;
+                LastTargetIndex = -1;
                 AnnouncementDeduplicator.Reset(AnnouncementContexts.EQUIP_SELECT);
             });
         }
@@ -224,7 +233,7 @@ namespace FFI_ScreenReader.Patches
                     slotName = EquipMenuState.GetSlotName(slotType);
                 }
 
-                // Get equipped item from Data property
+                // Get equipped item name from Data property (stats gated behind I key)
                 string equippedItem = null;
                 var itemData = contentView.Data;
                 if (itemData != null)
@@ -232,13 +241,6 @@ namespace FFI_ScreenReader.Patches
                     try
                     {
                         equippedItem = itemData.Name;
-
-                        // Add parameter message (ATK +12, DEF +5, etc.)
-                        string paramMsg = itemData.ParameterMessage;
-                        if (!string.IsNullOrWhiteSpace(paramMsg))
-                        {
-                            equippedItem += ", " + paramMsg;
-                        }
                     }
                     catch { } // IL2CPP item data may not resolve
                 }
@@ -289,7 +291,55 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Equip");
                 EquipMenuState.IsActive = true;
 
-                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                // Detect character switch via targetIndex (int, changes only on RB/LB)
+                bool characterSwitched = false;
+                try
+                {
+                    IntPtr ctrlPtr = __instance.Pointer;
+                    if (ctrlPtr != IntPtr.Zero)
+                    {
+                        int targetIndex = IL2CppFieldReader.ReadInt32(ctrlPtr, IL2CppOffsets.Equipment.TargetIndex);
+                        if (targetIndex != EquipMenuState.LastTargetIndex)
+                        {
+                            characterSwitched = EquipMenuState.LastTargetIndex >= 0;
+                            EquipMenuState.LastTargetIndex = targetIndex;
+
+                            if (characterSwitched)
+                            {
+                                // Reset dedup so slot re-announces for new character
+                                AnnouncementDeduplicator.Reset(AnnouncementContexts.EQUIP_SELECT);
+
+                                // Read character name/job from view
+                                IntPtr viewPtr = IL2CppFieldReader.ReadPointerSafe(ctrlPtr, IL2CppOffsets.Equipment.InfoView);
+                                if (viewPtr != IntPtr.Zero)
+                                {
+                                    string charName = null;
+                                    string jobName = null;
+
+                                    IntPtr nameTextPtr = IL2CppFieldReader.ReadPointerSafe(viewPtr, IL2CppOffsets.Equipment.NameText);
+                                    if (nameTextPtr != IntPtr.Zero)
+                                        charName = new UnityEngine.UI.Text(nameTextPtr)?.text;
+
+                                    IntPtr jobTextPtr = IL2CppFieldReader.ReadPointerSafe(viewPtr, IL2CppOffsets.Equipment.JobNameText);
+                                    if (jobTextPtr != IntPtr.Zero)
+                                        jobName = new UnityEngine.UI.Text(jobTextPtr)?.text;
+
+                                    if (!string.IsNullOrWhiteSpace(charName))
+                                    {
+                                        string charAnnouncement = charName;
+                                        if (!string.IsNullOrWhiteSpace(jobName))
+                                            charAnnouncement += $", {jobName}";
+                                        FFI_ScreenReaderMod.SpeakText(charAnnouncement, interrupt: true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { } // Non-critical — fall through to slot announcement
+
+                // After character switch, queue slot behind character name; otherwise interrupt
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: !characterSwitched);
             }
             catch (Exception ex)
             {
@@ -374,32 +424,8 @@ namespace FFI_ScreenReader.Patches
                 // Strip icon markup from name
                 itemName = TextUtils.StripIconMarkup(itemName);
 
-                // Build announcement with item details
+                // Build announcement with name only (stats/description gated behind I key)
                 string announcement = itemName;
-
-                // Add parameter info (ATK +15, DEF +8, etc.)
-                try
-                {
-                    string paramMessage = itemData.ParameterMessage;
-                    if (!string.IsNullOrWhiteSpace(paramMessage))
-                    {
-                        paramMessage = TextUtils.StripIconMarkup(paramMessage);
-                        announcement += $", {paramMessage}";
-                    }
-                }
-                catch { } // Parameter stats may not be available
-
-                // Add description
-                try
-                {
-                    string description = itemData.Description;
-                    if (!string.IsNullOrWhiteSpace(description))
-                    {
-                        description = TextUtils.StripIconMarkup(description);
-                        announcement += $", {description}";
-                    }
-                }
-                catch { } // Description may not be available
 
                 // Skip duplicates
                 if (!EquipMenuState.ShouldAnnounce(announcement))
@@ -426,7 +452,7 @@ namespace FFI_ScreenReader.Patches
     }
 
     /// <summary>
-    /// Manual patches for equipment menu (command bar announcements).
+    /// Manual patches for equipment menu (command bar + character switch announcements).
     /// </summary>
     public static class EquipMenuPatches
     {
@@ -450,6 +476,7 @@ namespace FFI_ScreenReader.Patches
                 {
                     MelonLogger.Warning("[Equipment] Could not find EquipmentCommandController.SetFocus");
                 }
+
             }
             catch (Exception ex)
             {
@@ -474,6 +501,64 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Equipment] Error in CommandSetFocus_Postfix: {ex.Message}");
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Announces equipment item details when 'I' key or right stick up is pressed.
+    /// Reads the description text directly from the game's EquipmentDescriptionWindowController UI panel.
+    /// Mirrors ShopDetailsAnnouncer pattern exactly.
+    /// </summary>
+    public static class EquipDetailsAnnouncer
+    {
+        public static void AnnounceCurrentItemDetails()
+        {
+            try
+            {
+                if (!EquipMenuState.IsActive)
+                    return;
+
+                string announcement = GetDescriptionFromUI();
+                if (string.IsNullOrEmpty(announcement))
+                    announcement = "No description available";
+
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Equipment] Error announcing details: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Reads the description text from the equipment UI panel.
+        /// Pointer chain: EquipmentDescriptionWindowController → view (0x20) → descriptionText (0x18) → text
+        /// </summary>
+        private static string GetDescriptionFromUI()
+        {
+            try
+            {
+                var descController = UnityEngine.Object.FindObjectOfType<EquipmentDescriptionWindowController>();
+                if (descController == null)
+                    return null;
+
+                IntPtr controllerPtr = descController.Pointer;
+                if (controllerPtr == IntPtr.Zero) return null;
+
+                IntPtr viewPtr = IL2CppFieldReader.ReadPointerSafe(controllerPtr, IL2CppOffsets.Equipment.DescriptionView);
+                if (viewPtr == IntPtr.Zero) return null;
+
+                IntPtr textPtr = IL2CppFieldReader.ReadPointerSafe(viewPtr, IL2CppOffsets.Equipment.DescriptionText);
+                if (textPtr == IntPtr.Zero) return null;
+
+                var textComponent = new UnityEngine.UI.Text(textPtr);
+                return textComponent?.text;
+            }
+            catch
+            {
+                return null;
             }
         }
     }

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using Il2CppLast.Management;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 using AbilityWindowController = Il2CppSerial.FF1.UI.KeyInput.AbilityWindowController;
 using OwnedAbility = Il2CppLast.Data.User.OwnedAbility;
@@ -70,7 +72,12 @@ namespace FFI_ScreenReader.Patches
 
         public static bool ShouldSuppress()
         {
-            if (!IsSpellListActive && !_isTargetSelectionActive)
+            // Target selection always suppresses — it uses AbilityUseContentListController,
+            // not AbilityWindowController, so the state machine check below is irrelevant
+            if (_isTargetSelectionActive)
+                return true;
+
+            if (!IsSpellListActive)
                 return false;
 
             try
@@ -122,8 +129,10 @@ namespace FFI_ScreenReader.Patches
         public static void OnTargetSelectionActive()
         {
             FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Magic");
-            _isTargetSelectionActive = true;
+            // SetActive(MAGIC_MENU,false) fires the reset handler registered in the static ctor, which
+            // also clears _isTargetSelectionActive. Run it first, then set the flag so it sticks.
             MenuStateRegistry.SetActive(MenuStateRegistry.MAGIC_MENU, false);
+            _isTargetSelectionActive = true;
             AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
         }
 
@@ -135,6 +144,29 @@ namespace FFI_ScreenReader.Patches
 
         public static bool ShouldAnnounceTarget(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MAGIC_TARGET, announcement);
 
+        // Fallback mapping for conditions with empty/missing MesIdName.
+        // Values are English keys into ModTextTranslator (localized at call time via T()).
+        private static readonly Dictionary<int, string> ConditionTypeFallbacks = new Dictionary<int, string>
+        {
+            { 4, "KO" },              // Dying
+            { 5, "KO" },              // UnableFight
+            { 6, "Silence" },
+            { 7, "Sleep" },
+            { 8, "Paralysis" },
+            { 9, "Blind" },
+            { 10, "Poison" },
+            { 11, "Stone" },           // Mineralization
+            { 12, "Confusion" },
+            { 16, "Slow" },
+            { 17, "Stop" },
+            { 32, "Aging" },
+            { 34, "Zombie" },
+            { 204, "Venom" },
+            { 404, "Doom" },
+            { 405, "Gradual Petrify" }, // SlowlyMineralization
+            { 406, "Curse" },
+        };
+
         public static string GetConditionName(Condition condition)
         {
             if (condition == null)
@@ -143,16 +175,23 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 string mesId = condition.MesIdName;
-                if (!string.IsNullOrEmpty(mesId))
+                int condType = condition.ConditionType;
+
+                // Primary: localize via MesIdName.
+                // Reject "$"-prefixed return — MessageManager echoes the raw key when unresolved.
+                if (!string.IsNullOrEmpty(mesId) && mesId != "None")
                 {
                     var messageManager = MessageManager.Instance;
                     if (messageManager != null)
                     {
                         string localizedName = messageManager.GetMessage(mesId, false);
-                        if (!string.IsNullOrWhiteSpace(localizedName))
+                        if (!string.IsNullOrWhiteSpace(localizedName) && !localizedName.StartsWith("$"))
                             return localizedName;
                     }
                 }
+
+                if (ConditionTypeFallbacks.TryGetValue(condType, out string fallback))
+                    return T(fallback);
             }
             catch { } // IL2CPP message resolution may fail
 

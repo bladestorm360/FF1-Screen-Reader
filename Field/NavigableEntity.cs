@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using FFI_ScreenReader.Core;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
+using FieldEntity = Il2CppLast.Entity.Field.FieldEntity;
 
 namespace FFI_ScreenReader.Field
 {
@@ -46,6 +47,42 @@ namespace FFI_ScreenReader.Field
         /// Whether this entity is currently interactive
         /// </summary>
         public virtual bool IsInteractive => true;
+
+        /// <summary>
+        /// Whether the underlying game entity is still alive and active in the scene.
+        /// Subclasses with no backing FieldEntity (e.g., ScriptTriggerEntity) should override.
+        /// </summary>
+        public virtual bool IsAlive
+        {
+            get
+            {
+                if (GameEntity == null) return false;
+                try
+                {
+                    var fe = GameEntity as FieldEntity;
+                    if (fe == null) return false;
+                    var go = fe.gameObject;
+                    if (go == null) return false;
+                    return go.activeInHierarchy;
+                }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>
+        /// Reads the live position from the backing FieldEntity, or returns the fallback.
+        /// </summary>
+        protected Vector3 ReadLivePosition(Vector3 fallback)
+        {
+            try
+            {
+                var fe = GameEntity as FieldEntity;
+                if (fe?.transform != null)
+                    return fe.transform.localPosition;
+            }
+            catch { }
+            return fallback;
+        }
 
         /// <summary>
         /// Gets the display name for this entity (without distance/direction)
@@ -122,9 +159,22 @@ namespace FFI_ScreenReader.Field
         public override string Name => name;
 
         /// <summary>
-        /// Whether this treasure chest has been opened
+        /// Whether this treasure chest has been opened. Reads live from the game entity.
         /// </summary>
-        public bool IsOpened => isOpened;
+        public bool IsOpened
+        {
+            get
+            {
+                try
+                {
+                    var fe = GameEntity as FieldEntity;
+                    if (fe != null)
+                        return EntityDetectionHelpers.CheckIfTreasureOpened(fe);
+                }
+                catch { }
+                return isOpened;
+            }
+        }
 
         public override EntityCategory Category => EntityCategory.Chests;
         public override int Priority => 3;
@@ -166,7 +216,7 @@ namespace FFI_ScreenReader.Field
             isShop = shop;
         }
 
-        public override Vector3 Position => position;
+        public override Vector3 Position => ReadLivePosition(position);
         public override string Name => name;
 
         /// <summary>
@@ -345,6 +395,7 @@ namespace FFI_ScreenReader.Field
         public override EntityCategory Category => EntityCategory.Events;
         public override int Priority => 5;
         public override bool BlocksPathing => false;
+        public override bool IsAlive => true; // Synthetic, no backing FieldEntity
         protected override string GetDisplayName() => Name;
         protected override string GetEntityTypeName() => triggerTypeName;
     }
@@ -366,7 +417,7 @@ namespace FFI_ScreenReader.Field
             transportationId = transportId;
         }
 
-        public override Vector3 Position => position;
+        public override Vector3 Position => ReadLivePosition(position);
         public override string Name => name;
 
         /// <summary>

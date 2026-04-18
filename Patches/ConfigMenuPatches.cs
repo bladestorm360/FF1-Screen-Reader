@@ -167,7 +167,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.CONFIG_TEXT, AnnouncementContexts.CONFIG_SETTING, AnnouncementContexts.CONFIG_ARROW, AnnouncementContexts.CONFIG_SLIDER, AnnouncementContexts.CONFIG_TOUCH_ARROW, AnnouncementContexts.CONFIG_TOUCH_SLIDER);
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.CONFIG_TEXT, AnnouncementContexts.CONFIG_SETTING, AnnouncementContexts.CONFIG_ARROW, AnnouncementContexts.CONFIG_SLIDER, AnnouncementContexts.CONFIG_TOUCH_ARROW, AnnouncementContexts.CONFIG_TOUCH_SLIDER, AnnouncementContexts.CONFIG_KEYS_SETTING);
         }
     }
 
@@ -429,19 +429,107 @@ namespace FFI_ScreenReader.Patches
     }
 
     /// <summary>
-    /// Legacy static class for manual patch application.
-    /// Now only used for registering with the main mod's harmony instance.
+    /// Manual patch application for config menu.
+    /// Handles controls reading (keyboard/gamepad bindings).
     /// </summary>
     public static class ConfigMenuPatches
     {
         /// <summary>
         /// Applies config menu patches using manual Harmony patching.
-        /// Note: Most patches now use HarmonyPatch attributes and are auto-applied by MelonLoader.
-        /// This method is kept for any future manual patching needs.
         /// </summary>
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
-            // Config menu patches registered (using HarmonyPatch attributes)
+            // Patch controls/keys settings navigation
+            try
+            {
+                var selectContentMethod = AccessTools.Method(
+                    typeof(Il2CppLast.UI.KeyInput.ConfigKeysSettingController), "SelectContent");
+                if (selectContentMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(ConfigMenuPatches), nameof(SelectContent_Postfix));
+                    harmony.Patch(selectContentMethod, postfix: new HarmonyMethod(postfix));
+                    MelonLogger.Msg("[Config Menu] Controls SelectContent patch applied");
+                }
+                else
+                {
+                    MelonLogger.Warning("[Config Menu] ConfigKeysSettingController.SelectContent not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Config Menu] Error applying controls patch: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Postfix for ConfigKeysSettingController.SelectContent.
+        /// Announces action name and key bindings when navigating controls settings.
+        /// </summary>
+        public static void SelectContent_Postfix(
+            Il2CppLast.UI.KeyInput.ConfigKeysSettingController __instance,
+            int index,
+            Il2CppSystem.Collections.Generic.IEnumerable<Il2CppLast.UI.KeyInput.ConfigControllCommandController> contentList)
+        {
+            try
+            {
+                if (__instance == null || contentList == null) return;
+
+                var command = SelectContentHelper.TryGetItem(
+                    contentList.TryCast<Il2CppSystem.Collections.Generic.List<Il2CppLast.UI.KeyInput.ConfigControllCommandController>>(),
+                    index);
+                if (command == null) return;
+
+                var textParts = new System.Collections.Generic.List<string>();
+
+                // Read action name from the view's nameTexts
+                if (command.view != null && command.view.nameTexts != null && command.view.nameTexts.Count > 0)
+                {
+                    foreach (var textComp in command.view.nameTexts)
+                    {
+                        if (textComp != null && !string.IsNullOrWhiteSpace(textComp.text))
+                        {
+                            string text = textComp.text.Trim();
+                            if (!text.StartsWith("MENU_") && !textParts.Contains(text))
+                            {
+                                textParts.Add(text);
+                            }
+                        }
+                    }
+                }
+
+                // Read key bindings from keyboardIconController.view
+                if (command.keyboardIconController != null && command.keyboardIconController.view != null)
+                {
+                    if (command.keyboardIconController.view.iconTextList != null)
+                    {
+                        for (int i = 0; i < command.keyboardIconController.view.iconTextList.Count; i++)
+                        {
+                            var iconText = command.keyboardIconController.view.iconTextList[i];
+                            if (iconText != null && !string.IsNullOrWhiteSpace(iconText.text))
+                            {
+                                string text = iconText.text.Trim();
+                                if (!textParts.Contains(text))
+                                {
+                                    textParts.Add(text);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (textParts.Count == 0) return;
+
+                string announcement = string.Join(" ", textParts);
+
+                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_KEYS_SETTING, announcement))
+                    return;
+
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Error in ConfigKeysSettingController.SelectContent patch: {ex.Message}");
+            }
         }
     }
 }

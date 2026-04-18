@@ -233,6 +233,30 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Equipment menu offsets.
+        /// </summary>
+        public static class Equipment
+        {
+            /// <summary>KeyInput.EquipmentInfoWindowController.view (EquipmentInfoWindowView)</summary>
+            public const int InfoView = 0x40;
+
+            /// <summary>KeyInput.EquipmentInfoWindowView.nameText (Text)</summary>
+            public const int NameText = 0x18;
+
+            /// <summary>KeyInput.EquipmentInfoWindowView.jobNameText (Text)</summary>
+            public const int JobNameText = 0x20;
+
+            /// <summary>KeyInput.EquipmentDescriptionWindowController.view (EquipmentDescriptionWindowView)</summary>
+            public const int DescriptionView = 0x20;
+
+            /// <summary>KeyInput.EquipmentDescriptionWindowView.descriptionText (Text)</summary>
+            public const int DescriptionText = 0x18;
+
+            /// <summary>KeyInput.EquipmentInfoWindowController.targetIndex</summary>
+            public const int TargetIndex = 0x80;
+        }
+
+        /// <summary>
         /// Shop info view offsets.
         /// </summary>
         public static class ShopInfo

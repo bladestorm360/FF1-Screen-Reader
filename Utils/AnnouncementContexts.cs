@@ -66,6 +66,9 @@ namespace FFI_ScreenReader.Utils
         public const string SHOP_QUANTITY = "Shop.Quantity";
         public const string SHOP_SLOT = "Shop.Slot";
 
+        // Controls settings
+        public const string CONFIG_KEYS_SETTING = "Config.KeysSetting";
+
         // Bestiary (extras)
         public const string BESTIARY_LIST_ENTRY = "Bestiary.ListEntry";
         public const string BESTIARY_DETAIL_STAT = "Bestiary.DetailStat";

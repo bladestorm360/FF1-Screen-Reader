@@ -40,8 +40,8 @@ namespace FFI_ScreenReader.Patches
                 // Patch CreateDamageView for damage/healing announcements
                 PatchCreateDamageView(harmony);
 
-                // Patch Add for status effect announcements
-                PatchConditionAdd(harmony);
+                // BattleConditionController.Add is patched via declarative [HarmonyPatch] attribute
+                // on BattleConditionController_Add_Patch class (at bottom of file)
 
                 // Patch BattleCommandMessageController.SetMessage for system messages like "The party was defeated"
                 PatchBattleCommandMessage(harmony);
@@ -137,97 +137,6 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Message] Error patching CreateDamageView: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Patch BattleConditionController.Add for status effect announcements.
-        /// </summary>
-        private static void PatchConditionAdd(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                // Use typeof() with the IL2CPP alias - more reliable than Type.GetType()
-                var conditionControllerType = typeof(BattleConditionController);
-
-                if (conditionControllerType != null)
-                {
-                    // List all methods for debugging
-                    var allMethods = conditionControllerType.GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-
-                    // The Add method is private: Add(BattleUnitData, int)
-                    MethodInfo addMethod = null;
-                    foreach (var method in allMethods)
-                    {
-                        if (method.Name == "Add")
-                        {
-                            var parameters = method.GetParameters();
-                            if (parameters.Length == 2)
-                            {
-                                addMethod = method;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (addMethod != null)
-                    {
-                        var postfix = typeof(BattleMessagePatches).GetMethod(
-                            nameof(ConditionAdd_Postfix),
-                            BindingFlags.Public | BindingFlags.Static
-                        );
-
-                        harmony.Patch(addMethod, postfix: new HarmonyMethod(postfix));
-                    }
-                    else
-                    {
-                        MelonLogger.Warning("[Battle Message] BattleConditionController.Add method not found");
-                        // Try InterruptAddCondition as fallback
-                        TryPatchInterruptAddCondition(harmony, conditionControllerType);
-                    }
-                }
-                else
-                {
-                    MelonLogger.Warning("[Battle Message] BattleConditionController type not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Message] Error patching BattleConditionController.Add: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Fallback: Patch InterruptAddCondition if Add method not found.
-        /// </summary>
-        private static void TryPatchInterruptAddCondition(HarmonyLib.Harmony harmony, Type controllerType)
-        {
-            try
-            {
-                // InterruptAddCondition(BattleUnitData, int) is public
-                var allMethods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
-                foreach (var method in allMethods)
-                {
-                    if (method.Name == "InterruptAddCondition")
-                    {
-                        var parameters = method.GetParameters();
-                        if (parameters.Length == 2 && parameters[1].ParameterType == typeof(int))
-                        {
-                            var postfix = typeof(BattleMessagePatches).GetMethod(
-                                nameof(ConditionAdd_Postfix),
-                                BindingFlags.Public | BindingFlags.Static
-                            );
-
-                            harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                            return;
-                        }
-                    }
-                }
-                MelonLogger.Warning("[Battle Message] InterruptAddCondition fallback also failed");
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Message] Error patching InterruptAddCondition: {ex.Message}");
             }
         }
 
@@ -341,43 +250,6 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Postfix for BattleConditionController.Add - announces status effects.
-        /// Uses object-based deduplication so different enemies with the same name
-        /// getting the same status are both announced.
-        /// </summary>
-        public static void ConditionAdd_Postfix(object __instance, BattleUnitData battleUnitData, int id)
-        {
-            try
-            {
-                if (battleUnitData == null) return;
-
-                // Get condition name from ID
-                string conditionName = GetConditionName(id);
-
-                if (string.IsNullOrEmpty(conditionName))
-                {
-                    return;
-                }
-
-                // Use object-based deduplication so different enemies with same name
-                // getting the same status are both announced
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_STATUS, battleUnitData))
-                {
-                    return;
-                }
-
-                string targetName = GetUnitName(battleUnitData);
-                string announcement = $"{targetName}: {conditionName}";
-
-                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Message] Error in ConditionAdd_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Gets the display name for a battle unit (player or enemy).
         /// </summary>
         public static string GetUnitName(BattleUnitData data)
@@ -420,7 +292,7 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// Gets the display name for a condition from its ID.
         /// </summary>
-        private static string GetConditionName(int id)
+        internal static string GetConditionName(int id)
         {
             try
             {
@@ -585,6 +457,7 @@ namespace FFI_ScreenReader.Patches
         {
             AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_ACTION, AnnouncementContexts.BATTLE_STATUS);
             lastBattleCommandMessage = "";
+            BattleConditionController_Add_Patch.Reset();
         }
 
         /// <summary>
@@ -700,5 +573,68 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Battle Message] Error in SetMessage_Postfix: {ex.Message}");
             }
         }
+    }
+
+    /// <summary>
+    /// Declarative patch for BattleConditionController.Add — announces status effects (KO, Poison, etc.)
+    /// when applied during battle. Matches FF3 pattern exactly.
+    /// </summary>
+    [HarmonyPatch(typeof(BattleConditionController), nameof(BattleConditionController.Add))]
+    internal static class BattleConditionController_Add_Patch
+    {
+        private static string lastAnnouncement = "";
+
+        [HarmonyPostfix]
+        public static void Postfix(BattleUnitData battleUnitData, int id)
+        {
+            try
+            {
+                if (battleUnitData == null) return;
+
+                // Get condition name from the unit's confirmed list (FF3 pattern)
+                string conditionName = null;
+                try
+                {
+                    var unitDataInfo = battleUnitData.BattleUnitDataInfo;
+                    if (unitDataInfo?.Parameter != null)
+                    {
+                        var confirmedList = unitDataInfo.Parameter.ConfirmedConditionList();
+                        if (confirmedList != null)
+                        {
+                            foreach (var condition in confirmedList)
+                            {
+                                if (condition != null && condition.Id == id)
+                                {
+                                    conditionName = MagicMenuState.GetConditionName(condition);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { } // IL2CPP condition list access may fail
+
+                // Fallback: master data lookup by ID
+                if (string.IsNullOrEmpty(conditionName))
+                    conditionName = BattleMessagePatches.GetConditionName(id);
+
+                if (string.IsNullOrEmpty(conditionName)) return;
+
+                string targetName = BattleMessagePatches.GetUnitName(battleUnitData);
+                string announcement = $"{targetName}: {conditionName}";
+
+                // Simple string dedup
+                if (announcement == lastAnnouncement) return;
+                lastAnnouncement = announcement;
+
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Status] Error in Add postfix: {ex.Message}");
+            }
+        }
+
+        public static void Reset() => lastAnnouncement = "";
     }
 }

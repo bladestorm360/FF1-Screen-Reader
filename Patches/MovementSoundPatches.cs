@@ -41,7 +41,9 @@ namespace FFI_ScreenReader.Patches
         // Note: Wall tones are now handled by continuous loop in FFI_ScreenReaderMod.OnUpdate()
 
         // Track collision state to suppress footsteps when wall bump plays
+#pragma warning disable CS0414
         private static bool collisionDetectedThisFrame = false;
+#pragma warning restore CS0414
 
         // Tile position tracking for footsteps
         private static Vector2Int lastTilePosition = Vector2Int.zero;
@@ -72,6 +74,10 @@ namespace FFI_ScreenReader.Patches
                 {
                     hasLoggedPatchActive = true;
                 }
+
+                // No audio when menus or battle active (same gate as controller routing)
+                if (!Core.ControllerRouter.IsFieldActive)
+                    return;
 
                 // Only check if there's actual movement input
                 if (!HasMovementInput(axis))
@@ -181,7 +187,8 @@ namespace FFI_ScreenReader.Patches
                         // Tile changed - play footstep if enabled
                         lastTilePosition = currentTile;
 
-                        if (FFI_ScreenReaderMod.Instance != null && FFI_ScreenReaderMod.Instance.IsFootstepsEnabled())
+                        if (FFI_ScreenReaderMod.Instance != null && FFI_ScreenReaderMod.Instance.IsFootstepsEnabled()
+                            && Core.ControllerRouter.IsFieldActive)
                         {
                             float currentTime = Time.time;
                             if (currentTime - lastFootstepTime >= FOOTSTEP_COOLDOWN)

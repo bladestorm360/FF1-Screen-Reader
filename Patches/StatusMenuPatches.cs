@@ -19,6 +19,7 @@ using Corps = Il2CppLast.Data.User.Corps;
 using UserDataManager = Il2CppLast.Management.UserDataManager;
 using Job = Il2CppLast.Data.Master.Job;
 using MasterManager = Il2CppLast.Data.Master.MasterManager;
+using StatusDetailsControllerBase_Template = Il2CppSerial.Template.UI.StatusDetailsControllerBase;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -384,12 +385,16 @@ namespace FFI_ScreenReader.Patches
 
                 // Note: Row information removed - FF1 doesn't use front/back row system
 
-                // Add HP information
+                // Add level and HP information
                 try
                 {
                     var parameter = characterData.Parameter;
                     if (parameter != null)
                     {
+                        int level = parameter.BaseLevel;
+                        if (level > 0)
+                            announcement += $", Lv. {level}";
+
                         int currentHp = parameter.currentHP;
                         int maxHp = parameter.ConfirmedMaxHp();
                         announcement += $", HP {currentHp}/{maxHp}";
@@ -434,6 +439,8 @@ namespace FFI_ScreenReader.Patches
             {
                 TryPatchInitDisplay(harmony);
                 TryPatchExitDisplay(harmony);
+                TryPatchSetNextPlayer(harmony);
+                TryPatchSetPrevPlayer(harmony);
                 isPatched = true;
             }
             catch (Exception ex)
@@ -623,6 +630,146 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Status Details] Error in ExitDisplay postfix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Patch SetNextPlayer - called when RB/LB switches to next character in status details.
+        /// Lives on the root base class Serial.Template.UI.StatusDetailsControllerBase.
+        /// </summary>
+        private static void TryPatchSetNextPlayer(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                Type baseType = typeof(StatusDetailsControllerBase_Template);
+                var method = baseType.GetMethod("SetNextPlayer",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+
+                if (method != null)
+                {
+                    var postfix = typeof(StatusDetailsPatches).GetMethod(nameof(SetNextPlayer_Postfix),
+                        BindingFlags.Public | BindingFlags.Static);
+                    harmony.Patch(method, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Status Details] Could not find SetNextPlayer method");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Status Details] Error patching SetNextPlayer: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Patch SetPrevPlayer - called when RB/LB switches to previous character in status details.
+        /// </summary>
+        private static void TryPatchSetPrevPlayer(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                Type baseType = typeof(StatusDetailsControllerBase_Template);
+                var method = baseType.GetMethod("SetPrevPlayer",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+
+                if (method != null)
+                {
+                    var postfix = typeof(StatusDetailsPatches).GetMethod(nameof(SetPrevPlayer_Postfix),
+                        BindingFlags.Public | BindingFlags.Static);
+                    harmony.Patch(method, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Status Details] Could not find SetPrevPlayer method");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Status Details] Error patching SetPrevPlayer: {ex.Message}");
+            }
+        }
+
+        public static void SetNextPlayer_Postfix(object __instance)
+        {
+            HandlePlayerSwitch(__instance);
+        }
+
+        public static void SetPrevPlayer_Postfix(object __instance)
+        {
+            HandlePlayerSwitch(__instance);
+        }
+
+        private static void HandlePlayerSwitch(object instance)
+        {
+            try
+            {
+                if (!StatusDetailsState.IsActive)
+                    return;
+
+                var tracker = StatusNavigationTracker.Instance;
+                if (!tracker.IsNavigationActive)
+                    return;
+
+                var controller = instance as KeyInputStatusDetailsController;
+                if (controller == null)
+                    return;
+
+                CoroutineManager.StartManaged(DelayedPlayerSwitchInit(controller));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Status Details] Error in player switch postfix: {ex.Message}");
+            }
+        }
+
+        private static IEnumerator DelayedPlayerSwitchInit(KeyInputStatusDetailsController controller)
+        {
+            yield return null;
+
+            try
+            {
+                if (controller == null || !StatusDetailsState.IsActive)
+                    yield break;
+
+                if (controller.gameObject == null || !controller.gameObject.activeInHierarchy)
+                    yield break;
+
+                var characterData = StatusDetailsHelpers.GetCharacterDataFromController(controller);
+                if (characterData == null)
+                {
+                    MelonLogger.Warning("[Status Details] Could not get character data after switch");
+                    yield break;
+                }
+
+                // Skip if same character (dedup against redundant calls)
+                var tracker = StatusNavigationTracker.Instance;
+                if (tracker.CurrentCharacterData != null)
+                {
+                    try
+                    {
+                        if (characterData.Name == tracker.CurrentCharacterData.Name)
+                            yield break;
+                    }
+                    catch { } // IL2CPP name read may fail, proceed with update
+                }
+
+                // Update navigation state with new character
+                tracker.CurrentCharacterData = characterData;
+                tracker.CurrentStatIndex = 0;
+                tracker.ActiveController = controller;
+
+                StatusDetailsReader.SetCurrentCharacterData(characterData);
+
+                string statusText = StatusDetailsReader.ReadStatusDetails(controller);
+                if (!string.IsNullOrWhiteSpace(statusText))
+                {
+                    FFI_ScreenReaderMod.SpeakText(statusText, interrupt: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Status Details] Error in delayed player switch: {ex.Message}");
             }
         }
     }

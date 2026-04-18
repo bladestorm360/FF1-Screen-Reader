@@ -413,7 +413,9 @@ namespace FFI_ScreenReader.Patches
                 {
                     contentList = __instance.contentList;
                 }
+#pragma warning disable CS0168
                 catch (Exception ex)
+#pragma warning restore CS0168
                 {
                     // Fallback to reflection (contentList at offset 0x50 for KeyInput)
                     try

@@ -55,8 +55,9 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
-        /// Refreshes entities if needed - called on user input (J/K/L keys).
-        /// Event-driven: only rescans on map change or empty entity list.
+        /// Refreshes entities on user input (J/K/L keys).
+        /// Always runs incremental scan to detect new/removed entities and update live state.
+        /// Full rescan only on map transitions.
         /// </summary>
         public void RefreshEntitiesIfNeeded()
         {
@@ -68,10 +69,10 @@ namespace FFI_ScreenReader.Core
             if (mapChanged)
             {
                 GameObjectCache.Clear<Il2CppLast.Map.FieldPlayerController>();
-                entityScanner.ScanEntities();
+                entityScanner.ForceRescan();
                 lastScannedMapId = currentMapId;
             }
-            else if (entityScanner.Entities.Count == 0)
+            else
             {
                 entityScanner.ScanEntities();
                 if (lastScannedMapId <= 0 && currentMapId > 0)

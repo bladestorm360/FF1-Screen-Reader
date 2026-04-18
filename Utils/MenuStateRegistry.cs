@@ -35,6 +35,7 @@ namespace FFI_ScreenReader.Utils
         public const string BESTIARY_MAP = "BestiaryMap";
         public const string MUSIC_PLAYER = "MusicPlayer";
         public const string GALLERY = "Gallery";
+        public const string MAIN_MENU = "MainMenu";
 
         // Central state storage
         private static readonly Dictionary<string, bool> _states = new Dictionary<string, bool>();

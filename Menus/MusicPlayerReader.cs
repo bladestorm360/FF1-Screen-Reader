@@ -20,19 +20,22 @@ namespace FFI_ScreenReader.Menus
         // ExtraSoundListContentInfo field offsets
         private const int OFFSET_MUSIC_NAME = 0x10;     // musicName (Il2CppString*)
         private const int OFFSET_BGM_ID = 0x18;         // bgmId (int)
+        private const int OFFSET_PLAY_TIME = 0x1C;      // playTime (int, seconds)
 
         // ExtraSoundController field offset (KeyInput namespace)
         private const int OFFSET_PLAYER_LIST = 0x50;    // <PlayerList>k__BackingField
+
 
         /// <summary>
         /// Read song data from an ExtraSoundListContentController pointer using unsafe field access.
         /// Returns false if any pointer is zero/null.
         /// </summary>
-        public static unsafe bool ReadContentFromPointer(IntPtr contentControllerPtr, out string musicName, out int bgmId, out int index)
+        public static unsafe bool ReadContentFromPointer(IntPtr contentControllerPtr, out string musicName, out int bgmId, out int index, out int playTime)
         {
             musicName = null;
             bgmId = 0;
             index = 0;
+            playTime = 0;
 
             if (contentControllerPtr == IntPtr.Zero)
                 return false;
@@ -48,6 +51,9 @@ namespace FFI_ScreenReader.Menus
             // Read bgmId (int) at +0x18 from ContentInfo
             bgmId = *(int*)((byte*)contentInfoPtr.ToPointer() + OFFSET_BGM_ID);
 
+            // Read playTime (int) at +0x1C from ContentInfo
+            playTime = *(int*)((byte*)contentInfoPtr.ToPointer() + OFFSET_PLAY_TIME);
+
             // Read musicName (Il2CppString*) at +0x10 from ContentInfo
             IntPtr musicNamePtr = *(IntPtr*)((byte*)contentInfoPtr.ToPointer() + OFFSET_MUSIC_NAME);
             if (musicNamePtr == IntPtr.Zero)
@@ -58,18 +64,29 @@ namespace FFI_ScreenReader.Menus
         }
 
         /// <summary>
+        /// Overload for backward compatibility — discards playTime.
+        /// </summary>
+        public static unsafe bool ReadContentFromPointer(IntPtr contentControllerPtr, out string musicName, out int bgmId, out int index)
+        {
+            return ReadContentFromPointer(contentControllerPtr, out musicName, out bgmId, out index, out _);
+        }
+
+        /// <summary>
         /// Format a song entry announcement: "01: Main Theme of Final Fantasy, 1:30"
         /// Takes pre-extracted C# values (not IL2CPP references).
+        /// contentControllerPtr is optional — used as fallback when master data lookup returns 0.
         /// </summary>
-        public static string ReadSongEntry(string musicName, int bgmId, int index)
+        public static string ReadSongEntry(string musicName, int bgmId, int index, int playTime = 0)
         {
             if (string.IsNullOrEmpty(musicName)) return null;
 
             string number = (index + 1).ToString("D2");
-            int durationSec = LookupDuration(bgmId);
+            // Use playTime from ContentInfo (most reliable), fall back to dictionary lookup
+            int durationSec = playTime > 0 ? playTime : LookupDuration(bgmId);
             string duration = FormatPlayTime(durationSec);
             return $"{number}: {musicName}, {duration}";
         }
+
 
         /// <summary>
         /// Look up song duration from SoundPlayerList master data via ExtraSoundController.PlayerList.

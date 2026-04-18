@@ -22,6 +22,10 @@ if %DEPLOY_ERROR% NEQ 0 (
 )
 
 echo. >> build_log.txt
+echo Deploying SDL3.dll... >> build_log.txt
+copy /Y "D:\Games\Dev\SDL\SDL3.dll" "D:\Games\steamlibrary\steamapps\common\Final Fantasy PR\" >> build_log.txt 2>&1
+
+echo. >> build_log.txt
 echo Mod deployed successfully! >> build_log.txt
 echo Done.
 exit /b 0

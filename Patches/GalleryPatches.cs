@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
@@ -34,15 +35,55 @@ namespace FFI_ScreenReader.Patches
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 1: State transitions — SubSceneManagerExtraGallery.ChangeState
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(SubSceneManagerExtraGallery), nameof(SubSceneManagerExtraGallery.ChangeState))]
-    public static class SubSceneManagerExtraGallery_ChangeState_Patch
+    /// <summary>
+    /// Patches for the Gallery (Extra Gallery) extras menu.
+    /// Uses manual Harmony patching to avoid silent failures from attribute-based patches.
+    /// </summary>
+    internal static class GalleryManualPatches
     {
-        [HarmonyPostfix]
-        public static void Postfix(int state)
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                // Patch 1: SubSceneManagerExtraGallery.ChangeState
+                var changeStateMethod = AccessTools.Method(
+                    typeof(SubSceneManagerExtraGallery), "ChangeState");
+                if (changeStateMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(GalleryManualPatches), nameof(ChangeState_Postfix));
+                    harmony.Patch(changeStateMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Gallery] SubSceneManagerExtraGallery.ChangeState not found");
+                }
+
+                // Patch 2: GalleryTopListController.SetFocusContent
+                var setFocusMethod = AccessTools.Method(
+                    typeof(GalleryTopListController), "SetFocusContent");
+                if (setFocusMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(GalleryManualPatches), nameof(SetFocusContent_Postfix));
+                    harmony.Patch(setFocusMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Gallery] GalleryTopListController.SetFocusContent not found");
+                }
+
+                MelonLogger.Msg("[Gallery] Patches applied");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Gallery] Error applying patches: {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 1: State transitions
+        // ─────────────────────────────────────────────────────────────────────────
+
+        public static void ChangeState_Postfix(int state)
         {
             try
             {
@@ -113,17 +154,11 @@ namespace FFI_ScreenReader.Patches
             GalleryStateTracker.SuppressContentChange = false;
         }
 
-    }
+        // ─────────────────────────────────────────────────────────────────────────
+        // Patch 2: List navigation
+        // ─────────────────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Patch 2: List navigation — GalleryTopListController.SetFocusContent
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(GalleryTopListController), "SetFocusContent")]
-    public static class GalleryTopListController_SetFocusContent_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(GalleryTopListController __instance, bool isFocus)
+        public static void SetFocusContent_Postfix(GalleryTopListController __instance, bool isFocus)
         {
             try
             {
@@ -161,5 +196,4 @@ namespace FFI_ScreenReader.Patches
             }
         }
     }
-
 }

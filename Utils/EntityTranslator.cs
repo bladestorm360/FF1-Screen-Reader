@@ -37,6 +37,16 @@ namespace FFI_ScreenReader.Utils
             @"^((?:SC)?\d+[.:])",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // Matches a parenthesized suffix at the end of entity names (half-width or full-width parens)
+        private static readonly Regex ParenSuffixRegex = new Regex(
+            @"[(\uff08][^)\uff09]*[)\uff09]$",
+            RegexOptions.Compiled);
+
+        // Matches trailing enumeration markers (circled digits ①-⑳) at end of entity names
+        private static readonly Regex TrailingEnumSuffixRegex = new Regex(
+            @"[\u2460-\u2473]+$",
+            RegexOptions.Compiled);
+
         /// <summary>
         /// Detects the current game language via MessageManager and returns a language code.
         /// </summary>
@@ -138,17 +148,39 @@ namespace FFI_ScreenReader.Utils
             if (DetectLanguage() == "ja")
                 return japaneseName;
 
+            // Extract trailing enumeration suffix (e.g., "①") so lookups target the base name;
+            // the suffix is reappended to whichever translation tier succeeds.
+            string enumSuffix = "";
+            string coreName = japaneseName;
+            Match enumMatch = TrailingEnumSuffixRegex.Match(japaneseName);
+            if (enumMatch.Success)
+            {
+                enumSuffix = " " + enumMatch.Value;
+                coreName = japaneseName.Substring(0, enumMatch.Index);
+            }
+
             // 1. Exact match
-            if (TryLookup(japaneseName, out string exactMatch))
-                return exactMatch;
+            if (TryLookup(coreName, out string exactMatch))
+                return exactMatch + enumSuffix;
+
+            // 1b. Normalize full-width parens to half-width and retry exact match
+            string normalized = NormalizeParens(coreName);
+            if (normalized != coreName && TryLookup(normalized, out string normalizedMatch))
+                return normalizedMatch + enumSuffix;
 
             // 2. Strip numeric/SC prefix and try base name lookup
-            StripPrefix(japaneseName, out string prefix, out string baseName);
+            StripPrefix(coreName, out string prefix, out string baseName);
             if (prefix != null && TryLookup(baseName, out string baseTranslation))
-                return prefix + " " + baseTranslation;
+                return prefix + " " + baseTranslation + enumSuffix;
 
-            // 3. Track untranslated name by current map
-            string trackingName = prefix != null ? baseName : japaneseName;
+            // 3. Strip parenthesized suffix (e.g., "兵士(e_v_0002専用)" → "兵士") and try base name
+            string nameForSuffix = prefix != null ? baseName : coreName;
+            string stripped = ParenSuffixRegex.Replace(nameForSuffix, "").Trim();
+            if (stripped != nameForSuffix && stripped.Length > 0 && TryLookup(stripped, out string strippedMatch))
+                return (prefix != null ? prefix + " " + strippedMatch : strippedMatch) + enumSuffix;
+
+            // 4. Track untranslated name by current map
+            string trackingName = prefix != null ? baseName : coreName;
             if (ContainsJapanese(trackingName))
             {
                 string mapName = MapNameResolver.GetCurrentMapName();
@@ -200,6 +232,14 @@ namespace FFI_ScreenReader.Utils
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Normalizes full-width parentheses to half-width for dictionary matching.
+        /// </summary>
+        private static string NormalizeParens(string name)
+        {
+            return name.Replace('\uff08', '(').Replace('\uff09', ')');
         }
 
         private static void StripPrefix(string name, out string prefix, out string baseName)

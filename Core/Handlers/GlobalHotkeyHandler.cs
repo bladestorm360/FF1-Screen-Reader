@@ -132,6 +132,13 @@ namespace FFI_ScreenReader.Core.Handlers
                     return;
                 }
 
+                // Equipment menu details (stats/description from game panel)
+                if (EquipMenuState.IsActive)
+                {
+                    EquipDetailsAnnouncer.AnnounceCurrentItemDetails();
+                    return;
+                }
+
                 // Item menu equip requirements
                 if (ItemMenuState.IsItemMenuActive)
                 {

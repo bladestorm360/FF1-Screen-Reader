@@ -216,26 +216,15 @@ namespace FFI_ScreenReader.Core
             if (items != null && items.Count > 1 && items[0] is SectionHeader)
                 currentIndex = 1;
 
-            // Initialize key states to current pressed state to prevent keys that opened the menu from triggering actions
-            WindowsFocusHelper.InitializeKeyStates(new[] {
-                WindowsFocusHelper.VK_ESCAPE, WindowsFocusHelper.VK_F8,
-                WindowsFocusHelper.VK_UP, WindowsFocusHelper.VK_DOWN,
-                WindowsFocusHelper.VK_LEFT, WindowsFocusHelper.VK_RIGHT,
-                WindowsFocusHelper.VK_RETURN, WindowsFocusHelper.VK_SPACE
-            });
-
-            WindowsFocusHelper.StealFocus("FFI_ModMenu");
-
-            // Window title change announces "FFI_ModMenu" via screen reader focus
-            // Just announce the first item after a short delay
+            // Announce mod menu open + first item after a short delay
+            // Game input suppressed via ControllerRouter.SuppressGameInput + InputSystemManager patches
             CoroutineManager.StartUntracked(AnnounceFirstItemDelayed());
         }
 
         private static IEnumerator AnnounceFirstItemDelayed()
         {
-            // Wait 2 frames for TTS to queue "Mod menu" before adding first item
-            yield return null;
-            yield return null;
+            // Wait for "Mod Menu Open" to be queued before announcing first item
+            yield return new WaitForSeconds(0.15f);
 
             if (IsOpen) // Still open after delay
             {
@@ -251,14 +240,13 @@ namespace FFI_ScreenReader.Core
             if (!IsOpen) return;
 
             IsOpen = false;
-            WindowsFocusHelper.RestoreFocus();
-            // Focus returns to game window, screen reader announces the focus change
+            // Game input restored automatically — ControllerRouter.SuppressGameInput becomes false
         }
 
         /// <summary>
-        /// Handles input when the mod menu is open.
-        /// Uses Windows GetAsyncKeyState API for input detection, which works
-        /// even when the game window doesn't have focus.
+        /// Handles keyboard input when the mod menu is open.
+        /// Uses Unity Input.GetKeyDown (separate from InputSystemManager — game suppressed by patches).
+        /// Controller input handled by ControllerRouter.HandleModMenuState().
         /// Returns true if input was consumed (menu is open).
         /// </summary>
         public static bool HandleInput()
@@ -267,42 +255,42 @@ namespace FFI_ScreenReader.Core
             if (items == null || items.Count == 0) return false;
 
             // Escape or F8 to close
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_ESCAPE) || WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_F8))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.Escape) || GamepadManager.IsKeyCodePressed(KeyCode.F8))
             {
                 Close();
                 return true;
             }
 
             // Up arrow - navigate to previous item
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_UP))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.UpArrow))
             {
                 NavigatePrevious();
                 return true;
             }
 
             // Down arrow - navigate to next item
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_DOWN))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.DownArrow))
             {
                 NavigateNext();
                 return true;
             }
 
             // Left arrow - decrease value
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_LEFT))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.LeftArrow))
             {
                 AdjustCurrentItem(-1);
                 return true;
             }
 
             // Right arrow - increase value
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_RIGHT))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.RightArrow))
             {
                 AdjustCurrentItem(1);
                 return true;
             }
 
             // Enter or Space - toggle/activate
-            if (WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_RETURN) || WindowsFocusHelper.IsKeyDown(WindowsFocusHelper.VK_SPACE))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.Return) || GamepadManager.IsKeyCodePressed(KeyCode.Space))
             {
                 ToggleCurrentItem();
                 return true;
@@ -311,7 +299,7 @@ namespace FFI_ScreenReader.Core
             return true; // Consume all input while menu is open
         }
 
-        private static void NavigateNext()
+        internal static void NavigateNext()
         {
             int startIndex = currentIndex;
             do
@@ -329,7 +317,7 @@ namespace FFI_ScreenReader.Core
             AnnounceCurrentItem();
         }
 
-        private static void NavigatePrevious()
+        internal static void NavigatePrevious()
         {
             int startIndex = currentIndex;
             do
@@ -347,7 +335,7 @@ namespace FFI_ScreenReader.Core
             AnnounceCurrentItem();
         }
 
-        private static void AdjustCurrentItem(int delta)
+        internal static void AdjustCurrentItem(int delta)
         {
             if (currentIndex < 0 || currentIndex >= items.Count) return;
 
@@ -358,7 +346,7 @@ namespace FFI_ScreenReader.Core
             AnnounceCurrentItem();
         }
 
-        private static void ToggleCurrentItem()
+        internal static void ToggleCurrentItem()
         {
             if (currentIndex < 0 || currentIndex >= items.Count) return;
 

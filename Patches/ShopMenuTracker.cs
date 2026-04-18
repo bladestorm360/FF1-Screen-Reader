@@ -16,7 +16,16 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     public static class ShopMenuTracker
     {
-        public static bool IsShopMenuActive { get; set; }
+        private static bool _isShopMenuActive;
+        public static bool IsShopMenuActive
+        {
+            get => _isShopMenuActive;
+            set
+            {
+                _isShopMenuActive = value;
+                Utils.MenuStateRegistry.SetActive(Utils.MenuStateRegistry.SHOP_MENU, value);
+            }
+        }
         public static string LastItemName { get; set; }
         public static string LastItemPrice { get; set; }
 

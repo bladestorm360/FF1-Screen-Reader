@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using MelonLoader;
@@ -12,11 +13,17 @@ using static FFI_ScreenReader.Utils.ModTextTranslator;
 namespace FFI_ScreenReader.Core
 {
     /// <summary>
-    /// Manages all keyboard input handling for the screen reader mod.
-    /// Uses KeyBindingRegistry for declarative, context-aware dispatch.
+    /// Manages all input handling for the screen reader mod.
+    /// Keyboard: SDL scancodes (replaces Unity Input.GetKeyDown).
+    /// Controller: delegated to ControllerRouter.
     /// </summary>
     public class InputManager
     {
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        private static IntPtr gameWindowHandle = IntPtr.Zero;
+
         private readonly FFI_ScreenReaderMod mod;
         private readonly KeyBindingRegistry registry = new KeyBindingRegistry();
 
@@ -50,6 +57,15 @@ namespace FFI_ScreenReader.Core
             registry.Register(KeyCode.UpArrow, KeyModifier.Shift, KeyContext.Status, StatusNavigationReader.JumpToPreviousGroup, "Jump to previous stat group");
             registry.Register(KeyCode.UpArrow, KeyModifier.None, KeyContext.Status, StatusNavigationReader.NavigatePrevious, "Previous stat");
             registry.Register(KeyCode.R, KeyContext.Status, StatusNavigationReader.ReadCurrentStat, "Read current stat");
+
+            // --- Bestiary detail: arrow key navigation ---
+            registry.Register(KeyCode.DownArrow, KeyModifier.Ctrl, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToBottom, "Jump to bottom stat (bestiary)");
+            registry.Register(KeyCode.DownArrow, KeyModifier.Shift, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToNextGroup, "Jump to next group (bestiary)");
+            registry.Register(KeyCode.DownArrow, KeyModifier.None, KeyContext.BestiaryDetail, BestiaryNavigationReader.NavigateNext, "Next stat (bestiary)");
+            registry.Register(KeyCode.UpArrow, KeyModifier.Ctrl, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToTop, "Jump to top stat (bestiary)");
+            registry.Register(KeyCode.UpArrow, KeyModifier.Shift, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToPreviousGroup, "Jump to previous group (bestiary)");
+            registry.Register(KeyCode.UpArrow, KeyModifier.None, KeyContext.BestiaryDetail, BestiaryNavigationReader.NavigatePrevious, "Previous stat (bestiary)");
+            registry.Register(KeyCode.R, KeyContext.BestiaryDetail, BestiaryNavigationReader.ReadCurrentStat, "Read current stat (bestiary)");
 
             // --- Field: entity navigation (brackets + backslash) — with battle feedback ---
             RegisterFieldWithBattleFeedback(KeyCode.LeftBracket, KeyModifier.Shift, mod.CyclePreviousCategory, "Previous entity category");
@@ -96,8 +112,8 @@ namespace FFI_ScreenReader.Core
             // --- Global: V key (movement state) ---
             registry.Register(KeyCode.V, KeyContext.Global, () => GlobalHotkeyHandler.AnnounceCurrentVehicle(), "Announce vehicle state");
 
-            // --- Global: Shift+I key (controls tooltips) ---
-            registry.Register(KeyCode.I, KeyModifier.Shift, KeyContext.Global, KeyHelpReader.AnnounceKeyHelp, "Announce controls");
+            // --- Global: Shift+I key (context-aware controls) ---
+            registry.Register(KeyCode.I, KeyModifier.Shift, KeyContext.Global, ControllerRouter.AnnounceContextControls, "Announce controls");
 
             // --- Global: I key (cascading menu priority) ---
             registry.Register(KeyCode.I, KeyContext.Global, () => GlobalHotkeyHandler.HandleItemDetailsKey(mod), "Item details");
@@ -118,25 +134,55 @@ namespace FFI_ScreenReader.Core
 
         public void Update()
         {
-            // Modal dialogs consume all input when open
+            // Skip all input when game window is not focused
+            if (gameWindowHandle == IntPtr.Zero)
+            {
+                try { gameWindowHandle = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle; }
+                catch { } // Process handle may not be available yet
+            }
+            if (gameWindowHandle != IntPtr.Zero && GetForegroundWindow() != gameWindowHandle)
+                return;
+
+            // Poll SDL gamepad state every frame
+            GamepadManager.Update();
+
+            // Suppress Unity legacy Input when mod is consuming.
+            // Safe because mod reads keyboard via GetAsyncKeyState (unaffected by ResetInputAxes).
+            // This + InputSystemManager patches = complete game keyboard suppression.
+            if (ControllerRouter.SuppressGameInput)
+                Input.ResetInputAxes();
+
+            // Controller routing + context state runs FIRST every frame.
+            // ControllerRouter.Update computes IsFieldActive (used by audio, passthrough, etc.)
+            // and handles gamepad state machine if a controller is connected.
+            KeyContext context = DetermineContext();
+            ControllerRouter.Update(context);
+
+            // Modal dialogs consume all keyboard input when open
             if (TextInputWindow.HandleInput())
                 return;
             if (ConfirmationDialog.HandleInput())
                 return;
 
-            // Handle mod menu input (consumes all input when open)
+            // Mod menu keyboard input
             if (ModMenu.HandleInput())
                 return;
 
-            if (!Input.anyKeyDown)
+            // --- Keyboard dispatch via GetAsyncKeyState (independent of Unity Input + InputSystemManager) ---
+            // Mod reads keyboard via GamepadManager (GetAsyncKeyState — hardware state, no window focus needed).
+            // Game keyboard suppressed by InputSystemManager patches when SuppressGameInput is true.
+            if (!GamepadManager.AnyKeyboardKeyDown())
                 return;
+
+            // Track that keyboard was the last input device
+            ControllerRouter.NotifyKeyboardInput();
 
             // Skip hotkeys when player is typing in a text field
             if (IsInputFieldFocused())
                 return;
 
             // F8 to open mod menu (unavailable in battle)
-            if (Input.GetKeyDown(KeyCode.F8))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F8))
             {
                 if (!BattleStateHelper.IsInBattle)
                     ModMenu.Open();
@@ -145,33 +191,47 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
-            // Handle function keys (F1/F3/F5 — special coroutine/battle logic)
+            // Handle function keys (F1/F3/F5)
             HandleFunctionKeyInput();
 
             // Determine active context
             KeyContext activeContext = DetermineContext();
             KeyModifier currentModifiers = GetCurrentModifiers();
 
-            // Dispatch all registered bindings
+            // Dispatch all registered keyboard bindings
             DispatchRegisteredBindings(activeContext, currentModifiers);
         }
 
         private KeyContext DetermineContext()
         {
-            var tracker = StatusNavigationTracker.Instance;
-            if (tracker.IsNavigationActive && tracker.ValidateState())
+            var statusTracker = StatusNavigationTracker.Instance;
+            if (statusTracker.IsNavigationActive && statusTracker.ValidateState())
                 return KeyContext.Status;
+
+            var bestiaryTracker = BestiaryNavigationTracker.Instance;
+            if (bestiaryTracker.IsNavigationActive && bestiaryTracker.ValidateState())
+                return KeyContext.BestiaryDetail;
 
             if (BattleStateHelper.IsInBattle)
                 return KeyContext.Battle;
 
-            return KeyContext.Field;
+            // Only return Field if player controller exists
+            // (prevents Field keys from firing on title screen, boot screen, etc.)
+            try
+            {
+                var pc = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
+                if (pc?.fieldPlayer != null)
+                    return KeyContext.Field;
+            }
+            catch { }
+
+            return KeyContext.Global;
         }
 
         private KeyModifier GetCurrentModifiers()
         {
-            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            bool shift = GamepadManager.IsKeyCodeHeld(KeyCode.LeftShift) || GamepadManager.IsKeyCodeHeld(KeyCode.RightShift);
+            bool ctrl = GamepadManager.IsKeyCodeHeld(KeyCode.LeftControl) || GamepadManager.IsKeyCodeHeld(KeyCode.RightControl);
 
             if (ctrl && shift) return KeyModifier.CtrlShift;
             if (ctrl) return KeyModifier.Ctrl;
@@ -183,26 +243,26 @@ namespace FFI_ScreenReader.Core
         {
             foreach (var key in registry.RegisteredKeys)
             {
-                if (Input.GetKeyDown(key))
+                if (GamepadManager.IsKeyCodePressed(key))
                     registry.TryExecute(key, currentModifiers, activeContext);
             }
         }
 
         private void HandleFunctionKeyInput()
         {
-            if (Input.GetKeyDown(KeyCode.F1))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F1))
             {
                 CoroutineManager.StartUntracked(FunctionKeyHandler.AnnounceWalkRunState());
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.F3))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F3))
             {
                 CoroutineManager.StartUntracked(FunctionKeyHandler.AnnounceEncounterState());
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.F5))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F5))
             {
                 if (BattleStateHelper.IsInBattle)
                 {

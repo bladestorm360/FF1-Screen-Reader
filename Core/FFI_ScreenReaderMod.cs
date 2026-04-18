@@ -104,6 +104,9 @@ namespace FFI_ScreenReader.Core
             // Initialize external sound player for distinct audio feedback (wall bumps, etc.)
             SoundPlayer.Initialize();
 
+            // Initialize SDL3 gamepad support
+            GamepadManager.Initialize();
+
             // Initialize entity scanner for field navigation
             entityScanner = new EntityScanner();
             entityScanner.FilterByPathfinding = filterByPathfinding;
@@ -194,6 +197,26 @@ namespace FFI_ScreenReader.Core
             // Map transition fade detection (suppress wall tones during screen fades)
             MapTransitionPatches.ApplyPatches(harmony);
 
+            // Config menu controls reading
+            ConfigMenuPatches.ApplyPatches(harmony);
+
+            // Game state patches (config menu bestiary dispatch)
+            GameStatePatches.ApplyPatches(harmony);
+
+            // Extras menu patches (bestiary, music player, gallery)
+            try { BestiaryManualPatches.ApplyPatches(harmony); }
+            catch (Exception ex) { LoggerInstance.Error($"[Bestiary] Fatal error loading patches: {ex}"); }
+
+            try { MusicPlayerManualPatches.ApplyPatches(harmony); }
+            catch (Exception ex) { LoggerInstance.Error($"[MusicPlayer] Fatal error loading patches: {ex}"); }
+
+            try { GalleryManualPatches.ApplyPatches(harmony); }
+            catch (Exception ex) { LoggerInstance.Error($"[Gallery] Fatal error loading patches: {ex}"); }
+
+            // SDL input passthrough — injects SDL controller state into InputSystemManager
+            // and suppresses game input when mod is consuming
+            InputPassthroughPatches.ApplyPatches(harmony);
+
             LoggerInstance.Msg("Manual patching complete");
         }
 
@@ -270,6 +293,8 @@ namespace FFI_ScreenReader.Core
             SoundPlayer.Shutdown();
 
             CoroutineManager.CleanupAll();
+            ControllerRouter.Reset();
+            GamepadManager.Shutdown();
             tolk?.Unload();
         }
 
@@ -357,6 +382,7 @@ namespace FFI_ScreenReader.Core
         public override void OnUpdate()
         {
             inputManager?.Update();
+
         }
 
         #region Forwarding Methods for InputManager
@@ -394,6 +420,7 @@ namespace FFI_ScreenReader.Core
         {
             filterMapExits = !filterMapExits;
             PreferencesManager.SaveMapExitFilter(filterMapExits);
+            entityScanner?.ReapplyFilter();
             SaveAndAnnounce(T("Map exit filter"), filterMapExits);
         }
 
@@ -620,7 +647,28 @@ namespace FFI_ScreenReader.Core
                             {
                                 int currentHp = param.CurrentHP;
                                 int maxHp = param.ConfirmedMaxHp();
-                                sb.AppendLine(string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp));
+                                string hpLine = string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp);
+
+                                // Append active status effects
+                                try
+                                {
+                                    var conditionList = param.CurrentConditionList;
+                                    if (conditionList != null && conditionList.Count > 0)
+                                    {
+                                        var statusNames = new System.Collections.Generic.List<string>();
+                                        foreach (var condition in conditionList)
+                                        {
+                                            string condName = MagicMenuState.GetConditionName(condition);
+                                            if (!string.IsNullOrWhiteSpace(condName))
+                                                statusNames.Add(condName);
+                                        }
+                                        if (statusNames.Count > 0)
+                                            hpLine += " " + string.Join(", ", statusNames);
+                                    }
+                                }
+                                catch { } // Status effect reading is non-critical
+
+                                sb.AppendLine(hpLine);
                             }
                         }
                     }
@@ -648,7 +696,18 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public static void SpeakText(string text, bool interrupt = true)
         {
+            MelonLoader.MelonLogger.Msg($"[TTS] {text}");
             tolk?.Speak(text, interrupt);
+        }
+
+        /// <summary>
+        /// Silences current speech immediately. Used by controller navigation
+        /// to interrupt ongoing announcements (e.g., pathfinding directions)
+        /// since NVDA doesn't see controller input as key events.
+        /// </summary>
+        public static void InterruptSpeech()
+        {
+            tolk?.Silence();
         }
 
         /// <summary>
@@ -779,6 +838,11 @@ namespace FFI_ScreenReader.Core
                 // Status details (individual character stats) - has its own navigation
                 if (StatusDetailsState.ShouldSuppress()) return;
 
+                // Extras menus - bestiary, music player, gallery have their own patches
+                if (BestiaryStateTracker.IsInBestiary) return;
+                if (MusicPlayerStateTracker.IsInMusicPlayer) return;
+                if (GalleryStateTracker.IsInGallery) return;
+
                 // === DEFAULT: Read via MenuTextDiscovery ===
                 // Start coroutine to read after one frame (allows UI to update)
                 CoroutineManager.StartManaged(
@@ -822,8 +886,17 @@ namespace FFI_ScreenReader.Core
         public static void ClearOtherMenuStates(string exceptMenu)
         {
             // Reset all registry states except the one being activated
+            // AND keep MAIN_MENU active — it's the parent container for all sub-menus.
+            // Clearing it creates a gap where no menu is active (audio/controls break).
             if (menuKeyMap.TryGetValue(exceptMenu, out var exceptKey))
-                MenuStateRegistry.ResetAllExcept(exceptKey);
+            {
+                var keys = new List<string>(MenuStateRegistry.GetActiveStates());
+                foreach (var key in keys)
+                {
+                    if (key != exceptKey && key != MenuStateRegistry.MAIN_MENU)
+                        MenuStateRegistry.SetActive(key, false);
+                }
+            }
             else
                 MenuStateRegistry.ResetAll();
 

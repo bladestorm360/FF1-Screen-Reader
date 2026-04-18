@@ -1,7 +1,5 @@
 using FFI_ScreenReader.Field;
 using UnityEngine;
-using Il2CppLast.Entity.Field;
-using MelonLoader;
 
 namespace FFI_ScreenReader.Core.Filters
 {
@@ -81,36 +79,6 @@ namespace FFI_ScreenReader.Core.Filters
         {
         }
 
-        /// <summary>
-        /// Validates that a NavigableEntity is still active and accessible.
-        /// </summary>
-        private bool IsEntityValid(NavigableEntity entity)
-        {
-            if (entity?.GameEntity == null)
-                return false;
-
-            try
-            {
-                // Cast to FieldEntity to access Unity properties
-                var fieldEntity = entity.GameEntity as FieldEntity;
-                if (fieldEntity == null)
-                    return false;
-
-                // Check if the GameObject is still active in the hierarchy
-                if (fieldEntity.gameObject == null || !fieldEntity.gameObject.activeInHierarchy)
-                    return false;
-
-                // Check if the transform is still valid
-                if (fieldEntity.transform == null)
-                    return false;
-
-                return true;
-            }
-            catch
-            {
-                // Entity has been destroyed or is otherwise invalid
-                return false;
-            }
-        }
+        private bool IsEntityValid(NavigableEntity entity) => entity != null && entity.IsAlive;
     }
 }

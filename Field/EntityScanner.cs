@@ -166,9 +166,14 @@ namespace FFI_ScreenReader.Field
                 var fieldEntities = FieldNavigationHelper.GetAllFieldEntities();
                 var currentSet = new HashSet<FieldEntity>(fieldEntities);
 
-                // Remove entities that no longer exist
+                // Remove entities that no longer exist in the game's entity list
                 var toRemove = entityMap.Keys.Where(k => !currentSet.Contains(k)).ToList();
                 foreach (var key in toRemove)
+                    entityMap.Remove(key);
+
+                // Prune entities that are deactivated/destroyed in the scene
+                var dead = entityMap.Where(kv => !kv.Value.IsAlive).Select(kv => kv.Key).ToList();
+                foreach (var key in dead)
                     entityMap.Remove(key);
 
                 // Only process NEW entities (ones not already in the map)
@@ -368,6 +373,11 @@ namespace FFI_ScreenReader.Field
                 filteredEntities = filteredEntities.OrderBy(e => Vector3.Distance(e.Position, playerPos.Value)).ToList();
             }
 
+            if (FFI_ScreenReaderMod.MapExitFilterEnabled)
+            {
+                filteredEntities = DeduplicateMapExits(filteredEntities);
+            }
+
             if (toLayerFilter.IsEnabled)
             {
                 filteredEntities = filteredEntities.Where(e => toLayerFilter.PassesFilter(e, null)).ToList();
@@ -378,6 +388,38 @@ namespace FFI_ScreenReader.Field
             {
                 currentIndex = restoredIndex;
             }
+        }
+
+        /// <summary>
+        /// Groups map exits by destination map ID, keeping only the closest of each.
+        /// List must already be sorted by distance (closest first).
+        /// Exits with unresolved destinations (ID &lt;= 0) are kept individually.
+        /// </summary>
+        private List<NavigableEntity> DeduplicateMapExits(List<NavigableEntity> source)
+        {
+            var result = new List<NavigableEntity>();
+            var seenDestinations = new HashSet<int>();
+
+            foreach (var entity in source)
+            {
+                if (entity is MapExitEntity mapExit && mapExit.DestinationMapId > 0)
+                {
+                    if (!seenDestinations.Add(mapExit.DestinationMapId))
+                        continue;
+                }
+                result.Add(entity);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Re-applies filters without rescanning. Used when filter toggles change.
+        /// </summary>
+        public void ReapplyFilter()
+        {
+            ApplyFilter();
+            if (currentIndex >= filteredEntities.Count)
+                currentIndex = 0;
         }
 
         #endregion
