@@ -56,12 +56,6 @@ namespace FFI_ScreenReader.Core.Handlers
                 mod.ResetToAllCategory();
             }
 
-            // 9 - toggle audio beacons
-            if (Input.GetKeyDown(KeyCode.Alpha9))
-            {
-                mod.ToggleAudioBeacons();
-            }
-
             // = - next category
             if (Input.GetKeyDown(KeyCode.Equals))
             {

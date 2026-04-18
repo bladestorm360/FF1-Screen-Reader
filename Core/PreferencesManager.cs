@@ -41,7 +41,7 @@ namespace FFI_ScreenReader.Core
             prefToLayerFilter = prefsCategory.CreateEntry<bool>("ToLayerFilter", false, "Layer Transition Filter", "Hide layer transition entities from navigation list");
             prefWallTones = prefsCategory.CreateEntry<bool>("WallTones", false, "Wall Tones", "Play directional tones when approaching walls");
             prefFootsteps = prefsCategory.CreateEntry<bool>("Footsteps", false, "Footsteps", "Play click sound on each tile movement");
-            prefAudioBeacons = prefsCategory.CreateEntry<bool>("AudioBeacons", false, "Audio Beacons", "Play ping toward selected entity");
+            prefAudioBeacons = prefsCategory.CreateEntry<bool>("AudioBeacons", false, "Beacon Navigation", "Use audio beacon as the primary navigation aid (replaces turn-by-turn pathfinding)");
             prefAutoDetail = prefsCategory.CreateEntry<bool>("AutoDetail", false, "Auto Announcement Detail", "Announce descriptions/stats on focus for items, magic, equipment, and shops");
 
             prefWallBumpVolume = prefsCategory.CreateEntry<int>("WallBumpVolume", 50, "Wall Bump Volume", "Volume for wall bump sounds (0-100)");

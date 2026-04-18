@@ -65,6 +65,12 @@ namespace FFI_ScreenReader.Core.Handlers
                 return true;
             }
 
+            if (Input.GetKeyDown(KeyCode.F6))
+            {
+                FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons();
+                return true;
+            }
+
             return false;
         }
 

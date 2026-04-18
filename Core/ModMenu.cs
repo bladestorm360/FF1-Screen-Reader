@@ -158,7 +158,7 @@ namespace FFI_ScreenReader.Core
                 new ToggleItem(T("Footsteps"),
                     () => FFI_ScreenReaderMod.FootstepsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleFootsteps()),
-                new ToggleItem(T("Audio Beacons"),
+                new ToggleItem(T("Beacon Navigation"),
                     () => FFI_ScreenReaderMod.AudioBeaconsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons()),
 

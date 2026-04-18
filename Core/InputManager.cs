@@ -74,7 +74,11 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.RightBracket, KeyModifier.None, mod.CycleNext, "Next entity");
             RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.Ctrl, mod.ToggleToLayerFilter, "Toggle layer filter");
             RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.Shift, mod.TogglePathfindingFilter, "Toggle pathfinding filter");
-            RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.None, mod.AnnounceCurrentEntity, "Announce current entity");
+            RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.None, () =>
+            {
+                if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                else mod.AnnounceCurrentEntity();
+            }, "Announce current entity / restart beacon");
 
             // --- Field: pathfinding alternate keys (J/K/L/P) — with battle feedback ---
             RegisterFieldWithBattleFeedback(KeyCode.J, KeyModifier.Shift, mod.CyclePreviousCategory, "Previous entity category (alt)");
@@ -83,7 +87,11 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.L, KeyModifier.Shift, mod.CycleNextCategory, "Next entity category (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.L, KeyModifier.None, mod.CycleNext, "Next entity (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.Shift, mod.TogglePathfindingFilter, "Toggle pathfinding filter (alt)");
-            RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.None, mod.AnnounceCurrentEntity, "Announce current entity (alt)");
+            RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.None, () =>
+            {
+                if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                else mod.AnnounceCurrentEntity();
+            }, "Announce current entity / restart beacon (alt)");
 
             // --- Field: waypoint keys ---
             registry.Register(KeyCode.Comma, KeyModifier.Shift, KeyContext.Field, () => WaypointHandler.CyclePreviousCategory(), "Previous waypoint category");

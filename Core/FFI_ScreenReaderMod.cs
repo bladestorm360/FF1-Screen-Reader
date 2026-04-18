@@ -455,8 +455,10 @@ namespace FFI_ScreenReader.Core
             enableAudioBeacons = !enableAudioBeacons;
             if (enableAudioBeacons) audioLoopManager?.StartBeaconLoop(); else audioLoopManager?.StopBeaconLoop();
             PreferencesManager.SaveAudioBeacons(enableAudioBeacons);
-            SaveAndAnnounce(T("Audio beacons"), enableAudioBeacons);
+            SaveAndAnnounce(T("Beacon navigation"), enableAudioBeacons);
         }
+
+        internal void RestartBeacon() => audioLoopManager?.RestartBeacon();
 
         internal void ToggleAutoDetail()
         {

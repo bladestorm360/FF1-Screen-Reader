@@ -259,6 +259,14 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
+            // L3 → toggle beacon navigation mode
+            if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK))
+            {
+                ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK);
+                mod.ToggleAudioBeacons();
+                return;
+            }
+
             // Interrupt speech on any navigation input
             bool leftStickActive = GamepadManager.LeftStickX != 0f || GamepadManager.LeftStickY != 0f;
             bool leftStickJustMoved = leftStickActive && !wasLeftStickActive;
@@ -285,13 +293,16 @@ namespace FFI_ScreenReader.Core
             if (GamepadManager.RStickLeftPressed) { mod.CyclePreviousCategory(); lastTarget = LastTarget.Entity; }
             if (GamepadManager.RStickRightPressed) { mod.CycleNextCategory(); lastTarget = LastTarget.Entity; }
 
-            // Left trigger → pathfind to last selected target
+            // Left trigger → pathfind to last selected target (or restart beacon in beacon nav mode)
             if (GamepadManager.LeftTrigger > 0.5f && !leftTriggerWasActive)
             {
                 if (lastTarget == LastTarget.Waypoint)
                     WaypointHandler.PathfindToCurrentWaypoint();
                 else if (lastTarget == LastTarget.Entity)
-                    mod.AnnounceCurrentEntity();
+                {
+                    if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                    else mod.AnnounceCurrentEntity();
+                }
                 else
                     FFI_ScreenReaderMod.SpeakText(T("No target selected"), interrupt: true);
             }

@@ -21,8 +21,26 @@ namespace FFI_ScreenReader.Core
         // Coroutine state
         private IEnumerator wallToneCoroutine;
         private IEnumerator beaconCoroutine;
-        private const float BEACON_INTERVAL = 2.0f;
         private const float WALL_TONE_LOOP_INTERVAL = 0.1f;
+
+        // Beacon navigation constants — proximity-based interval modulation.
+        // Mode A (valid path): 1.0s at 31.5 tiles (pathfinding limit) → 0.2s at 2 tiles; silent at ≤1 tile.
+        // Mode B (no valid path / out of range): 1.0s at ≥100 tiles → 0.5s at 32 tiles; halved pitch.
+        private const float MODE_A_INTERVAL_FAR  = 1.0f;
+        private const float MODE_A_INTERVAL_NEAR = 0.2f;
+        private const float MODE_A_FAR_TILES     = 31.5f;
+        private const float MODE_A_NEAR_TILES    = 2.0f;
+        private const float BEACON_STOP_TILES    = 1.0f;
+        private const float MODE_B_INTERVAL_FAR  = 1.0f;
+        private const float MODE_B_INTERVAL_NEAR = 0.5f;
+        private const float MODE_B_FAR_TILES     = 100f;
+        private const float MODE_B_NEAR_TILES    = 32f;
+        private const float TILE_SIZE            = 16f;
+
+        // Beacon state
+        private bool beaconSilenced = false;
+        private NavigableEntity lastBeaconEntity = null;
+        private float nextBeaconTime = 0f;
 
         // Map transition suppression
         private int wallToneMapId = -1;
@@ -91,6 +109,18 @@ namespace FFI_ScreenReader.Core
                 CoroutineManager.StopManaged(beaconCoroutine);
                 beaconCoroutine = null;
             }
+            beaconSilenced = false;
+            lastBeaconEntity = null;
+        }
+
+        /// <summary>
+        /// Forces the beacon to ping on the next loop iteration and clears any silence latch.
+        /// Called by the pathfinding commands when beacon navigation mode is on.
+        /// </summary>
+        public void RestartBeacon()
+        {
+            beaconSilenced = false;
+            nextBeaconTime = 0f;
         }
 
         /// <summary>
@@ -223,12 +253,15 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
-        /// Coroutine loop that plays audio beacon pings every 2 seconds.
+        /// Coroutine loop that plays proximity-based audio beacon pings.
+        /// Interval shortens as the player nears the selected entity.
+        /// Mode A (valid path): normal pitch, 1.0s→0.2s over 31.5→2 tiles, silent at ≤1 tile.
+        /// Mode B (no valid path): halved pitch, 1.0s→0.5s over 100→32 tiles, no silence latch.
         /// Uses manual time-based waiting because WaitForSeconds doesn't work through IL2CPP wrapper.
         /// </summary>
         private IEnumerator BeaconLoop()
         {
-            float nextBeaconTime = Time.time + 0.3f;  // Delay first beacon by 300ms for scene stability
+            nextBeaconTime = Time.time + 0.3f;  // Delay first beacon by 300ms for scene stability
 
             while (mod.IsAudioBeaconsEnabled())
             {
@@ -237,23 +270,43 @@ namespace FFI_ScreenReader.Core
                     yield return null;
                     continue;
                 }
-                nextBeaconTime = Time.time + BEACON_INTERVAL;
 
                 // Suppress beacons briefly after scene load
                 if (Time.time < beaconSuppressedUntil)
+                {
+                    nextBeaconTime = Time.time + 0.1f;
                     continue;
+                }
 
                 // Silence when any menu or battle is active (same gate as controller routing)
                 if (!ControllerRouter.IsFieldActive)
+                {
+                    nextBeaconTime = Time.time + 0.1f;
                     continue;
+                }
 
                 try
                 {
                     var entity = entityScanner?.CurrentEntity;
-                    if (entity == null) continue;
+                    if (entity == null)
+                    {
+                        nextBeaconTime = Time.time + 0.2f;
+                        continue;
+                    }
+
+                    // Selection change clears the silence latch so new targets always ping.
+                    if (!ReferenceEquals(entity, lastBeaconEntity))
+                    {
+                        beaconSilenced = false;
+                        lastBeaconEntity = entity;
+                    }
 
                     var playerController = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
-                    if (playerController?.fieldPlayer == null) continue;
+                    if (playerController?.fieldPlayer == null)
+                    {
+                        nextBeaconTime = Time.time + 0.2f;
+                        continue;
+                    }
 
                     Vector3 playerPos = playerController.fieldPlayer.transform.localPosition;
                     Vector3 entityPos = entity.Position;
@@ -261,33 +314,89 @@ namespace FFI_ScreenReader.Core
                     // Sanity check: skip if positions look invalid (garbage data during load)
                     if (float.IsNaN(playerPos.x) || float.IsNaN(entityPos.x) ||
                         Mathf.Abs(playerPos.x) > 10000f || Mathf.Abs(entityPos.x) > 10000f)
+                    {
+                        nextBeaconTime = Time.time + 0.2f;
                         continue;
+                    }
 
-                    float distance = Vector3.Distance(playerPos, entityPos);
+                    float distTiles = Vector3.Distance(playerPos, entityPos) / TILE_SIZE;
+
+                    // Mode selection — expensive (A* per beacon tick) but only 1–5 Hz.
+                    bool pathValid;
+                    try
+                    {
+                        var pathInfo = FieldNavigationHelper.FindPathTo(
+                            playerPos, entityPos,
+                            playerController.mapHandle,
+                            playerController.fieldPlayer);
+                        pathValid = pathInfo.Success;
+                    }
+                    catch
+                    {
+                        pathValid = false;
+                    }
+
+                    float interval;
+                    bool lowPitch;
+                    if (pathValid)
+                    {
+                        // Mode A: valid path
+                        if (distTiles <= BEACON_STOP_TILES)
+                        {
+                            beaconSilenced = true;
+                            nextBeaconTime = Time.time + 0.2f;
+                            continue;
+                        }
+                        float t = Mathf.Clamp01((distTiles - MODE_A_NEAR_TILES) /
+                                                (MODE_A_FAR_TILES - MODE_A_NEAR_TILES));
+                        interval = Mathf.Lerp(MODE_A_INTERVAL_NEAR, MODE_A_INTERVAL_FAR, t);
+                        lowPitch = false;
+                    }
+                    else
+                    {
+                        // Mode B: out of range or blocked — halved pitch, no silence latch
+                        float t = Mathf.Clamp01((distTiles - MODE_B_NEAR_TILES) /
+                                                (MODE_B_FAR_TILES - MODE_B_NEAR_TILES));
+                        interval = Mathf.Lerp(MODE_B_INTERVAL_NEAR, MODE_B_INTERVAL_FAR, t);
+                        lowPitch = true;
+                    }
+
+                    // Silence latch only holds while the path is valid (Mode A).
+                    if (beaconSilenced && pathValid)
+                    {
+                        nextBeaconTime = Time.time + 0.2f;
+                        continue;
+                    }
+
+                    nextBeaconTime = Time.time + interval;
+
                     float maxDist = 500f;
-                    float volumeScale = Mathf.Clamp(1f - (distance / maxDist), 0.15f, 0.60f);
+                    float volumeScale = Mathf.Clamp(1f - (distTiles * TILE_SIZE / maxDist), 0.15f, 0.60f);
 
                     float deltaX = entityPos.x - playerPos.x;
                     float pan = Mathf.Clamp(deltaX / 100f, -1f, 1f) * 0.5f + 0.5f;
 
                     bool isSouth = entityPos.y < playerPos.y - 8f;
 
-                    // Debounce: ensure minimum interval between beacons
+                    // Debounce: ensure at least 80% of the current interval has elapsed
                     float timeSinceLast = Time.time - lastBeaconPlayedAt;
-                    if (timeSinceLast < BEACON_INTERVAL * 0.8f)
+                    if (timeSinceLast < interval * 0.8f)
                         continue;
 
-                    SoundPlayer.PlayBeacon(isSouth, pan, volumeScale);
+                    SoundPlayer.PlayBeacon(isSouth, pan, volumeScale, lowPitch);
                     lastBeaconPlayedAt = Time.time;
                 }
                 catch (Exception ex)
                 {
                     MelonLogger.Warning($"[Beacon] Error: {ex.Message}");
+                    nextBeaconTime = Time.time + 0.5f;
                 }
             }
 
             // Clean up when exiting
             beaconCoroutine = null;
+            beaconSilenced = false;
+            lastBeaconEntity = null;
         }
     }
 }
