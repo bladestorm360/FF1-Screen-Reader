@@ -115,6 +115,12 @@ namespace FFI_ScreenReader.Utils
 
             /// <summary>ShopListItemContentView.priceText</summary>
             public const int PriceText = 0x18;
+
+            /// <summary>ShopListMainContentController.selectCursor</summary>
+            public const int ListMainSelectCursor = 0x48;
+
+            /// <summary>ShopListMainContentController.productContentList</summary>
+            public const int ListMainProductContentList = 0x68;
         }
 
         /// <summary>

@@ -9,7 +9,9 @@ using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Shop UI types (root namespace in IL2CPP)
 using ShopController = Il2CppLast.UI.KeyInput.ShopController;
+using ShopInfoController = Il2CppLast.UI.KeyInput.ShopInfoController;
 using ShopListItemContentController = Il2CppLast.UI.KeyInput.ShopListItemContentController;
+using ShopListMainContentController = Il2CppLast.UI.KeyInput.ShopListMainContentController;
 using ShopTradeWindowController = Il2CppLast.UI.KeyInput.ShopTradeWindowController;
 using ShopCommandMenuContentController = Il2CppLast.UI.KeyInput.ShopCommandMenuContentController;
 using ShopCommandMenuController = Il2CppLast.UI.KeyInput.ShopCommandMenuController;
@@ -29,7 +31,7 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                PatchItemSetFocus(harmony);
+                PatchSetDescription(harmony);
                 PatchCommandSetFocus(harmony);
                 PatchTradeWindow(harmony);
                 PatchShopClose(harmony);
@@ -45,25 +47,34 @@ namespace FFI_ScreenReader.Patches
 
         #region Patch Registration
 
-        private static void PatchItemSetFocus(HarmonyLib.Harmony harmony)
+        private static void PatchSetDescription(HarmonyLib.Harmony harmony)
         {
             try
             {
-                Type controllerType = typeof(ShopListItemContentController);
-                var setFocusMethod = controllerType.GetMethod("SetFocus", new Type[] { typeof(bool) });
+                // ShopInfoController.SetDescription(string) is invoked on every cursor
+                // move in the shop item list, regardless of affordability/canSelect. We use
+                // it as a cursor-moved signal and read the in-focus item from
+                // ShopListMainContentController (selectCursor.Index into productContentList).
+                Type controllerType = typeof(ShopInfoController);
+                var setDescriptionMethod = controllerType.GetMethod(
+                    "SetDescription",
+                    BindingFlags.Instance | BindingFlags.Public,
+                    null,
+                    new Type[] { typeof(string) },
+                    null);
 
-                if (setFocusMethod == null)
+                if (setDescriptionMethod == null)
                 {
-                    MelonLogger.Warning("[Shop] Could not find ShopListItemContentController.SetFocus(bool)");
+                    MelonLogger.Warning("[Shop] Could not find ShopInfoController.SetDescription(string)");
                     return;
                 }
 
-                harmony.Patch(setFocusMethod,
-                    postfix: new HarmonyMethod(typeof(ShopPatches), nameof(ItemSetFocus_Postfix)));
+                harmony.Patch(setDescriptionMethod,
+                    postfix: new HarmonyMethod(typeof(ShopPatches), nameof(SetDescription_Postfix)));
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"[Shop] Failed to patch item SetFocus: {ex.Message}");
+                MelonLogger.Error($"[Shop] Failed to patch ShopInfoController.SetDescription: {ex.Message}");
             }
         }
 
@@ -145,18 +156,25 @@ namespace FFI_ScreenReader.Patches
         #region Item/Command Postfixes
 
         /// <summary>
-        /// Called when an item in the shop list gains/loses focus.
-        /// Announces item name, price, and caches description and stats for 'I' key.
+        /// Fires whenever the shop description panel updates, which happens on every
+        /// cursor move in the item list — affordable or not. We use this as a signal
+        /// that the cursor moved, then read the in-focus item's name/price directly from
+        /// ShopListMainContentController (selectCursor.Index into productContentList).
+        /// The description parameter is ignored here; data comes from the item itself.
         /// </summary>
-        public static void ItemSetFocus_Postfix(ShopListItemContentController __instance, bool isFocus)
+        public static void SetDescription_Postfix(ShopInfoController __instance)
         {
             try
             {
-                if (!isFocus || __instance == null)
+                if (__instance == null)
                     return;
 
-                // If spell list receives focus while IsInMagicSlotSelection is set,
-                // user has backed out of the spell slot grid
+                var mainList = FindActiveMainContentController();
+                if (mainList == null)
+                    return; // Not in the item list (command menu, magic slot grid, etc.)
+
+                // Reaching the item list means the magic spell slot grid (if previously active)
+                // has been backed out of.
                 if (ShopMenuTracker.IsInMagicSlotSelection)
                 {
                     ShopMenuTracker.IsInMagicSlotSelection = false;
@@ -166,123 +184,208 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Shop");
                 ShopMenuTracker.IsShopMenuActive = true;
 
-                string itemName = null;
-                try
-                {
-                    itemName = __instance.iconTextView?.nameText?.text;
-                }
-                catch { } // IL2CPP field may not resolve
-
-                if (string.IsNullOrEmpty(itemName))
+                IntPtr instancePtr = mainList.Pointer;
+                if (instancePtr == IntPtr.Zero)
                     return;
 
-                itemName = TextUtils.StripIconMarkup(itemName);
+                IntPtr cursorPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainSelectCursor);
+                if (cursorPtr == IntPtr.Zero)
+                    return;
 
-                // Get price from shopListItemContentView
-                string price = null;
+                var cursor = new GameCursor(cursorPtr);
+                int index = cursor.Index;
+                if (index < 0)
+                    return;
+
+                IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainProductContentList);
+                if (listPtr == IntPtr.Zero)
+                    return;
+
+                var list = new Il2CppSystem.Collections.Generic.List<ShopListItemContentController>(listPtr);
+                if (list == null || index >= list.Count)
+                    return;
+
+                var content = list[index];
+                AnnounceFocusedItem(content);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Shop] Error in SetDescription_Postfix: {ex.Message}");
+            }
+        }
+
+        private static ShopListMainContentController _cachedMainList;
+
+        private static ShopListMainContentController FindActiveMainContentController()
+        {
+            try
+            {
+                if (_cachedMainList != null)
+                {
+                    try
+                    {
+                        if (_cachedMainList.Pointer != IntPtr.Zero &&
+                            _cachedMainList.gameObject != null &&
+                            _cachedMainList.gameObject.activeInHierarchy)
+                        {
+                            return _cachedMainList;
+                        }
+                    }
+                    catch { _cachedMainList = null; }
+                }
+
+                var all = UnityEngine.Object.FindObjectsOfType<ShopListMainContentController>();
+                if (all != null)
+                {
+                    foreach (var candidate in all)
+                    {
+                        if (candidate == null) continue;
+                        try
+                        {
+                            if (candidate.gameObject != null && candidate.gameObject.activeInHierarchy)
+                            {
+                                _cachedMainList = candidate;
+                                return candidate;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// Announces a focused shop item (name + price) and caches it for the I/U keys.
+        /// Empty slots announce "Empty" but do NOT overwrite the cached I/U target, so
+        /// those keys continue to describe the last real item while the cursor passes
+        /// over gaps in the sell inventory.
+        /// </summary>
+        private static void AnnounceFocusedItem(ShopListItemContentController content)
+        {
+            // Any focus change invalidates quantity-screen dedup so re-entering
+            // the trade window always announces the starting quantity.
+            AnnouncementDeduplicator.Reset(AnnouncementContexts.SHOP_QUANTITY);
+
+            string itemName = null;
+            if (content != null)
+            {
+                try { itemName = content.iconTextView?.nameText?.text; } catch { }
+            }
+            itemName = TextUtils.StripIconMarkup(itemName);
+
+            if (string.IsNullOrEmpty(itemName))
+            {
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, T("Empty"), interrupt: true);
+                return;
+            }
+
+            string price = ExtractPrice(content);
+
+            ShopMenuTracker.LastItemName = itemName;
+            ShopMenuTracker.LastItemPrice = price;
+
+            try
+            {
+                int contentId = content.ContentId;
+                ShopMenuTracker.LastItemContentId = contentId;
+                ShopMenuTracker.LastItemContentType = ResolveShopItemType(contentId);
+            }
+            catch
+            {
+                ShopMenuTracker.LastItemContentId = 0;
+                ShopMenuTracker.LastItemContentType = -1;
+            }
+
+            string baseAnnouncement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
+
+            string announcement = baseAnnouncement;
+            if (FFI_ScreenReaderMod.AutoDetailEnabled)
+            {
+                string detail = null;
+                try { detail = ShopMenuTracker.GetDescriptionFromUI(); } catch { }
+                if (!string.IsNullOrWhiteSpace(detail))
+                    announcement = $"{baseAnnouncement}: {detail}";
+            }
+
+            AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, announcement, interrupt: true);
+        }
+
+        private static string ExtractPrice(ShopListItemContentController content)
+        {
+            if (content == null) return null;
+
+            string price = null;
+
+            try
+            {
+                var viewProp = content.GetType().GetProperty("shopListItemContentView",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (viewProp != null)
+                {
+                    var view = viewProp.GetValue(content);
+                    if (view != null)
+                    {
+                        var priceTextProp = view.GetType().GetProperty("priceText",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (priceTextProp != null)
+                        {
+                            var priceText = priceTextProp.GetValue(view) as UnityEngine.UI.Text;
+                            price = priceText?.text;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (string.IsNullOrEmpty(price))
+            {
                 try
                 {
-                    var viewProp = __instance.GetType().GetProperty("shopListItemContentView",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (viewProp != null)
+                    var viewField = content.GetType().GetField("shopListItemContentView",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (viewField != null)
                     {
-                        var view = viewProp.GetValue(__instance);
+                        var view = viewField.GetValue(content);
                         if (view != null)
                         {
-                            var priceTextProp = view.GetType().GetProperty("priceText",
+                            var priceTextField = view.GetType().GetField("priceText",
                                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (priceTextProp != null)
+                            if (priceTextField != null)
                             {
-                                var priceText = priceTextProp.GetValue(view) as UnityEngine.UI.Text;
+                                var priceText = priceTextField.GetValue(view) as UnityEngine.UI.Text;
                                 price = priceText?.text;
                             }
                         }
                     }
                 }
-                catch { } // IL2CPP property access may fail
+                catch { }
+            }
 
-                // Fallback 1: Try field access
-                if (string.IsNullOrEmpty(price))
-                {
-                    try
-                    {
-                        var viewField = __instance.GetType().GetField("shopListItemContentView",
-                            BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (viewField != null)
-                        {
-                            var view = viewField.GetValue(__instance);
-                            if (view != null)
-                            {
-                                var priceTextField = view.GetType().GetField("priceText",
-                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                                if (priceTextField != null)
-                                {
-                                    var priceText = priceTextField.GetValue(view) as UnityEngine.UI.Text;
-                                    price = priceText?.text;
-                                }
-                            }
-                        }
-                    }
-                    catch { } // IL2CPP field access may fail
-                }
-
-                // Fallback 2: Try pointer-based access
-                if (string.IsNullOrEmpty(price))
-                {
-                    try
-                    {
-                        IntPtr controllerPtr = __instance.Pointer;
-                        if (controllerPtr != IntPtr.Zero)
-                        {
-                            IntPtr viewPtr = IL2CppFieldReader.ReadPointer(controllerPtr, 0x30);
-                            if (viewPtr != IntPtr.Zero)
-                            {
-                                IntPtr priceTextPtr = IL2CppFieldReader.ReadPointer(viewPtr, 0x18);
-                                if (priceTextPtr != IntPtr.Zero)
-                                {
-                                    var priceTextComponent = new UnityEngine.UI.Text(priceTextPtr);
-                                    price = priceTextComponent?.text;
-                                }
-                            }
-                        }
-                    }
-                    catch { } // IL2CPP pointer offset may be invalid
-                }
-
-                ShopMenuTracker.LastItemName = itemName;
-                ShopMenuTracker.LastItemPrice = price;
-
-                // Capture ContentId + resolve type (weapon vs armor) for U key
+            if (string.IsNullOrEmpty(price))
+            {
                 try
                 {
-                    int contentId = __instance.ContentId;
-                    ShopMenuTracker.LastItemContentId = contentId;
-                    ShopMenuTracker.LastItemContentType = ResolveShopItemType(contentId);
+                    IntPtr controllerPtr = content.Pointer;
+                    if (controllerPtr != IntPtr.Zero)
+                    {
+                        IntPtr viewPtr = IL2CppFieldReader.ReadPointer(controllerPtr, IL2CppOffsets.Shop.ShopListItemContentView);
+                        if (viewPtr != IntPtr.Zero)
+                        {
+                            IntPtr priceTextPtr = IL2CppFieldReader.ReadPointer(viewPtr, IL2CppOffsets.Shop.PriceText);
+                            if (priceTextPtr != IntPtr.Zero)
+                            {
+                                var priceTextComponent = new UnityEngine.UI.Text(priceTextPtr);
+                                price = priceTextComponent?.text;
+                            }
+                        }
+                    }
                 }
-                catch
-                {
-                    ShopMenuTracker.LastItemContentId = 0;
-                    ShopMenuTracker.LastItemContentType = -1;
-                }
-
-                string baseAnnouncement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
-
-                // AutoDetail: append stats/description when enabled
-                string announcement = baseAnnouncement;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
-                {
-                    string detail = null;
-                    try { detail = ShopMenuTracker.GetDescriptionFromUI(); } catch { }
-                    if (!string.IsNullOrWhiteSpace(detail))
-                        announcement = $"{baseAnnouncement}: {detail}";
-                }
-
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, announcement, interrupt: true);
+                catch { }
             }
-            catch (Exception ex)
-            {
-                MelonLogger.Error($"[Shop] Error in ItemSetFocus_Postfix: {ex.Message}");
-            }
+
+            return price;
         }
 
         /// <summary>
@@ -481,6 +584,7 @@ namespace FFI_ScreenReader.Patches
 
         public static void ShopClose_Postfix()
         {
+            _cachedMainList = null;
             ShopMenuTracker.ClearState();
         }
 
