@@ -18,6 +18,7 @@ namespace FFI_ScreenReader.Core
         private static MelonPreferences_Entry<bool> prefWallTones;
         private static MelonPreferences_Entry<bool> prefFootsteps;
         private static MelonPreferences_Entry<bool> prefAudioBeacons;
+        private static MelonPreferences_Entry<bool> prefAutoDetail;
 
         // Volume preferences (0-100, default 50)
         private static MelonPreferences_Entry<int> prefWallBumpVolume;
@@ -41,6 +42,7 @@ namespace FFI_ScreenReader.Core
             prefWallTones = prefsCategory.CreateEntry<bool>("WallTones", false, "Wall Tones", "Play directional tones when approaching walls");
             prefFootsteps = prefsCategory.CreateEntry<bool>("Footsteps", false, "Footsteps", "Play click sound on each tile movement");
             prefAudioBeacons = prefsCategory.CreateEntry<bool>("AudioBeacons", false, "Audio Beacons", "Play ping toward selected entity");
+            prefAutoDetail = prefsCategory.CreateEntry<bool>("AutoDetail", false, "Auto Announcement Detail", "Announce descriptions/stats on focus for items, magic, equipment, and shops");
 
             prefWallBumpVolume = prefsCategory.CreateEntry<int>("WallBumpVolume", 50, "Wall Bump Volume", "Volume for wall bump sounds (0-100)");
             prefFootstepVolume = prefsCategory.CreateEntry<int>("FootstepVolume", 50, "Footstep Volume", "Volume for footstep sounds (0-100)");
@@ -58,6 +60,7 @@ namespace FFI_ScreenReader.Core
         public static bool WallTonesDefault => prefWallTones?.Value ?? false;
         public static bool FootstepsDefault => prefFootsteps?.Value ?? false;
         public static bool AudioBeaconsDefault => prefAudioBeacons?.Value ?? false;
+        public static bool AutoDetailDefault => prefAutoDetail?.Value ?? false;
 
         #endregion
 
@@ -120,6 +123,11 @@ namespace FFI_ScreenReader.Core
         public static void SaveAudioBeacons(bool value)
         {
             if (prefAudioBeacons != null) { prefAudioBeacons.Value = value; prefsCategory?.SaveToFile(false); }
+        }
+
+        public static void SaveAutoDetail(bool value)
+        {
+            if (prefAutoDetail != null) { prefAutoDetail.Value = value; prefsCategory?.SaveToFile(false); }
         }
 
         #endregion

@@ -93,7 +93,7 @@ namespace FFI_ScreenReader.Menus
         /// <summary>
         /// Gets the EquipJobGroupId from weapon or armor master data.
         /// </summary>
-        private static int GetEquipJobGroupId(MasterManager masterManager, int itemType, int itemId)
+        internal static int GetEquipJobGroupId(MasterManager masterManager, int itemType, int itemId)
         {
             try
             {
@@ -126,7 +126,7 @@ namespace FFI_ScreenReader.Menus
         /// Gets the set of job IDs that have been unlocked (released) by the player.
         /// FF1 starts with 6 base jobs, class change unlocks upgraded versions.
         /// </summary>
-        private static HashSet<int> GetUnlockedJobIds()
+        internal static HashSet<int> GetUnlockedJobIds()
         {
             var unlockedIds = new HashSet<int>();
 
@@ -167,7 +167,7 @@ namespace FFI_ScreenReader.Menus
         /// Only includes jobs that are unlocked (released) to avoid spoilers.
         /// FF1 has 12 jobs (6 base + 6 upgraded after class change).
         /// </summary>
-        private static List<string> GetEquippableJobs(MasterManager masterManager, JobGroup jobGroup, HashSet<int> unlockedJobIds)
+        internal static List<string> GetEquippableJobs(MasterManager masterManager, JobGroup jobGroup, HashSet<int> unlockedJobIds)
         {
             var jobNames = new List<string>();
             var messageManager = MessageManager.Instance;
@@ -247,7 +247,7 @@ namespace FFI_ScreenReader.Menus
         /// <summary>
         /// Builds the announcement string from the list of equippable jobs.
         /// </summary>
-        private static string BuildAnnouncement(List<string> jobNames)
+        internal static string BuildAnnouncement(List<string> jobNames)
         {
             if (jobNames == null || jobNames.Count == 0)
             {

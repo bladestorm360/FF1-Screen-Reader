@@ -80,6 +80,12 @@ namespace FFI_ScreenReader.Core.Handlers
                 HandleItemDetailsKey(mod);
             }
 
+            // U - usable by classes (shops + inventory)
+            if (Input.GetKeyDown(KeyCode.U))
+            {
+                FFI_ScreenReader.Menus.UsableByAnnouncer.AnnounceForCurrentContext();
+            }
+
             // V - current vehicle/movement mode
             if (Input.GetKeyDown(KeyCode.V))
             {
@@ -139,10 +145,17 @@ namespace FFI_ScreenReader.Core.Handlers
                     return;
                 }
 
-                // Item menu equip requirements
+                // Magic menu spell description
+                if (MagicMenuState.IsSpellListActive)
+                {
+                    FFI_ScreenReader.Menus.MagicDetailsAnnouncer.AnnounceCurrentSpellDescription();
+                    return;
+                }
+
+                // Item menu description (equip-requirements moved to U key)
                 if (ItemMenuState.IsItemMenuActive)
                 {
-                    FFI_ScreenReader.Menus.ItemDetailsAnnouncer.AnnounceEquipRequirements();
+                    FFI_ScreenReader.Menus.ItemDescriptionAnnouncer.AnnounceCurrentDescription();
                     return;
                 }
             }

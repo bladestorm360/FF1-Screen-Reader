@@ -196,6 +196,12 @@ namespace FFI_ScreenReader.Core
                     () => PreferencesManager.EnemyHPDisplay,
                     PreferencesManager.SetEnemyHPDisplay),
 
+                // Announcements section
+                new SectionHeader(T("Announcements")),
+                new ToggleItem(T("Auto Detail"),
+                    () => FFI_ScreenReaderMod.AutoDetailEnabled,
+                    () => FFI_ScreenReaderMod.Instance?.ToggleAutoDetail()),
+
                 // Close Menu action
                 new ActionItem(T("Close Menu"), Close)
             };

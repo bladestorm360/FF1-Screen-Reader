@@ -221,7 +221,7 @@ namespace FFI_ScreenReader.Patches
                     announcement = string.Format(T("Slot {0}: {1}"), slotType, spellName);
                 }
 
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_SLOT, announcement);
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_SLOT, announcement, interrupt: true);
             }
             catch (Exception ex)
             {

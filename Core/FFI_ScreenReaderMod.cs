@@ -69,6 +69,7 @@ namespace FFI_ScreenReader.Core
         private bool enableWallTones = false;
         private bool enableFootsteps = false;
         private bool enableAudioBeacons = false;
+        private bool enableAutoDetail = false;
 
         public override void OnInitializeMelon()
         {
@@ -93,6 +94,7 @@ namespace FFI_ScreenReader.Core
             enableWallTones = PreferencesManager.WallTonesDefault;
             enableFootsteps = PreferencesManager.FootstepsDefault;
             enableAudioBeacons = PreferencesManager.AudioBeaconsDefault;
+            enableAutoDetail = PreferencesManager.AutoDetailDefault;
 
             // Initialize Tolk for screen reader support
             tolk = new TolkWrapper();
@@ -456,6 +458,13 @@ namespace FFI_ScreenReader.Core
             SaveAndAnnounce(T("Audio beacons"), enableAudioBeacons);
         }
 
+        internal void ToggleAutoDetail()
+        {
+            enableAutoDetail = !enableAutoDetail;
+            PreferencesManager.SaveAutoDetail(enableAutoDetail);
+            SaveAndAnnounce(T("Auto detail"), enableAutoDetail);
+        }
+
         // Accessors for audio feedback state (used by AudioLoopManager and MovementSoundPatches)
         internal bool IsWallTonesEnabled() => enableWallTones;
         internal bool IsFootstepsEnabled() => enableFootsteps;
@@ -468,6 +477,7 @@ namespace FFI_ScreenReader.Core
         public static bool WallTonesEnabled => instance?.enableWallTones ?? false;
         public static bool FootstepsEnabled => instance?.enableFootsteps ?? false;
         public static bool AudioBeaconsEnabled => instance?.enableAudioBeacons ?? false;
+        public static bool AutoDetailEnabled => instance?.enableAutoDetail ?? false;
 
         /// <summary>
         /// Gets the currently selected entity for audio beacon tracking.

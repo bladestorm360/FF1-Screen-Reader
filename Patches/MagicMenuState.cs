@@ -23,6 +23,17 @@ namespace FFI_ScreenReader.Patches
         private static bool _isTargetSelectionActive = false;
         private static int lastSpellId = -1;
         private static OwnedCharacterData _currentCharacter = null;
+        private static OwnedAbility _lastAnnouncedAbility = null;
+
+        /// <summary>
+        /// The most recently announced ability in the spell list.
+        /// Used by MagicDetailsAnnouncer for the I key.
+        /// </summary>
+        public static OwnedAbility LastAnnouncedAbility
+        {
+            get => _lastAnnouncedAbility;
+            set => _lastAnnouncedAbility = value;
+        }
 
         private const int STATE_NONE = 0;
         private const int STATE_COMMAND = 4;
@@ -36,6 +47,7 @@ namespace FFI_ScreenReader.Patches
                 lastSpellId = -1;
                 AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
                 _currentCharacter = null;
+                _lastAnnouncedAbility = null;
             });
         }
 
@@ -124,6 +136,7 @@ namespace FFI_ScreenReader.Patches
             lastSpellId = -1;
             AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
             _currentCharacter = null;
+            _lastAnnouncedAbility = null;
         }
 
         public static void OnTargetSelectionActive()

@@ -341,27 +341,39 @@ namespace FFI_ScreenReader.Patches
                 if (!MagicMenuState.ShouldAnnounceSpell(spellId))
                     return;
 
+                // Cache for I key lookup
+                MagicMenuState.LastAnnouncedAbility = ability;
+
                 string spellName = MagicMenuState.GetSpellName(ability);
                 if (string.IsNullOrEmpty(spellName))
                     return;
 
-                string announcement = spellName;
+                string baseAnnouncement = spellName;
 
                 if (spellLevel > 0)
                 {
-                    announcement += $" LV{spellLevel}";
+                    baseAnnouncement += $" LV{spellLevel}";
 
                     if (MagicMenuState.CurrentCharacter != null)
                     {
                         var (current, max) = MagicMenuState.GetChargesForLevel(MagicMenuState.CurrentCharacter, spellLevel);
                         if (max > 0)
-                            announcement += $": MP: {current}/{max}";
+                            baseAnnouncement += $": MP: {current}/{max}";
                     }
                 }
 
-                string description = MagicMenuState.GetSpellDescription(ability);
-                if (!string.IsNullOrEmpty(description))
-                    announcement += $": {description}";
+                // AutoDetail: append description on focus when enabled
+                string announcement = baseAnnouncement;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                {
+                    try
+                    {
+                        string description = MagicMenuState.GetSpellDescription(ability);
+                        if (!string.IsNullOrWhiteSpace(description))
+                            announcement = $"{baseAnnouncement}: {description}";
+                    }
+                    catch { }
+                }
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

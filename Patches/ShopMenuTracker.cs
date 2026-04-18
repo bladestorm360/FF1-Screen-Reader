@@ -28,6 +28,8 @@ namespace FFI_ScreenReader.Patches
         }
         public static string LastItemName { get; set; }
         public static string LastItemPrice { get; set; }
+        public static int LastItemContentId { get; set; }
+        public static int LastItemContentType { get; set; } = -1; // 2=weapon, 3=armor, -1=unknown/none
 
         /// <summary>
         /// Tracks when we're actively in the magic spell slot selection grid.
@@ -195,6 +197,8 @@ namespace FFI_ScreenReader.Patches
             cachedShopController = null;
             LastItemName = null;
             LastItemPrice = null;
+            LastItemContentId = 0;
+            LastItemContentType = -1;
             ShopPatches.ResetQuantityTracking();
         }
     }

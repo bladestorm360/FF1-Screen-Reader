@@ -276,6 +276,15 @@ namespace FFI_ScreenReader.Patches
                 // Strip icon markup (e.g., <ic_knife>)
                 announcement = TextUtils.StripIconMarkup(announcement);
 
+                // AutoDetail: append stats/description for the equipped item
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                {
+                    string detail = null;
+                    try { detail = EquipDetailsAnnouncer.GetDescriptionFromUI(); } catch { }
+                    if (!string.IsNullOrWhiteSpace(detail))
+                        announcement = $"{announcement}: {detail}";
+                }
+
                 // Skip duplicates
                 if (!EquipMenuState.ShouldAnnounce(announcement))
                     return;
@@ -424,8 +433,17 @@ namespace FFI_ScreenReader.Patches
                 // Strip icon markup from name
                 itemName = TextUtils.StripIconMarkup(itemName);
 
-                // Build announcement with name only (stats/description gated behind I key)
-                string announcement = itemName;
+                // Base announcement is name only (stats/description gated behind I key).
+                // AutoDetail appends the same detail the I key reads.
+                string baseAnnouncement = itemName;
+                string announcement = baseAnnouncement;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                {
+                    string detail = null;
+                    try { detail = EquipDetailsAnnouncer.GetDescriptionFromUI(); } catch { }
+                    if (!string.IsNullOrWhiteSpace(detail))
+                        announcement = $"{baseAnnouncement}: {detail}";
+                }
 
                 // Skip duplicates
                 if (!EquipMenuState.ShouldAnnounce(announcement))
@@ -536,7 +554,7 @@ namespace FFI_ScreenReader.Patches
         /// Reads the description text from the equipment UI panel.
         /// Pointer chain: EquipmentDescriptionWindowController → view (0x20) → descriptionText (0x18) → text
         /// </summary>
-        private static string GetDescriptionFromUI()
+        internal static string GetDescriptionFromUI()
         {
             try
             {

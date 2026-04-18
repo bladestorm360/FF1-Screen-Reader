@@ -59,6 +59,12 @@ namespace FFI_ScreenReader.Core.Handlers
                 return true;
             }
 
+            if (Input.GetKeyDown(KeyCode.F4))
+            {
+                FFI_ScreenReaderMod.Instance?.ToggleAutoDetail();
+                return true;
+            }
+
             return false;
         }
 

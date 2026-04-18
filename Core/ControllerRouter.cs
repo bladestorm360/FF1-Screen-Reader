@@ -308,6 +308,10 @@ namespace FFI_ScreenReader.Core
             if (GamepadManager.RStickDownPressed)
                 KeyHelpReader.AnnounceKeyHelp();
 
+            // Right stick left → usable by classes (U key equivalent)
+            if (GamepadManager.RStickLeftPressed)
+                FFI_ScreenReader.Menus.UsableByAnnouncer.AnnounceForCurrentContext();
+
             // D-pad and left stick → virtual buffer navigation in Status/Bestiary
             if (context == KeyContext.Status)
             {

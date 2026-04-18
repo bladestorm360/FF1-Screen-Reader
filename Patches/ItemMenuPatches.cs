@@ -276,25 +276,25 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(itemName))
                     return;
 
-                // Build announcement: "Item Name, Count: Description"
-                string announcement = itemName;
+                // Base announcement: "Item Name" + count. Description moves to I key.
+                string baseAnnouncement = itemName;
 
-                // Add item count if more than 1
                 int count = itemData.Count;
                 if (count > 1)
                 {
-                    announcement += $", {count}";
+                    baseAnnouncement += $", {count}";
                 }
 
-                // Add description if available
-                string description = itemData.Description;
-                if (!string.IsNullOrWhiteSpace(description))
+                // AutoDetail: append description on focus when enabled
+                string announcement = baseAnnouncement;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
                 {
-                    description = TextUtils.StripIconMarkup(description);
-
+                    string description = itemData.Description;
                     if (!string.IsNullOrWhiteSpace(description))
                     {
-                        announcement += ": " + description;
+                        description = TextUtils.StripIconMarkup(description);
+                        if (!string.IsNullOrWhiteSpace(description))
+                            announcement = baseAnnouncement + ": " + description;
                     }
                 }
 

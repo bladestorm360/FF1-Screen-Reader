@@ -252,9 +252,32 @@ namespace FFI_ScreenReader.Patches
                 ShopMenuTracker.LastItemName = itemName;
                 ShopMenuTracker.LastItemPrice = price;
 
-                string announcement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
+                // Capture ContentId + resolve type (weapon vs armor) for U key
+                try
+                {
+                    int contentId = __instance.ContentId;
+                    ShopMenuTracker.LastItemContentId = contentId;
+                    ShopMenuTracker.LastItemContentType = ResolveShopItemType(contentId);
+                }
+                catch
+                {
+                    ShopMenuTracker.LastItemContentId = 0;
+                    ShopMenuTracker.LastItemContentType = -1;
+                }
 
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, announcement);
+                string baseAnnouncement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
+
+                // AutoDetail: append stats/description when enabled
+                string announcement = baseAnnouncement;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                {
+                    string detail = null;
+                    try { detail = ShopMenuTracker.GetDescriptionFromUI(); } catch { }
+                    if (!string.IsNullOrWhiteSpace(detail))
+                        announcement = $"{baseAnnouncement}: {detail}";
+                }
+
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, announcement, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -305,12 +328,34 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(commandName))
                     return;
 
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_COMMAND, commandName);
+                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_COMMAND, commandName, interrupt: true);
             }
             catch (Exception ex)
             {
                 MelonLogger.Error($"[Shop] Error in CommandSetCursor_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Resolves whether a shop item ContentId is a weapon (2), armor (3), or unknown (-1).
+        /// Probes MasterManager for Weapon first, then Armor.
+        /// </summary>
+        private static int ResolveShopItemType(int contentId)
+        {
+            if (contentId <= 0) return -1;
+            try
+            {
+                var mm = Il2CppLast.Data.Master.MasterManager.Instance;
+                if (mm == null) return -1;
+
+                var weapon = mm.GetData<Il2CppLast.Data.Master.Weapon>(contentId);
+                if (weapon != null) return 2; // CONTENT_TYPE_WEAPON
+
+                var armor = mm.GetData<Il2CppLast.Data.Master.Armor>(contentId);
+                if (armor != null) return 3; // CONTENT_TYPE_ARMOR
+            }
+            catch { }
+            return -1;
         }
 
         private static string GetCommandName(ShopCommandId commandId)
