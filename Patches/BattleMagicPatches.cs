@@ -104,6 +104,19 @@ namespace FFI_ScreenReader.Patches
                 if (!controller.gameObject.activeInHierarchy)
                     return;
 
+                // Refresh selected player from controller — avoids stale slot counts
+                // when a different character's turn begins (CurrentPlayer was cached once).
+                try
+                {
+                    IntPtr controllerPtr = controller.Pointer;
+                    if (controllerPtr != IntPtr.Zero)
+                    {
+                        IntPtr playerPtr = IL2CppFieldReader.ReadPointer(controllerPtr, OFFSET_SELECTED_PLAYER);
+                        CurrentPlayer = playerPtr != IntPtr.Zero ? new BattlePlayerData(playerPtr) : null;
+                    }
+                }
+                catch { CurrentPlayer = null; }
+
                 // If command menu is active but user didn't select "Magic" (index 1),
                 // this is a stale callback from exiting the magic menu - ignore it
                 if (BattleCommandState.IsActive && BattleCommandState.LastSelectedCommandIndex != 1)

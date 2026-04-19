@@ -182,8 +182,11 @@ namespace FFI_ScreenReader.Patches
                         string name = itemData.Name;
                         if (!string.IsNullOrEmpty(name))
                         {
-                            // OwnedItemData only has Name - no description available
-                            return TextUtils.StripIconMarkup(name);
+                            name = TextUtils.StripIconMarkup(name);
+                            int count = itemData.Count;
+                            if (count > 1)
+                                return $"{name}, {count}";
+                            return name;
                         }
                     }
                 }
@@ -233,6 +236,10 @@ namespace FFI_ScreenReader.Patches
                     return null;
 
                 string announcement = name;
+
+                int count = data.Count;
+                if (count > 1)
+                    announcement += $", {count}";
 
                 // Try to get description
                 try

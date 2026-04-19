@@ -40,9 +40,6 @@ namespace FFI_ScreenReader.Patches
                 // Patch ExitPreeMptive to reset state
                 PatchExitPreeMptive(harmony);
 
-                // Patch StartEscape for escape message
-                PatchStartEscape(harmony);
-
             }
             catch (Exception ex)
             {
@@ -140,46 +137,6 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Patch StartEscape to announce escape message.
-        /// </summary>
-        private static void PatchStartEscape(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                var controllerType = typeof(BattleController);
-
-                // Use AccessTools for better IL2CPP compatibility
-                var method = AccessTools.Method(controllerType, "StartEscape");
-
-                if (method == null)
-                {
-                    method = controllerType.GetMethod(
-                        "StartEscape",
-                        BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public
-                    );
-                }
-
-                if (method != null)
-                {
-                    var postfix = typeof(BattleStartPatches).GetMethod(
-                        nameof(StartEscape_Postfix),
-                        BindingFlags.Public | BindingFlags.Static
-                    );
-
-                    harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                }
-                else
-                {
-                    MelonLogger.Warning("[Battle Start] StartEscape method not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Start] Error patching StartEscape: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Postfix for StartPreeMptiveMes - announces battle start condition.
         /// </summary>
         public static void StartPreeMptiveMes_Postfix(BattleController __instance)
@@ -217,21 +174,6 @@ namespace FFI_ScreenReader.Patches
         {
             // Reset for next battle
             announcedBattleStart = false;
-        }
-
-        /// <summary>
-        /// Postfix for StartEscape - announces escape success.
-        /// </summary>
-        public static void StartEscape_Postfix()
-        {
-            try
-            {
-                FFI_ScreenReaderMod.SpeakText(T("The party escaped!"), interrupt: true);
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Start] Error in StartEscape_Postfix: {ex.Message}");
-            }
         }
 
         /// <summary>

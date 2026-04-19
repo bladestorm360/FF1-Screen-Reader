@@ -523,6 +523,11 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 string announcement = string.Format(T("{0}: HP {1}/{2}"), name, currentHp, maxHp);
+
+                string statusSuffix = BuildStatusSuffix(battleInfo?.Parameter);
+                if (!string.IsNullOrEmpty(statusSuffix))
+                    announcement += statusSuffix;
+
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -635,12 +640,40 @@ namespace FFI_ScreenReader.Patches
                         break;
                 }
 
+                string statusSuffix = BuildStatusSuffix(battleInfo?.Parameter);
+                if (!string.IsNullOrEmpty(statusSuffix))
+                    announcement += statusSuffix;
+
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Target] Error in SelectContent_Enemy_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Build ", Poison, Sleep" suffix from a battle unit's CurrentConditionList.
+        /// Returns empty string when no conditions or parameter is null.
+        /// </summary>
+        private static string BuildStatusSuffix(Il2CppLast.Data.CharacterParameterBase parameter)
+        {
+            if (parameter == null) return string.Empty;
+            try
+            {
+                var conditionList = parameter.CurrentConditionList;
+                if (conditionList == null || conditionList.Count == 0) return string.Empty;
+
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var condition in conditionList)
+                {
+                    string n = MagicMenuState.GetConditionName(condition);
+                    if (!string.IsNullOrWhiteSpace(n)) names.Add(n);
+                }
+                if (names.Count == 0) return string.Empty;
+                return ", " + string.Join(", ", names);
+            }
+            catch { return string.Empty; }
         }
 
         /// <summary>

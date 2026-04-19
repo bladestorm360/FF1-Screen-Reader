@@ -236,6 +236,13 @@ namespace FFI_ScreenReader.Core
 
         private static void HandleNormalState(KeyContext context)
         {
+            // Face buttons (A/B/X/Y) interrupt queued speech — same as Enter on keyboard.
+            if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_SOUTH)
+             || GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_EAST)
+             || GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_WEST)
+             || GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_NORTH))
+                FFI_ScreenReaderMod.InterruptSpeech();
+
             if (IsFieldActive)
                 HandleNormalField();
             else
