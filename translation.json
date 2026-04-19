@@ -77,6 +77,19 @@
     "th": "เอลฟ์ชุดขาว",
     "pt": "Elfo de Manto Branco"
   },
+  "エルフ青ローブ": {
+    "en": "Blue-Robed Elf",
+    "fr": "Elfe en robe bleue",
+    "it": "Elfo in veste blu",
+    "de": "Blaugewandeter Elf",
+    "es": "Elfo de túnica azul",
+    "ko": "파란 로브 엘프",
+    "zht": "藍袍精靈",
+    "zhc": "蓝袍精灵",
+    "ru": "Эльф в синей мантии",
+    "th": "เอลฟ์ชุดน้ำเงิน",
+    "pt": "Elfo de Manto Azul"
+  },
   "井戸": {
     "en": "Well",
     "fr": "Puits",

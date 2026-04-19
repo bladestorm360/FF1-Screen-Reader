@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
@@ -582,7 +583,9 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(BattleConditionController), nameof(BattleConditionController.Add))]
     internal static class BattleConditionController_Add_Patch
     {
-        private static string lastAnnouncement = "";
+        // Per-unit dedup: shared-name enemies (e.g., two Wolves both getting KO'd) must each
+        // announce, so we key by the unit's native pointer instead of announcement text.
+        private static readonly Dictionary<IntPtr, string> lastAnnouncementByUnit = new Dictionary<IntPtr, string>();
 
         [HarmonyPostfix]
         public static void Postfix(BattleUnitData battleUnitData, int id)
@@ -623,9 +626,15 @@ namespace FFI_ScreenReader.Patches
                 string targetName = BattleMessagePatches.GetUnitName(battleUnitData);
                 string announcement = $"{targetName}: {conditionName}";
 
-                // Simple string dedup
-                if (announcement == lastAnnouncement) return;
-                lastAnnouncement = announcement;
+                IntPtr unitPtr = IntPtr.Zero;
+                try { unitPtr = battleUnitData.Pointer; } catch { }
+
+                if (unitPtr != IntPtr.Zero)
+                {
+                    if (lastAnnouncementByUnit.TryGetValue(unitPtr, out var last) && last == announcement)
+                        return;
+                    lastAnnouncementByUnit[unitPtr] = announcement;
+                }
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
@@ -635,6 +644,6 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        public static void Reset() => lastAnnouncement = "";
+        public static void Reset() => lastAnnouncementByUnit.Clear();
     }
 }
