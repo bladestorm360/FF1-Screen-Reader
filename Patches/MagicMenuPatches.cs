@@ -314,8 +314,7 @@ namespace FFI_ScreenReader.Patches
 
         private static void AnnounceEmpty()
         {
-            if (MagicMenuState.ShouldAnnounceSpell(-1))
-                FFI_ScreenReaderMod.SpeakText(T("Empty"), interrupt: true);
+            FFI_ScreenReaderMod.SpeakText(T("Empty"), interrupt: true);
         }
 
         private static void AnnounceSpell(OwnedAbility ability)
@@ -337,9 +336,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     return; // Ability data not yet loaded
                 }
-
-                if (!MagicMenuState.ShouldAnnounceSpell(spellId))
-                    return;
 
                 // Cache for I key lookup
                 MagicMenuState.LastAnnouncedAbility = ability;

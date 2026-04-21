@@ -456,9 +456,7 @@ namespace FFI_ScreenReader.Patches
             BattleTargetState.ResetState();
             BattleItemMenuState.ResetState();
             BattleMagicMenuState.ResetState();
-            BattleMessagePatches.ResetState();
             BattleCommandPatches.ResetState();
-            BattleItemPatches.ResetState();
             BattleMagicPatches.ResetState();
         }
 

@@ -130,7 +130,6 @@ namespace FFI_ScreenReader.Patches
                 if (autoNameIndexField != null)
                 {
                     int index = (int)autoNameIndexField.GetValue(controller);
-                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.NEW_GAME_AUTO_INDEX, index);
                     return GetAutoNameByIndex(controller, index);
                 }
             }

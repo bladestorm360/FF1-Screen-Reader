@@ -294,10 +294,6 @@ namespace FFI_ScreenReader.Patches
                 string characterName = data.Name;
                 if (string.IsNullOrEmpty(characterName)) return;
 
-                // Reset tracking for new turn
-                ResetTargetTracking();
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_COMMAND);
-
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
                 BattleCommandState.LastSelectedCommandIndex = -1;
@@ -386,6 +382,11 @@ namespace FFI_ScreenReader.Patches
             {
                 if (__instance == null) return;
 
+                // The cursor resets to index 0 (Attack) one frame before the command
+                // menu's gameObject goes inactive at end-of-turn. Without this guard we
+                // speak "Attack" in that window every turn transition.
+                if (!__instance.gameObject.activeInHierarchy) return;
+
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
                 BattleCommandState.LastSelectedCommandIndex = index;
@@ -397,12 +398,6 @@ namespace FFI_ScreenReader.Patches
 
                 // SUPPRESSION: If targeting is active, do not announce commands
                 if (targetActive)
-                {
-                    return;
-                }
-
-                // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_CMD_COMMAND, index))
                 {
                     return;
                 }
@@ -481,10 +476,6 @@ namespace FFI_ScreenReader.Patches
                 // Set target selection active
                 BattleTargetState.SetTargetSelectionActive(true);
 
-                // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_CMD_PLAYER, index)) return;
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_ENEMY);
-
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var playerList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattlePlayerData>>();
                 if (playerList == null || playerList.Count == 0)
@@ -547,10 +538,6 @@ namespace FFI_ScreenReader.Patches
             {
                 // Set target selection active
                 BattleTargetState.SetTargetSelectionActive(true);
-
-                // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_CMD_ENEMY, index)) return;
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_PLAYER);
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var enemyList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattleEnemyData>>();
@@ -677,20 +664,11 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Reset target tracking indices.
-        /// </summary>
-        public static void ResetTargetTracking()
-        {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_PLAYER, AnnouncementContexts.BATTLE_CMD_ENEMY);
-        }
-
-        /// <summary>
         /// Reset all state (call at battle end).
         /// </summary>
         public static void ResetState()
         {
             lastCharacterId = -1;
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_CMD_COMMAND, AnnouncementContexts.BATTLE_CMD_PLAYER, AnnouncementContexts.BATTLE_CMD_ENEMY);
         }
 
         /// <summary>

@@ -61,8 +61,6 @@ namespace FFI_ScreenReader.Core
         public static void NotifyKeyboardInput() => LastDevice = LastInputDevice.Keyboard;
 
         // --- Field state tracking ---
-        private enum LastTarget { None, Waypoint, Entity }
-        private static LastTarget lastTarget = LastTarget.None;
         private static bool leftTriggerWasActive = false;
         private static bool wasLeftStickActive = false;
 
@@ -288,30 +286,34 @@ namespace FFI_ScreenReader.Core
             if (anyNavInput)
                 FFI_ScreenReaderMod.InterruptSpeech();
 
-            // D-pad → waypoint navigation (consumed)
-            if (GamepadManager.DpadUpPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_UP); WaypointHandler.CyclePrevious(); lastTarget = LastTarget.Waypoint; }
-            if (GamepadManager.DpadDownPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_DOWN); WaypointHandler.CycleNext(); lastTarget = LastTarget.Waypoint; }
-            if (GamepadManager.DpadLeftPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_LEFT); WaypointHandler.CyclePreviousCategory(); lastTarget = LastTarget.Waypoint; }
-            if (GamepadManager.DpadRightPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_RIGHT); WaypointHandler.CycleNextCategory(); lastTarget = LastTarget.Waypoint; }
+            // D-pad → waypoint navigation (consumed). The callees mark the tracker.
+            if (GamepadManager.DpadUpPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_UP); WaypointHandler.CyclePrevious(); }
+            if (GamepadManager.DpadDownPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_DOWN); WaypointHandler.CycleNext(); }
+            if (GamepadManager.DpadLeftPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_LEFT); WaypointHandler.CyclePreviousCategory(); }
+            if (GamepadManager.DpadRightPressed) { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_RIGHT); WaypointHandler.CycleNextCategory(); }
 
-            // Right stick → entity scanner (consumed — no button to consume, but d-pad/rstick are axis-derived)
-            if (GamepadManager.RStickUpPressed) { mod.CyclePrevious(); lastTarget = LastTarget.Entity; }
-            if (GamepadManager.RStickDownPressed) { mod.CycleNext(); lastTarget = LastTarget.Entity; }
-            if (GamepadManager.RStickLeftPressed) { mod.CyclePreviousCategory(); lastTarget = LastTarget.Entity; }
-            if (GamepadManager.RStickRightPressed) { mod.CycleNextCategory(); lastTarget = LastTarget.Entity; }
+            // Right stick → entity scanner (callees mark the tracker).
+            if (GamepadManager.RStickUpPressed) mod.CyclePrevious();
+            if (GamepadManager.RStickDownPressed) mod.CycleNext();
+            if (GamepadManager.RStickLeftPressed) mod.CyclePreviousCategory();
+            if (GamepadManager.RStickRightPressed) mod.CycleNextCategory();
 
             // Left trigger → pathfind to last selected target (or restart beacon in beacon nav mode)
             if (GamepadManager.LeftTrigger > 0.5f && !leftTriggerWasActive)
             {
-                if (lastTarget == LastTarget.Waypoint)
-                    WaypointHandler.PathfindToCurrentWaypoint();
-                else if (lastTarget == LastTarget.Entity)
+                switch (NavigationTargetTracker.LastKind)
                 {
-                    if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
-                    else mod.AnnounceCurrentEntity();
+                    case NavigationTargetTracker.Kind.Waypoint:
+                        WaypointHandler.PathfindToCurrentWaypoint();
+                        break;
+                    case NavigationTargetTracker.Kind.Entity:
+                        if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                        else mod.AnnounceCurrentEntity();
+                        break;
+                    default:
+                        FFI_ScreenReaderMod.SpeakText(T("No target selected"), interrupt: true);
+                        break;
                 }
-                else
-                    FFI_ScreenReaderMod.SpeakText(T("No target selected"), interrupt: true);
             }
             leftTriggerWasActive = GamepadManager.LeftTrigger > 0.5f;
         }

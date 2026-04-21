@@ -132,10 +132,6 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(announcement))
                     return;
 
-                // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_MAGIC, announcement))
-                    return;
-
                 // Set state AFTER successful validation - this is the key fix
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleMagic");
                 BattleMagicMenuState.IsActive = true;
@@ -467,7 +463,6 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_MAGIC);
             CurrentPlayer = null;
         }
     }

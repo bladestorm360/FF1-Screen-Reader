@@ -31,7 +31,6 @@ namespace FFI_ScreenReader.Patches
             CachedFocusedPtr = IntPtr.Zero;
             PreviousState = 0;
             MenuStateRegistry.Reset(MenuStateRegistry.GALLERY);
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.GALLERY_LIST_ENTRY);
         }
     }
 
@@ -96,10 +95,6 @@ namespace FFI_ScreenReader.Patches
                             GalleryStateTracker.SuppressContentChange = true;
                             MenuStateRegistry.SetActiveExclusive(MenuStateRegistry.GALLERY);
                             CoroutineManager.StartManaged(AnnounceGalleryEntry());
-                        }
-                        else if (GalleryStateTracker.PreviousState == 2) // Returning from Details
-                        {
-                            AnnouncementDeduplicator.Reset(AnnouncementContexts.GALLERY_LIST_ENTRY);
                         }
                         GalleryStateTracker.PreviousState = 1;
                         break;
@@ -186,8 +181,7 @@ namespace FFI_ScreenReader.Patches
                 string entry = GalleryReader.ReadListEntry(number, name);
                 if (!string.IsNullOrEmpty(entry))
                 {
-                    AnnouncementDeduplicator.AnnounceIfNew(
-                        AnnouncementContexts.GALLERY_LIST_ENTRY, entry);
+                    FFI_ScreenReaderMod.SpeakText(entry, interrupt: true);
                 }
             }
             catch (Exception ex)

@@ -33,13 +33,11 @@ namespace FFI_ScreenReader.Patches
 
         public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
         public static bool ShouldSuppress() => _state.ShouldSuppress();
-        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
         public static void ResetState() => _state.ResetState();
 
         private class MenuStateInstance : MenuStateBase
         {
             protected override string RegistryKey => MenuStateRegistry.STATUS_MENU;
-            protected override string DeduplicationContext => AnnouncementContexts.STATUS_SELECT;
         }
     }
 
@@ -404,10 +402,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     MelonLogger.Warning($"[Status Menu] Error getting HP: {paramEx.Message}");
                 }
-
-                // Skip duplicates
-                if (!StatusMenuState.ShouldAnnounce(announcement))
-                    return;
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

@@ -23,7 +23,6 @@ namespace FFI_ScreenReader.Patches
 
         public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
         public static bool ShouldSuppress() => _state.ShouldSuppress();
-        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
         public static void ClearState() => _state.ClearState();
         public static void ResetState() => _state.ResetState();
 
@@ -36,7 +35,6 @@ namespace FFI_ScreenReader.Patches
         private class MenuStateInstance : MenuStateBase
         {
             protected override string RegistryKey => MenuStateRegistry.BATTLE_COMMAND;
-            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_COMMAND;
             protected override void OnReset()
             {
                 LastSelectedCommandIndex = -1;
@@ -55,7 +53,6 @@ namespace FFI_ScreenReader.Patches
 
         public static bool IsTargetSelectionActive { get => _state.IsActive; set => _state.IsActive = value; }
         public static bool ShouldSuppress() => _state.ShouldSuppress();
-        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
         public static void ClearState() => _state.ClearState();
         public static void ResetState() => _state.ResetState();
 
@@ -77,7 +74,6 @@ namespace FFI_ScreenReader.Patches
         private class MenuStateInstance : MenuStateBase
         {
             protected override string RegistryKey => MenuStateRegistry.BATTLE_TARGET;
-            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_TARGET;
         }
     }
 
@@ -91,14 +87,12 @@ namespace FFI_ScreenReader.Patches
 
         public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
         public static bool ShouldSuppress() => _state.ShouldSuppress();
-        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
         public static void Reset() => _state.ClearState();
         public static void ResetState() => _state.ResetState();
 
         private class MenuStateInstance : MenuStateBase
         {
             protected override string RegistryKey => MenuStateRegistry.BATTLE_ITEM;
-            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_ITEM_SELECT;
         }
     }
 
@@ -112,14 +106,12 @@ namespace FFI_ScreenReader.Patches
 
         public static bool IsActive { get => _state.IsActive; set => _state.IsActive = value; }
         public static bool ShouldSuppress() => _state.ShouldSuppress();
-        public static bool ShouldAnnounce(string announcement) => _state.ShouldAnnounce(announcement);
         public static void Reset() => _state.ClearState();
         public static void ResetState() => _state.ResetState();
 
         private class MenuStateInstance : MenuStateBase
         {
             protected override string RegistryKey => MenuStateRegistry.BATTLE_MAGIC;
-            protected override string DeduplicationContext => AnnouncementContexts.BATTLE_MAGIC_SELECT;
         }
     }
 

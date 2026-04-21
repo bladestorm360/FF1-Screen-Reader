@@ -5,37 +5,12 @@ using FFI_ScreenReader.Core;
 namespace FFI_ScreenReader.Utils
 {
     /// <summary>
-    /// Helper methods for common announcement patterns.
-    /// Combines deduplication check + speak into single calls.
+    /// Helper coroutines for announcements that need to wait for UI to settle
+    /// before reading state. No deduplication — every patch that calls into here
+    /// is already at a discrete event boundary.
     /// </summary>
     public static class AnnouncementHelper
     {
-        /// <summary>
-        /// Announces text only if it hasn't been announced recently for this context.
-        /// Combines AnnouncementDeduplicator.ShouldAnnounce + SpeakText into one call.
-        /// Returns true if the announcement was made (text was new).
-        /// </summary>
-        public static bool AnnounceIfNew(string context, string text, bool interrupt = false)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            if (!AnnouncementDeduplicator.ShouldAnnounce(context, text)) return false;
-            FFI_ScreenReaderMod.SpeakText(text, interrupt: interrupt);
-            return true;
-        }
-
-        /// <summary>
-        /// Announces text using a dedup key that may differ from the spoken text.
-        /// Useful when dedup should track an index/ID but announce a descriptive string.
-        /// Returns true if the announcement was made.
-        /// </summary>
-        public static bool AnnounceIfNew(string context, object dedupKey, string text, bool interrupt = false)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            if (!AnnouncementDeduplicator.ShouldAnnounce(context, dedupKey)) return false;
-            FFI_ScreenReaderMod.SpeakText(text, interrupt: interrupt);
-            return true;
-        }
-
         /// <summary>
         /// Coroutine that waits one frame, then speaks the result of textGetter.
         /// Common pattern used across many patches for reading UI state after it updates.
@@ -69,18 +44,6 @@ namespace FFI_ScreenReader.Utils
             string text = textGetter();
             if (!string.IsNullOrEmpty(text))
                 FFI_ScreenReaderMod.SpeakText(text, interrupt: interrupt);
-        }
-
-        /// <summary>
-        /// Coroutine that waits one frame, then announces with dedup check.
-        /// Returns without speaking if the text was already announced for this context.
-        /// </summary>
-        public static IEnumerator DelayedAnnounceIfNew(string context, Func<string> textGetter, bool interrupt = false)
-        {
-            yield return null;
-            string text = textGetter();
-            if (!string.IsNullOrEmpty(text))
-                AnnounceIfNew(context, text, interrupt);
         }
     }
 }

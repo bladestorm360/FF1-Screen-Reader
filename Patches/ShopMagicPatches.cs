@@ -112,13 +112,11 @@ namespace FFI_ScreenReader.Patches
             {
                 if (!isFocus)
                 {
-                    AnnouncementDeduplicator.Reset(AnnouncementContexts.SHOP_SLOT);
                     return;
                 }
 
                 ShopMenuTracker.IsShopMenuActive = true;
                 ShopMenuTracker.IsInMagicSlotSelection = true;
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.SHOP_SLOT);
                 lastAnnouncedCharacterId = -1;
             }
             catch (Exception ex)
@@ -141,7 +139,6 @@ namespace FFI_ScreenReader.Patches
                 ShopMenuTracker.IsShopMenuActive = true;
                 ShopMenuTracker.IsInMagicSlotSelection = true;
 
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.SHOP_SLOT);
                 lastAnnouncedCharacterId = -1;
                 announcedNoLearnersThisSession = false;
 
@@ -221,7 +218,7 @@ namespace FFI_ScreenReader.Patches
                     announcement = string.Format(T("Slot {0}: {1}"), slotType, spellName);
                 }
 
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_SLOT, announcement, interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
             {

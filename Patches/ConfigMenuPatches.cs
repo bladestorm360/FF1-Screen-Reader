@@ -25,13 +25,6 @@ namespace FFI_ScreenReader.Patches
             set => MenuStateRegistry.SetActive(MenuStateRegistry.CONFIG_MENU, value);
         }
 
-        static ConfigMenuState()
-        {
-            MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.CONFIG_MENU, () =>
-            {
-                ConfigCommandController_SetFocus_Patch.ResetState();
-            });
-        }
 
         /// <summary>
         /// Returns true if generic cursor reading should be suppressed.
@@ -142,14 +135,6 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"{menuText}: {configValue}";
                 }
 
-                // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_TEXT, announcement))
-                    return;
-
-                // Skip if same setting - value changes are handled by SwitchArrowSelectTypeProcess/SwitchSliderTypeProcess
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_SETTING, menuText))
-                    return;
-
                 // Set active state and clear other menu states
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
                 ConfigMenuState.IsActive = true;
@@ -162,13 +147,6 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        /// <summary>
-        /// Resets the duplicate tracker (call when exiting config menu)
-        /// </summary>
-        public static void ResetState()
-        {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.CONFIG_TEXT, AnnouncementContexts.CONFIG_SETTING, AnnouncementContexts.CONFIG_ARROW, AnnouncementContexts.CONFIG_SLIDER, AnnouncementContexts.CONFIG_TOUCH_ARROW, AnnouncementContexts.CONFIG_TOUCH_SLIDER, AnnouncementContexts.CONFIG_KEYS_SETTING);
-        }
     }
 
     /// <summary>
@@ -207,8 +185,7 @@ namespace FFI_ScreenReader.Patches
                             // Filter out arrow characters and template values
                             if (IsValidConfigValue(textValue))
                             {
-                                // Use central deduplicator - only announce if value changed
-                                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_ARROW, textValue, interrupt: true);
+                                FFI_ScreenReaderMod.SpeakText(textValue, interrupt: true);
                                 return;
                             }
                         }
@@ -277,12 +254,10 @@ namespace FFI_ScreenReader.Patches
                 if (controller != lastController)
                 {
                     lastController = controller;
-                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_SLIDER, percentage); // Update tracker without announcing
                     return;
                 }
 
-                // Same controller - use central deduplicator to check if value changed
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_SLIDER, percentage, interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -326,8 +301,7 @@ namespace FFI_ScreenReader.Patches
                             // Filter out arrow characters and template values
                             if (IsValidTouchConfigValue(textValue))
                             {
-                                // Use central deduplicator - only announce if value changed
-                                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_TOUCH_ARROW, textValue, interrupt: true);
+                                FFI_ScreenReaderMod.SpeakText(textValue, interrupt: true);
                                 return;
                             }
                         }
@@ -397,12 +371,10 @@ namespace FFI_ScreenReader.Patches
                 if (controller != lastTouchController)
                 {
                     lastTouchController = controller;
-                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_TOUCH_SLIDER, percentage); // Update tracker without announcing
                     return;
                 }
 
-                // Same controller - use central deduplicator to check if value changed
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.CONFIG_TOUCH_SLIDER, percentage, interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -520,9 +492,6 @@ namespace FFI_ScreenReader.Patches
                 if (textParts.Count == 0) return;
 
                 string announcement = string.Join(" ", textParts);
-
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.CONFIG_KEYS_SETTING, announcement))
-                    return;
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

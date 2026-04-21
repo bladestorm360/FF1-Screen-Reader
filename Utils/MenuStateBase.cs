@@ -4,11 +4,11 @@ namespace FFI_ScreenReader.Utils
 {
     /// <summary>
     /// Base class for menu state tracking singletons.
-    /// Provides the common IsActive/ShouldSuppress/ShouldAnnounce/ClearState pattern
+    /// Provides the common IsActive/ShouldSuppress/ClearState pattern
     /// shared by most menu state classes.
     ///
-    /// Subclasses provide RegistryKey and DeduplicationContext, then expose
-    /// static facades that delegate to the singleton instance.
+    /// Subclasses provide RegistryKey, then expose static facades that delegate
+    /// to the singleton instance.
     /// </summary>
     public abstract class MenuStateBase
     {
@@ -16,11 +16,6 @@ namespace FFI_ScreenReader.Utils
         /// The MenuStateRegistry key for this state (e.g., MenuStateRegistry.BATTLE_ITEM).
         /// </summary>
         protected abstract string RegistryKey { get; }
-
-        /// <summary>
-        /// The AnnouncementDeduplicator context for this state (e.g., AnnouncementContexts.BATTLE_ITEM_SELECT).
-        /// </summary>
-        protected abstract string DeduplicationContext { get; }
 
         /// <summary>
         /// Whether this menu state is currently active.
@@ -38,12 +33,6 @@ namespace FFI_ScreenReader.Utils
         public virtual bool ShouldSuppress() => IsActive;
 
         /// <summary>
-        /// Check if text is new for deduplication purposes.
-        /// </summary>
-        public bool ShouldAnnounce(string text) =>
-            AnnouncementDeduplicator.ShouldAnnounce(DeduplicationContext, text);
-
-        /// <summary>
         /// Clears the active state.
         /// </summary>
         public virtual void ClearState() => IsActive = false;
@@ -54,13 +43,9 @@ namespace FFI_ScreenReader.Utils
         public virtual void ResetState() => ClearState();
 
         /// <summary>
-        /// Called by MenuStateRegistry reset handler.
-        /// Resets the deduplication context. Override to add custom cleanup.
+        /// Called by MenuStateRegistry reset handler. Override to add cleanup.
         /// </summary>
-        protected virtual void OnReset()
-        {
-            AnnouncementDeduplicator.Reset(DeduplicationContext);
-        }
+        protected virtual void OnReset() { }
 
         /// <summary>
         /// Registers this state's reset handler with MenuStateRegistry.

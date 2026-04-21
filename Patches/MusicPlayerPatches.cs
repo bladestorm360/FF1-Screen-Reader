@@ -32,7 +32,6 @@ namespace FFI_ScreenReader.Patches
             SuppressContentChange = false;
             CachedFocusedPtr = IntPtr.Zero;
             MenuStateRegistry.Reset(MenuStateRegistry.MUSIC_PLAYER);
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.MUSIC_LIST_ENTRY);
         }
     }
 
@@ -206,8 +205,7 @@ namespace FFI_ScreenReader.Patches
                 string entry = MusicPlayerReader.ReadSongEntry(musicName, bgmId, index, playTime);
                 if (!string.IsNullOrEmpty(entry))
                 {
-                    AnnouncementDeduplicator.AnnounceIfNew(
-                        AnnouncementContexts.MUSIC_LIST_ENTRY, entry);
+                    FFI_ScreenReaderMod.SpeakText(entry, interrupt: true);
                 }
             }
             catch (Exception ex)
@@ -258,7 +256,6 @@ namespace FFI_ScreenReader.Patches
                 string toggleLabel = listType == 1 ? T("Original") : T("Arrangement");
                 FFI_ScreenReaderMod.SpeakText(toggleLabel, true);
 
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.MUSIC_LIST_ENTRY);
                 IntPtr focusedPtr = MusicPlayerStateTracker.CachedFocusedPtr;
                 if (focusedPtr != IntPtr.Zero &&
                     MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx, out int playTime))

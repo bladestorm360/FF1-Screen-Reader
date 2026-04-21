@@ -587,10 +587,6 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrWhiteSpace(fullText))
                     return;
 
-                // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MESSAGE_LINE, fullText))
-                    return;
-
                 string cleanMessage = CleanMessage(fullText);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
                 {
@@ -616,10 +612,6 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrWhiteSpace(fullText))
                     return;
 
-                // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MESSAGE_LINE, fullText))
-                    return;
-
                 string cleanMessage = CleanMessage(fullText);
                 if (!string.IsNullOrWhiteSpace(cleanMessage))
                 {
@@ -643,10 +635,6 @@ namespace FFI_ScreenReader.Patches
                 string message = ReadMessageListFromInstance(__instance);
 
                 if (string.IsNullOrWhiteSpace(message))
-                    return;
-
-                // Use central deduplicator
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MESSAGE_LINE, message))
                     return;
 
                 string cleanMessage = CleanMessage(message);

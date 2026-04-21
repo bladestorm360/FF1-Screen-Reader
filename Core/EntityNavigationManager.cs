@@ -36,7 +36,7 @@ namespace FFI_ScreenReader.Core
 
             if (fieldMap == null || !fieldMap.gameObject.activeInHierarchy)
             {
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.FIELD_CHECK, T("Not on map"));
+                FFI_ScreenReader.Core.FFI_ScreenReaderMod.SpeakText(T("Not on map"));
                 return false;
             }
 
@@ -46,11 +46,10 @@ namespace FFI_ScreenReader.Core
 
             if (playerController?.fieldPlayer == null)
             {
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.FIELD_CHECK, T("Not on map"));
+                FFI_ScreenReader.Core.FFI_ScreenReaderMod.SpeakText(T("Not on map"));
                 return false;
             }
 
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.FIELD_CHECK);
             return true;
         }
 
@@ -71,6 +70,7 @@ namespace FFI_ScreenReader.Core
                 GameObjectCache.Clear<Il2CppLast.Map.FieldPlayerController>();
                 entityScanner.ForceRescan();
                 lastScannedMapId = currentMapId;
+                NavigationTargetTracker.Clear();
             }
             else
             {
@@ -93,6 +93,8 @@ namespace FFI_ScreenReader.Core
                 FFI_ScreenReaderMod.SpeakText(T("No entity selected"));
                 return;
             }
+
+            NavigationTargetTracker.MarkEntity();
 
             var context = new FilterContext();
             if (context.PlayerPosition == Vector3.zero)
@@ -135,6 +137,7 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
+            NavigationTargetTracker.MarkEntity();
             AnnounceEntityOnly();
         }
 
@@ -160,6 +163,7 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
+            NavigationTargetTracker.MarkEntity();
             AnnounceEntityOnly();
         }
 
@@ -183,6 +187,8 @@ namespace FFI_ScreenReader.Core
                     FFI_ScreenReaderMod.SpeakText(T("No entity selected"));
                 return;
             }
+
+            NavigationTargetTracker.MarkEntity();
 
             var context = new FilterContext();
             string announcement = entity.FormatDescription(context.PlayerPosition);

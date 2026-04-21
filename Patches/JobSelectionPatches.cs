@@ -110,10 +110,6 @@ namespace FFI_ScreenReader.Patches
 
                 int currentIndex = (int)indexProp.GetValue(targetCursor);
 
-                // Use central deduplicator - skip if same index
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.JOB_SELECT_INDEX, currentIndex))
-                    return;
-
                 // Cast to Component to access Unity hierarchy
                 var controllerComponent = __instance as Component;
                 if (controllerComponent == null)
@@ -128,10 +124,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     return;
                 }
-
-                // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.JOB_SELECT_NAME, jobName))
-                    return;
 
                 // Use coroutine to wait one frame before reading description (UI needs to update)
                 CoroutineManager.StartManaged(AnnounceJobWithDelayedDescription(controllerComponent, jobName));
@@ -332,7 +324,6 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetState()
         {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.JOB_SELECT_INDEX, AnnouncementContexts.JOB_SELECT_NAME);
             typesLogged = false;
             IsHandlingCursor = false;
         }

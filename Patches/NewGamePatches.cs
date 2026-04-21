@@ -190,7 +190,7 @@ namespace FFI_ScreenReader.Patches
                     lastFieldType = -1;
 
                     string doneText = T("Done");
-                    AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.NEW_GAME_FIELD, doneText);
+                    FFI_ScreenReaderMod.SpeakText(doneText);
                     yield break;
                 }
 
@@ -234,7 +234,7 @@ namespace FFI_ScreenReader.Patches
                 lastCharacterIndex = characterIndex;
                 lastFieldType = fieldType;
 
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.NEW_GAME_FIELD, announcement);
+                FFI_ScreenReaderMod.SpeakText(announcement);
             }
             catch (Exception ex)
             {
@@ -268,8 +268,6 @@ namespace FFI_ScreenReader.Patches
                 for (int i = 0; i < lastSlotNames.Length; i++)
                     lastSlotNames[i] = null;
 
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.NEW_GAME_SLOT, AnnouncementContexts.NEW_GAME_NAME, AnnouncementContexts.NEW_GAME_AUTO_INDEX, AnnouncementContexts.NEW_GAME_FIELD);
-
                 FFI_ScreenReaderMod.SpeakText(T("Character selection"), interrupt: false);
             }
             catch (Exception ex)
@@ -298,8 +296,6 @@ namespace FFI_ScreenReader.Patches
             {
                 currentController = __instance;
 
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.NEW_GAME_NAME, AnnouncementContexts.NEW_GAME_AUTO_INDEX);
-
                 string characterName = NewGameHelpers.GetCurrentCharacterName(__instance);
                 string suggestedName = NewGameHelpers.GetCurrentSuggestedName(__instance);
 
@@ -316,7 +312,6 @@ namespace FFI_ScreenReader.Patches
                 if (!string.IsNullOrEmpty(suggestedName))
                 {
                     announcement += string.Format(T(". Current: {0}"), suggestedName);
-                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.NEW_GAME_NAME, suggestedName);
                 }
 
                 FFI_ScreenReaderMod.SpeakText(announcement);
@@ -331,17 +326,13 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.NEW_GAME_AUTO_INDEX, index))
-                    return;
-
                 string currentName = null;
                 if (currentController != null)
                 {
                     currentName = NewGameHelpers.GetAutoNameByIndex(currentController, index);
                 }
 
-                if (!string.IsNullOrEmpty(currentName) &&
-                    AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.NEW_GAME_NAME, currentName))
+                if (!string.IsNullOrEmpty(currentName))
                 {
                     FFI_ScreenReaderMod.SpeakText(currentName);
                 }

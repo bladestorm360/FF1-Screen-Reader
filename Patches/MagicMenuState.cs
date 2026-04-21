@@ -21,7 +21,6 @@ namespace FFI_ScreenReader.Patches
     public static class MagicMenuState
     {
         private static bool _isTargetSelectionActive = false;
-        private static int lastSpellId = -1;
         private static OwnedCharacterData _currentCharacter = null;
         private static OwnedAbility _lastAnnouncedAbility = null;
 
@@ -44,8 +43,6 @@ namespace FFI_ScreenReader.Patches
             MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.MAGIC_MENU, () =>
             {
                 _isTargetSelectionActive = false;
-                lastSpellId = -1;
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
                 _currentCharacter = null;
                 _lastAnnouncedAbility = null;
             });
@@ -66,13 +63,11 @@ namespace FFI_ScreenReader.Patches
         {
             FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Magic");
             MenuStateRegistry.SetActive(MenuStateRegistry.MAGIC_MENU, true);
-            lastSpellId = -1;
         }
 
         public static void OnSpellListUnfocused()
         {
             MenuStateRegistry.SetActive(MenuStateRegistry.MAGIC_MENU, false);
-            lastSpellId = -1;
             _currentCharacter = null;
         }
 
@@ -121,20 +116,10 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        public static bool ShouldAnnounceSpell(int spellId)
-        {
-            if (spellId == lastSpellId)
-                return false;
-            lastSpellId = spellId;
-            return true;
-        }
-
         public static void ResetState()
         {
             MenuStateRegistry.SetActive(MenuStateRegistry.MAGIC_MENU, false);
             _isTargetSelectionActive = false;
-            lastSpellId = -1;
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
             _currentCharacter = null;
             _lastAnnouncedAbility = null;
         }
@@ -146,16 +131,12 @@ namespace FFI_ScreenReader.Patches
             // also clears _isTargetSelectionActive. Run it first, then set the flag so it sticks.
             MenuStateRegistry.SetActive(MenuStateRegistry.MAGIC_MENU, false);
             _isTargetSelectionActive = true;
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
         }
 
         public static void OnTargetSelectionClosed()
         {
             _isTargetSelectionActive = false;
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.MAGIC_TARGET);
         }
-
-        public static bool ShouldAnnounceTarget(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.MAGIC_TARGET, announcement);
 
         // Fallback mapping for conditions with empty/missing MesIdName.
         // Values are English keys into ModTextTranslator (localized at call time via T()).

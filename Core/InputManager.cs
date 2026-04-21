@@ -76,6 +76,7 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.Shift, mod.TogglePathfindingFilter, "Toggle pathfinding filter");
             RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.None, () =>
             {
+                NavigationTargetTracker.MarkEntity();
                 if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
                 else mod.AnnounceCurrentEntity();
             }, "Announce current entity / restart beacon");
@@ -89,6 +90,7 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.Shift, mod.TogglePathfindingFilter, "Toggle pathfinding filter (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.None, () =>
             {
+                NavigationTargetTracker.MarkEntity();
                 if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
                 else mod.AnnounceCurrentEntity();
             }, "Announce current entity / restart beacon (alt)");

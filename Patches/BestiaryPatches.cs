@@ -92,12 +92,6 @@ namespace FFI_ScreenReader.Patches
                 MenuStateRegistry.BESTIARY_MAP);
             BestiaryNavigationTracker.Instance.Reset();
             BestiaryManualPatches.ResetUpdateControllerState();
-            AnnouncementDeduplicator.Reset(
-                AnnouncementContexts.BESTIARY_LIST_ENTRY,
-                AnnouncementContexts.BESTIARY_DETAIL_STAT,
-                AnnouncementContexts.BESTIARY_FORMATION,
-                AnnouncementContexts.BESTIARY_MAP,
-                AnnouncementContexts.BESTIARY_STATE);
         }
     }
 
@@ -329,7 +323,6 @@ namespace FFI_ScreenReader.Patches
                                     reannounce = BestiaryReader.ReadListEntry(data.pictureBookData);
                             }
                             BestiaryNavigationTracker.Instance.Reset();
-                            AnnouncementDeduplicator.Reset(AnnouncementContexts.BESTIARY_LIST_ENTRY);
                             if (!string.IsNullOrEmpty(reannounce))
                                 FFI_ScreenReaderMod.SpeakText(reannounce, true);
                         }
@@ -360,7 +353,6 @@ namespace FFI_ScreenReader.Patches
 
                     case 5: // ArTop (Formation)
                         MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_FORMATION, true);
-                        AnnouncementDeduplicator.Reset(AnnouncementContexts.BESTIARY_FORMATION);
                         CoroutineManager.StartManaged(AnnounceFormation());
                         break;
 
@@ -388,8 +380,7 @@ namespace FFI_ScreenReader.Patches
                     string summary = BestiaryReader.ReadEncounterSummary(list);
                     if (!string.IsNullOrEmpty(summary))
                     {
-                        AnnouncementDeduplicator.AnnounceIfNew(
-                            AnnouncementContexts.BESTIARY_STATE, summary);
+                        FFI_ScreenReaderMod.SpeakText(summary, interrupt: true);
                     }
                 }
             }
@@ -440,8 +431,7 @@ namespace FFI_ScreenReader.Patches
                 if (cached != null && cached.Count > 0)
                 {
                     string announcement = string.Format(T("Map open: {0}"), cached[0]);
-                    AnnouncementDeduplicator.AnnounceIfNew(
-                        AnnouncementContexts.BESTIARY_MAP, announcement);
+                    FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
                 }
                 else
                 {
@@ -508,8 +498,7 @@ namespace FFI_ScreenReader.Patches
                 if (partyList.Count > 1)
                     announcement += $" ({partyIndex + 1} of {partyList.Count})";
 
-                AnnouncementDeduplicator.AnnounceIfNew(
-                    AnnouncementContexts.BESTIARY_FORMATION, announcement, true);
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -527,7 +516,6 @@ namespace FFI_ScreenReader.Patches
                 var controller = UnityEngine.Object.FindObjectOfType<ArBattleTopController>();
                 if (controller != null)
                 {
-                    AnnouncementDeduplicator.Reset(AnnouncementContexts.BESTIARY_FORMATION);
                     ReadCurrentFormation(controller);
                 }
             }
@@ -558,8 +546,7 @@ namespace FFI_ScreenReader.Patches
                 string entry = BestiaryReader.ReadListEntry(pbData);
                 if (!string.IsNullOrEmpty(entry))
                 {
-                    AnnouncementDeduplicator.AnnounceIfNew(
-                        AnnouncementContexts.BESTIARY_LIST_ENTRY, entry);
+                    FFI_ScreenReaderMod.SpeakText(entry, interrupt: true);
                 }
             }
             catch (Exception ex)
@@ -589,8 +576,7 @@ namespace FFI_ScreenReader.Patches
                 string entry = BestiaryReader.ReadListEntry(pbData);
                 if (!string.IsNullOrEmpty(entry))
                 {
-                    AnnouncementDeduplicator.AnnounceIfNew(
-                        AnnouncementContexts.BESTIARY_LIST_ENTRY, entry);
+                    FFI_ScreenReaderMod.SpeakText(entry, interrupt: true);
                 }
             }
             catch (Exception ex)
@@ -946,7 +932,6 @@ namespace FFI_ScreenReader.Patches
                         else if (previousBestiaryState == 4)
                         {
                             BestiaryNavigationTracker.Instance.Reset();
-                            AnnouncementDeduplicator.Reset(AnnouncementContexts.BESTIARY_LIST_ENTRY);
 
                             var listController = UnityEngine.Object.FindObjectOfType<LibraryMenuListController_KeyInput>();
                             if (listController != null)

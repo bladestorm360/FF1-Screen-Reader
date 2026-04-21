@@ -33,7 +33,8 @@ namespace FFI_ScreenReader.Patches
             {
                 PatchSetDescription(harmony);
                 PatchCommandSetFocus(harmony);
-                PatchTradeWindow(harmony);
+                PatchTradeWindowShow(harmony);
+                PatchTradeWindowCounts(harmony);
                 PatchShopClose(harmony);
 
                 // Magic shop patches (separate class)
@@ -100,31 +101,56 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static void PatchTradeWindow(HarmonyLib.Harmony harmony)
+        private static void PatchTradeWindowShow(HarmonyLib.Harmony harmony)
         {
             try
             {
                 Type tradeType = typeof(ShopTradeWindowController);
+                var showMethod = tradeType.GetMethod(
+                    "Show",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-                var updateMethod = tradeType.GetMethod("UpdateCotroller", new Type[] { typeof(bool) });
-                if (updateMethod == null)
+                if (showMethod != null)
                 {
-                    updateMethod = tradeType.GetMethod("UpdateCotroller", Type.EmptyTypes);
-                }
-
-                if (updateMethod != null)
-                {
-                    harmony.Patch(updateMethod,
-                        postfix: new HarmonyMethod(typeof(ShopPatches), nameof(UpdateCotroller_Postfix)));
+                    harmony.Patch(showMethod,
+                        postfix: new HarmonyMethod(typeof(ShopPatches), nameof(TradeWindowShow_Postfix)));
                 }
                 else
                 {
-                    MelonLogger.Warning("[Shop] Could not find ShopTradeWindowController.UpdateCotroller");
+                    MelonLogger.Warning("[Shop] Could not find ShopTradeWindowController.Show");
                 }
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"[Shop] Failed to patch trade window: {ex.Message}");
+                MelonLogger.Error($"[Shop] Failed to patch trade window Show: {ex.Message}");
+            }
+        }
+
+        private static void PatchTradeWindowCounts(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                Type tradeType = typeof(ShopTradeWindowController);
+                var addMethod = tradeType.GetMethod("AddCount",
+                    BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+                var takeMethod = tradeType.GetMethod("TakeCount",
+                    BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+
+                var postfix = new HarmonyMethod(typeof(ShopPatches), nameof(TradeWindowCount_Postfix));
+
+                if (addMethod != null)
+                    harmony.Patch(addMethod, postfix: postfix);
+                else
+                    MelonLogger.Warning("[Shop] Could not find ShopTradeWindowController.AddCount");
+
+                if (takeMethod != null)
+                    harmony.Patch(takeMethod, postfix: postfix);
+                else
+                    MelonLogger.Warning("[Shop] Could not find ShopTradeWindowController.TakeCount");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[Shop] Failed to patch trade window count methods: {ex.Message}");
             }
         }
 
@@ -168,6 +194,20 @@ namespace FFI_ScreenReader.Patches
             {
                 if (__instance == null)
                     return;
+
+                // Gate on the ShopController state machine — the game's own
+                // authoritative "which panel has focus" signal. States 2 and 3
+                // are SelectProduct (buy list) and SelectSellItem (sell list);
+                // any other value (command bar, confirm, equipment, magic) means
+                // this fire is a transition flicker or a preview refresh and
+                // should not announce an item.
+                var shopController = ShopMenuTracker.GetCachedOrFindShopController();
+                if (shopController != null)
+                {
+                    int state = ShopMenuTracker.GetCurrentState(shopController);
+                    if (state != 2 && state != 3) // SelectProduct, SelectSellItem
+                        return;
+                }
 
                 var mainList = FindActiveMainContentController();
                 if (mainList == null)
@@ -264,10 +304,6 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         private static void AnnounceFocusedItem(ShopListItemContentController content)
         {
-            // Any focus change invalidates quantity-screen dedup so re-entering
-            // the trade window always announces the starting quantity.
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.SHOP_QUANTITY);
-
             string itemName = null;
             if (content != null)
             {
@@ -277,7 +313,7 @@ namespace FFI_ScreenReader.Patches
 
             if (string.IsNullOrEmpty(itemName))
             {
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, T("Empty"), interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(T("Empty"), interrupt: true);
                 return;
             }
 
@@ -309,7 +345,7 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"{baseAnnouncement}: {detail}";
             }
 
-            AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_ITEM, announcement, interrupt: true);
+            FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
         }
 
         private static string ExtractPrice(ShopListItemContentController content)
@@ -431,7 +467,7 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(commandName))
                     return;
 
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.SHOP_COMMAND, commandName, interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(commandName, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -482,25 +518,34 @@ namespace FFI_ScreenReader.Patches
         private const int OFFSET_TOTAL_PRICE_TEXT = IL2CppOffsets.Shop.TotalPriceText;
 
         /// <summary>
-        /// Called when the trade window updates (after quantity changes).
-        /// Announces the current quantity and total price.
+        /// Fires once when the trade window opens (buy or sell confirm). Announces
+        /// the starting quantity and total.
         /// </summary>
-        public static void UpdateCotroller_Postfix(ShopTradeWindowController __instance)
+        public static void TradeWindowShow_Postfix(ShopTradeWindowController __instance)
+        {
+            AnnounceQuantity(__instance);
+        }
+
+        /// <summary>
+        /// Fires when the user increments (AddCount) or decrements (TakeCount) the
+        /// quantity. Each call is a discrete user event, so we announce unconditionally —
+        /// a no-op press against max/min replays the same value, which matches buy-menu
+        /// feedback behavior.
+        /// </summary>
+        public static void TradeWindowCount_Postfix(ShopTradeWindowController __instance)
+        {
+            AnnounceQuantity(__instance);
+        }
+
+        private static void AnnounceQuantity(ShopTradeWindowController controller)
         {
             try
             {
-                if (__instance == null)
-                    return;
+                if (controller == null) return;
+                if (ShopMenuTracker.IsInMagicSlotSelection) return;
 
-                if (ShopMenuTracker.IsInMagicSlotSelection)
-                    return;
-
-                int selectedCount = GetSelectedCount(__instance);
-
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.SHOP_QUANTITY, selectedCount))
-                    return;
-
-                string totalPrice = GetTotalPriceText(__instance);
+                int selectedCount = GetSelectedCount(controller);
+                string totalPrice = GetTotalPriceText(controller);
 
                 string announcement = string.IsNullOrEmpty(totalPrice)
                     ? string.Format(T("Quantity: {0}"), selectedCount)
@@ -510,7 +555,7 @@ namespace FFI_ScreenReader.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"[Shop] Error in UpdateCotroller_Postfix: {ex.Message}");
+                MelonLogger.Error($"[Shop] Error announcing quantity: {ex.Message}");
             }
         }
 
@@ -596,7 +641,6 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void ResetQuantityTracking()
         {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.SHOP_ITEM, AnnouncementContexts.SHOP_COMMAND, AnnouncementContexts.SHOP_QUANTITY, AnnouncementContexts.SHOP_SLOT);
             ShopMagicPatches.ResetState();
         }
     }

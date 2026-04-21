@@ -355,9 +355,6 @@ namespace FFI_ScreenReader.Patches
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
 
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.POPUP_BUTTON, cursorIndex))
-                    return;
-
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.CommonCommandList);
                 if (listPtr == IntPtr.Zero) return;
 
@@ -403,9 +400,6 @@ namespace FFI_ScreenReader.Patches
 
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
-
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.POPUP_GAMEOVER_BUTTON, cursorIndex))
-                    return;
 
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverCommandList);
                 if (listPtr == IntPtr.Zero)
@@ -454,9 +448,6 @@ namespace FFI_ScreenReader.Patches
 
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
-
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.POPUP_GAMEOVER_LOAD_BUTTON, cursorIndex))
-                    return;
 
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverLoadCommandList);
                 if (listPtr == IntPtr.Zero)
@@ -656,9 +647,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     PopupState.Clear();
                 }
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.POPUP_BUTTON);
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.POPUP_GAMEOVER_BUTTON);
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.POPUP_GAMEOVER_LOAD_BUTTON);
             }
             catch (Exception ex)
             {

@@ -35,8 +35,8 @@ namespace FFI_ScreenReader.Utils
             /// <summary>Serial.FF1.UI.KeyInput.AbilityWindowController.stateMachine</summary>
             public const int Magic = 0x88;
 
-            /// <summary>KeyInput.ShopController.stateMachine</summary>
-            public const int Shop = 0x90;
+            /// <summary>KeyInput.ShopController.stateMachine (0x90 is shopContentType; 0x98 is the StateMachine field — see dump.cs line 460382)</summary>
+            public const int Shop = 0x98;
         }
 
         /// <summary>

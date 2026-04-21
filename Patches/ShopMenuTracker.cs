@@ -72,6 +72,24 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
+        /// Returns the cached ShopController if still alive, otherwise falls
+        /// back to FindObjectOfType. Lets state-gating callers avoid the
+        /// cost of FindObjectOfType on every hook fire.
+        /// </summary>
+        public static ShopController GetCachedOrFindShopController()
+        {
+            try
+            {
+                if (cachedShopController != null && cachedShopController.Pointer != IntPtr.Zero)
+                    return cachedShopController;
+            }
+            catch { cachedShopController = null; }
+            var found = UnityEngine.Object.FindObjectOfType<ShopController>();
+            if (found != null) cachedShopController = found;
+            return found;
+        }
+
+        /// <summary>
         /// Validates that shop menu is active and should suppress generic cursor.
         /// ShopPatches handles ALL shop states including command menu for consistency.
         /// Uses cached controller reference to avoid expensive FindObjectOfType calls.

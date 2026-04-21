@@ -51,7 +51,6 @@ namespace FFI_ScreenReader.Patches
             MenuStateRegistry.RegisterResetHandler(MenuStateRegistry.ITEM_MENU, () =>
             {
                 LastSelectedItem = null;
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.ITEM_SELECT);
             });
         }
 
@@ -119,11 +118,6 @@ namespace FFI_ScreenReader.Patches
         /// Alias for ClearState() for consistency with other state classes.
         /// </summary>
         public static void ResetState() => ClearState();
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.ITEM_SELECT, announcement);
 
         /// <summary>
         /// Gets the row (Front/Back) for a character.
@@ -298,10 +292,6 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
 
-                // Skip duplicates
-                if (!ItemMenuState.ShouldAnnounce(announcement))
-                    return;
-
                 // Set active state AFTER validation - menu is confirmed open and we have valid data
                 // Also clear other menu states to prevent conflicts
                 FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
@@ -412,10 +402,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     MelonLogger.Warning($"[Item Target] Error getting character parameters: {paramEx.Message}");
                 }
-
-                // Skip duplicates
-                if (!ItemMenuState.ShouldAnnounce(announcement))
-                    return;
 
                 // Set active state AFTER validation - menu is confirmed open and we have valid data
                 // Also clear other menu states to prevent conflicts

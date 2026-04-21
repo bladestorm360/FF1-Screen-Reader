@@ -117,13 +117,14 @@ namespace FFI_ScreenReader.Core
             // Initialize managers (order matters: entityNav before categories)
             entityNav = new EntityNavigationManager(entityScanner, () => categories?.CurrentCategory ?? EntityCategory.All);
             categories = new CategoryManager(entityScanner, entityNav);
-            audioLoopManager = new AudioLoopManager(this, entityScanner);
 
-            // Initialize waypoint system
+            // Initialize waypoint system (must precede AudioLoopManager — beacon targets waypoints too)
             waypointManager = new WaypointManager();
             waypointNavigator = new WaypointNavigator(waypointManager);
             waypointController = new WaypointController(entityNav, waypointManager, waypointNavigator);
             Handlers.WaypointHandler.Initialize(waypointController);
+
+            audioLoopManager = new AudioLoopManager(this, entityScanner, waypointNavigator);
 
             // Initialize input manager
             inputManager = new InputManager(this);
@@ -325,7 +326,6 @@ namespace FFI_ScreenReader.Core
                     BattleStateHelper.TryClearOnBattleEnd();
                     ClearAllMenuStates();
                     BattleCommandPatches.ClearCachedTargetController();
-                    AnnouncementDeduplicator.ResetAll();
                 }
 
                 // Update previous scene name
@@ -736,7 +736,6 @@ namespace FFI_ScreenReader.Core
         public static void ClearAllMenuStates()
         {
             ManualPatches.ClearAllMenuStates();
-            AnnouncementDeduplicator.ResetAll();
         }
     }
 

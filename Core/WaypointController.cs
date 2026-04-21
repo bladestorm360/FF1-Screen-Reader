@@ -36,6 +36,7 @@ namespace FFI_ScreenReader.Core
             }
 
             waypointNavigator.CycleNext();
+            NavigationTargetTracker.MarkWaypoint();
             FFI_ScreenReaderMod.SpeakText(waypointNavigator.FormatCurrentWaypoint());
         }
 
@@ -53,6 +54,7 @@ namespace FFI_ScreenReader.Core
             }
 
             waypointNavigator.CyclePrevious();
+            NavigationTargetTracker.MarkWaypoint();
             FFI_ScreenReaderMod.SpeakText(waypointNavigator.FormatCurrentWaypoint());
         }
 
@@ -62,6 +64,8 @@ namespace FFI_ScreenReader.Core
 
             string mapId = GetMapIdString();
             waypointNavigator.CycleNextCategory(mapId);
+            if (waypointNavigator.Count > 0)
+                NavigationTargetTracker.MarkWaypoint();
             FFI_ScreenReaderMod.SpeakText(waypointNavigator.GetCategoryAnnouncement());
         }
 
@@ -71,6 +75,8 @@ namespace FFI_ScreenReader.Core
 
             string mapId = GetMapIdString();
             waypointNavigator.CyclePreviousCategory(mapId);
+            if (waypointNavigator.Count > 0)
+                NavigationTargetTracker.MarkWaypoint();
             FFI_ScreenReaderMod.SpeakText(waypointNavigator.GetCategoryAnnouncement());
         }
 
@@ -85,21 +91,42 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
-            var player = FFI_ScreenReaderMod.GetFieldPlayer();
-            if (player == null)
+            NavigationTargetTracker.MarkWaypoint();
+
+            // Beacon mode: just restart the beacon to re-ping toward this waypoint.
+            if (FFI_ScreenReaderMod.AudioBeaconsEnabled)
             {
-                FFI_ScreenReaderMod.SpeakText(waypoint.Name);
+                FFI_ScreenReaderMod.Instance?.RestartBeacon();
                 return;
             }
 
-            Vector3 playerPos = player.transform.localPosition;
-            string pathDescription = FieldNavigationHelper.GetSimplePathDescription(playerPos, waypoint.Position);
-            FFI_ScreenReaderMod.SpeakText(pathDescription);
+            // Turn-by-turn mode: A* path + descriptive route (matches entity pathfinding).
+            var context = new FilterContext();
+            if (context.PlayerPosition == Vector3.zero)
+            {
+                FFI_ScreenReaderMod.SpeakText(T("Cannot determine directions"));
+                return;
+            }
+
+            var pathInfo = FieldNavigationHelper.FindPathTo(
+                context.PlayerPosition, waypoint.Position, context.MapHandle, context.FieldPlayer);
+
+            string announcement = (pathInfo.Success && !string.IsNullOrEmpty(pathInfo.Description))
+                ? pathInfo.Description
+                : T("No path");
+
+            FFI_ScreenReaderMod.SpeakText(announcement);
         }
 
         public void AddNewWaypointWithNaming()
         {
             if (!navManager.EnsureFieldContext()) return;
+
+            if (waypointNavigator.CurrentCategory == WaypointCategory.All)
+            {
+                FFI_ScreenReaderMod.SpeakText(T("Please select a category"));
+                return;
+            }
 
             var player = FFI_ScreenReaderMod.GetFieldPlayer();
             if (player == null)
@@ -110,13 +137,14 @@ namespace FFI_ScreenReader.Core
 
             Vector3 playerPos = player.transform.localPosition;
             string mapId = GetMapIdString();
+            WaypointCategory category = waypointNavigator.CurrentCategory;
 
             TextInputWindow.Open(
                 T("Enter waypoint name"),
                 "",
                 onConfirm: (name) =>
                 {
-                    waypointManager.AddWaypoint(name, playerPos, mapId);
+                    waypointManager.AddWaypoint(name, playerPos, mapId, category);
                     waypointNavigator.RefreshList(mapId);
                     FFI_ScreenReaderMod.SpeakText(string.Format(T("Waypoint added: {0}"), name));
                 },

@@ -224,9 +224,6 @@ namespace FFI_ScreenReader.Patches
                     MelonLogger.Warning($"[Magic Target] Error getting character parameters: {paramEx.Message}");
                 }
 
-                if (!MagicMenuState.ShouldAnnounceTarget(announcement))
-                    return;
-
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)

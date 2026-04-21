@@ -55,7 +55,6 @@ namespace FFI_ScreenReader.Patches
             {
                 EnteredFromShop = false;
                 LastTargetIndex = -1;
-                AnnouncementDeduplicator.Reset(AnnouncementContexts.EQUIP_SELECT);
             });
         }
 
@@ -137,11 +136,6 @@ namespace FFI_ScreenReader.Patches
         /// Alias for ClearState() for consistency with other state classes.
         /// </summary>
         public static void ResetState() => ClearState();
-
-        /// <summary>
-        /// Check if announcement should be made (string-only deduplication).
-        /// </summary>
-        public static bool ShouldAnnounce(string announcement) => AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.EQUIP_SELECT, announcement);
 
         public static string GetSlotName(EquipSlotType slot)
         {
@@ -285,10 +279,6 @@ namespace FFI_ScreenReader.Patches
                         announcement = $"{announcement}: {detail}";
                 }
 
-                // Skip duplicates
-                if (!EquipMenuState.ShouldAnnounce(announcement))
-                    return;
-
                 // Capture shop context BEFORE clearing states (for restoration when equipment menu closes)
                 if (!EquipMenuState.IsActive)
                 {
@@ -315,9 +305,6 @@ namespace FFI_ScreenReader.Patches
 
                             if (characterSwitched)
                             {
-                                // Reset dedup so slot re-announces for new character
-                                AnnouncementDeduplicator.Reset(AnnouncementContexts.EQUIP_SELECT);
-
                                 // Read character name/job from view
                                 IntPtr viewPtr = IL2CppFieldReader.ReadPointerSafe(ctrlPtr, IL2CppOffsets.Equipment.InfoView);
                                 if (viewPtr != IntPtr.Zero)
@@ -444,10 +431,6 @@ namespace FFI_ScreenReader.Patches
                     if (!string.IsNullOrWhiteSpace(detail))
                         announcement = $"{baseAnnouncement}: {detail}";
                 }
-
-                // Skip duplicates
-                if (!EquipMenuState.ShouldAnnounce(announcement))
-                    return;
 
                 // Capture shop context BEFORE clearing states (for restoration when equipment menu closes)
                 if (!EquipMenuState.IsActive)

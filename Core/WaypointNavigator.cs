@@ -27,6 +27,8 @@ namespace FFI_ScreenReader.Core
 
         public int Count => currentList.Count;
 
+        public WaypointCategory CurrentCategory => currentCategory;
+
         public WaypointNavigator(WaypointManager manager)
         {
             waypointManager = manager;

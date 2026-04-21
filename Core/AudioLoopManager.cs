@@ -17,6 +17,7 @@ namespace FFI_ScreenReader.Core
     {
         private readonly FFI_ScreenReaderMod mod;
         private readonly EntityScanner entityScanner;
+        private readonly WaypointNavigator waypointNavigator;
 
         // Coroutine state
         private IEnumerator wallToneCoroutine;
@@ -39,7 +40,7 @@ namespace FFI_ScreenReader.Core
 
         // Beacon state
         private bool beaconSilenced = false;
-        private NavigableEntity lastBeaconEntity = null;
+        private object lastBeaconTarget = null;
         private float nextBeaconTime = 0f;
 
         // Map transition suppression
@@ -57,10 +58,11 @@ namespace FFI_ScreenReader.Core
         private static readonly Vector3 DirEast = new Vector3(16, 0, 0);
         private static readonly Vector3 DirWest = new Vector3(-16, 0, 0);
 
-        public AudioLoopManager(FFI_ScreenReaderMod mod, EntityScanner scanner)
+        internal AudioLoopManager(FFI_ScreenReaderMod mod, EntityScanner scanner, WaypointNavigator waypointNavigator)
         {
             this.mod = mod;
             this.entityScanner = scanner;
+            this.waypointNavigator = waypointNavigator;
         }
 
         /// <summary>
@@ -110,7 +112,7 @@ namespace FFI_ScreenReader.Core
                 beaconCoroutine = null;
             }
             beaconSilenced = false;
-            lastBeaconEntity = null;
+            lastBeaconTarget = null;
         }
 
         /// <summary>
@@ -287,18 +289,31 @@ namespace FFI_ScreenReader.Core
 
                 try
                 {
-                    var entity = entityScanner?.CurrentEntity;
-                    if (entity == null)
+                    object targetRef = null;
+                    Vector3 targetPos = Vector3.zero;
+                    switch (NavigationTargetTracker.LastKind)
+                    {
+                        case NavigationTargetTracker.Kind.Entity:
+                            var e = entityScanner?.CurrentEntity;
+                            if (e != null) { targetRef = e; targetPos = e.Position; }
+                            break;
+                        case NavigationTargetTracker.Kind.Waypoint:
+                            var w = waypointNavigator?.SelectedWaypoint;
+                            if (w != null) { targetRef = w; targetPos = w.Position; }
+                            break;
+                    }
+
+                    if (targetRef == null)
                     {
                         nextBeaconTime = Time.time + 0.2f;
                         continue;
                     }
 
                     // Selection change clears the silence latch so new targets always ping.
-                    if (!ReferenceEquals(entity, lastBeaconEntity))
+                    if (!ReferenceEquals(targetRef, lastBeaconTarget))
                     {
                         beaconSilenced = false;
-                        lastBeaconEntity = entity;
+                        lastBeaconTarget = targetRef;
                     }
 
                     var playerController = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
@@ -309,24 +324,23 @@ namespace FFI_ScreenReader.Core
                     }
 
                     Vector3 playerPos = playerController.fieldPlayer.transform.localPosition;
-                    Vector3 entityPos = entity.Position;
 
                     // Sanity check: skip if positions look invalid (garbage data during load)
-                    if (float.IsNaN(playerPos.x) || float.IsNaN(entityPos.x) ||
-                        Mathf.Abs(playerPos.x) > 10000f || Mathf.Abs(entityPos.x) > 10000f)
+                    if (float.IsNaN(playerPos.x) || float.IsNaN(targetPos.x) ||
+                        Mathf.Abs(playerPos.x) > 10000f || Mathf.Abs(targetPos.x) > 10000f)
                     {
                         nextBeaconTime = Time.time + 0.2f;
                         continue;
                     }
 
-                    float distTiles = Vector3.Distance(playerPos, entityPos) / TILE_SIZE;
+                    float distTiles = Vector3.Distance(playerPos, targetPos) / TILE_SIZE;
 
                     // Mode selection — expensive (A* per beacon tick) but only 1–5 Hz.
                     bool pathValid;
                     try
                     {
                         var pathInfo = FieldNavigationHelper.FindPathTo(
-                            playerPos, entityPos,
+                            playerPos, targetPos,
                             playerController.mapHandle,
                             playerController.fieldPlayer);
                         pathValid = pathInfo.Success;
@@ -373,10 +387,10 @@ namespace FFI_ScreenReader.Core
                     float maxDist = 500f;
                     float volumeScale = Mathf.Clamp(1f - (distTiles * TILE_SIZE / maxDist), 0.15f, 0.60f);
 
-                    float deltaX = entityPos.x - playerPos.x;
+                    float deltaX = targetPos.x - playerPos.x;
                     float pan = Mathf.Clamp(deltaX / 100f, -1f, 1f) * 0.5f + 0.5f;
 
-                    bool isSouth = entityPos.y < playerPos.y - 8f;
+                    bool isSouth = targetPos.y < playerPos.y - 8f;
 
                     // Debounce: ensure at least 80% of the current interval has elapsed
                     float timeSinceLast = Time.time - lastBeaconPlayedAt;
@@ -396,7 +410,7 @@ namespace FFI_ScreenReader.Core
             // Clean up when exiting
             beaconCoroutine = null;
             beaconSilenced = false;
-            lastBeaconEntity = null;
+            lastBeaconTarget = null;
         }
     }
 }

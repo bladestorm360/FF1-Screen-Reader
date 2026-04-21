@@ -185,9 +185,7 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"{actorName}: {actionName}";
                 }
 
-                // Use object-based deduplication so different enemies with the same name
-                // attacking in succession are both announced
-                AnnouncementHelper.AnnounceIfNew(AnnouncementContexts.BATTLE_ACTION, actData, announcement, interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
             catch (Exception ex)
             {
@@ -452,16 +450,6 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Reset state tracking (call at battle end).
-        /// </summary>
-        public static void ResetState()
-        {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_ACTION, AnnouncementContexts.BATTLE_STATUS);
-            lastBattleCommandMessage = "";
-            BattleConditionController_Add_Patch.Reset();
-        }
-
-        /// <summary>
         /// Finds a type by name across all loaded assemblies.
         /// </summary>
         private static Type FindType(string fullName)
@@ -538,8 +526,6 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static string lastBattleCommandMessage = "";
-
         /// <summary>
         /// Postfix for BattleCommandMessageController.SetMessage/SetSystemMessage.
         /// Announces battle messages including "The party was defeated".
@@ -551,10 +537,6 @@ namespace FFI_ScreenReader.Patches
                 // __0 is the message string (using __0 to avoid IL2CPP string param crash)
                 string message = __0?.ToString();
                 if (string.IsNullOrEmpty(message)) return;
-
-                // Deduplicate
-                if (message == lastBattleCommandMessage) return;
-                lastBattleCommandMessage = message;
 
                 // Clean up the message
                 string cleanMessage = TextUtils.StripIconMarkup(message);
@@ -583,10 +565,6 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(BattleConditionController), nameof(BattleConditionController.Add))]
     internal static class BattleConditionController_Add_Patch
     {
-        // Per-unit dedup: shared-name enemies (e.g., two Wolves both getting KO'd) must each
-        // announce, so we key by the unit's native pointer instead of announcement text.
-        private static readonly Dictionary<IntPtr, string> lastAnnouncementByUnit = new Dictionary<IntPtr, string>();
-
         [HarmonyPostfix]
         public static void Postfix(BattleUnitData battleUnitData, int id)
         {
@@ -626,16 +604,6 @@ namespace FFI_ScreenReader.Patches
                 string targetName = BattleMessagePatches.GetUnitName(battleUnitData);
                 string announcement = $"{targetName}: {conditionName}";
 
-                IntPtr unitPtr = IntPtr.Zero;
-                try { unitPtr = battleUnitData.Pointer; } catch { }
-
-                if (unitPtr != IntPtr.Zero)
-                {
-                    if (lastAnnouncementByUnit.TryGetValue(unitPtr, out var last) && last == announcement)
-                        return;
-                    lastAnnouncementByUnit[unitPtr] = announcement;
-                }
-
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
             catch (Exception ex)
@@ -643,7 +611,5 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Battle Status] Error in Add postfix: {ex.Message}");
             }
         }
-
-        public static void Reset() => lastAnnouncementByUnit.Clear();
     }
 }

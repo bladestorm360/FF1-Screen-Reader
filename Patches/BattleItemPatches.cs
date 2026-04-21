@@ -102,10 +102,6 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(announcement))
                     return;
 
-                // Use central deduplicator - skip duplicate announcements
-                if (!AnnouncementDeduplicator.ShouldAnnounce(AnnouncementContexts.BATTLE_ITEM, announcement))
-                    return;
-
                 // Set state AFTER successful validation - this is the key fix
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleItem");
                 BattleItemMenuState.IsActive = true;
@@ -268,12 +264,5 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        /// <summary>
-        /// Reset state (call at battle end).
-        /// </summary>
-        public static void ResetState()
-        {
-            AnnouncementDeduplicator.Reset(AnnouncementContexts.BATTLE_ITEM);
-        }
     }
 }
