@@ -782,6 +782,19 @@
     "th": "ร้านชุดเกราะ",
     "pt": "Loja de Armaduras"
   },
+  "宿屋": {
+    "en": "Inn",
+    "fr": "Auberge",
+    "it": "Locanda",
+    "de": "Gasthaus",
+    "es": "Posada",
+    "ko": "여관",
+    "zht": "旅館",
+    "zhc": "旅馆",
+    "ru": "Таверна",
+    "th": "โรงแรม",
+    "pt": "Estalagem"
+  },
   "クリスタルのかけら青": {
     "en": "Blue Crystal Shard",
     "fr": "Éclat de cristal bleu",
