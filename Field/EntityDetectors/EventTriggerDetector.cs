@@ -13,8 +13,11 @@ namespace FFI_ScreenReader.Field.EntityDetectors
             if (context.IsEventTrigger)
             {
                 string entityName = EntityDetectionHelpers.GetEntityNameFromProperty(context.FieldEntity);
-                if (string.IsNullOrEmpty(entityName))
-                    entityName = EntityDetectionHelpers.CleanObjectName(context.GameObjectName, "Event Trigger");
+                if (string.IsNullOrEmpty(entityName) || entityName == "GeneralEventObject")
+                {
+                    entityName = EntityDetectionHelpers.ClassifyByDialogue(context.FieldEntity)
+                        ?? EntityDetectionHelpers.CleanObjectName(context.GameObjectName, "Event Trigger");
+                }
                 return DetectionResult.Detected(
                     new EventEntity(context.FieldEntity, context.Position, entityName, "Event"));
             }

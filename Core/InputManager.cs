@@ -81,6 +81,9 @@ namespace FFI_ScreenReader.Core
                 else mod.AnnounceCurrentEntity();
             }, "Announce current entity / restart beacon");
 
+            // --- Field: manual entity rescan (backtick) ---
+            RegisterFieldWithBattleFeedback(KeyCode.BackQuote, KeyModifier.None, mod.ForceEntityRescan, "Force entity rescan");
+
             // --- Field: pathfinding alternate keys (J/K/L/P) — with battle feedback ---
             RegisterFieldWithBattleFeedback(KeyCode.J, KeyModifier.Shift, mod.CyclePreviousCategory, "Previous entity category (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.J, KeyModifier.None, mod.CyclePrevious, "Previous entity (alt)");

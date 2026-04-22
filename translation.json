@@ -467,6 +467,22 @@
     "th": "คนแคระ",
     "pt": "Anão"
   },
+  "ドワーフ": {
+    "en": "Dwarf",
+    "fr": "Nain",
+    "it": "Nano",
+    "de": "Zwerg",
+    "es": "Enano",
+    "ko": "드워프",
+    "zht": "矮人",
+    "zhc": "矮人",
+    "ru": "Гном",
+    "th": "คนแคระ",
+    "pt": "Anão"
+  },
+  "ウネ": {
+    "en": "Unne"
+  },
   "ドワーフ(スミス)(赤の羽根つき帽子)": {
     "en": "Dwarf (Smith)",
     "fr": "Nain (Smith)",

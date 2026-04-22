@@ -395,6 +395,17 @@ namespace FFI_ScreenReader.Core
         internal void AnnounceCurrentEntity() => entityNav?.AnnounceCurrentEntity();
         internal void AnnounceEntityOnly() => entityNav?.AnnounceEntityOnly();
 
+        internal void ForceEntityRescan()
+        {
+            if (entityScanner == null)
+            {
+                SpeakText(T("Entity scanner not available"), interrupt: true);
+                return;
+            }
+            entityScanner.ForceRescan();
+            SpeakText(T("Entity scan complete"), interrupt: true);
+        }
+
         // Category navigation
         internal void CycleNextCategory() => categories?.CycleNext();
         internal void CyclePreviousCategory() => categories?.CyclePrevious();

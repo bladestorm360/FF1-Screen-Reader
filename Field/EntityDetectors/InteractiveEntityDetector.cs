@@ -22,8 +22,11 @@ namespace FFI_ScreenReader.Field.EntityDetectors
                     return DetectionResult.Skip;
 
                 string name = EntityDetectionHelpers.GetEntityNameFromProperty(context.FieldEntity);
-                if (string.IsNullOrEmpty(name))
-                    name = EntityDetectionHelpers.GetInteractiveObjectName(context.PropertyObject, context.GameObjectName);
+                if (string.IsNullOrEmpty(name) || name == "GeneralEventObject")
+                {
+                    name = EntityDetectionHelpers.ClassifyByDialogue(context.FieldEntity)
+                        ?? EntityDetectionHelpers.GetInteractiveObjectName(context.PropertyObject, context.GameObjectName);
+                }
                 return DetectionResult.Detected(
                     new EventEntity(context.FieldEntity, context.Position, name, "Interactive Object"));
             }

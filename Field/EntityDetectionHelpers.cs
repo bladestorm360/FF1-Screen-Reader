@@ -260,6 +260,120 @@ namespace FFI_ScreenReader.Field
             return name;
         }
 
+        // Keyword → display class. Order matters: more-specific keywords first so they win.
+        // Dialogue text for examined objects in FF1 follows patterns like
+        //   English: "It's a gravestone.", "There's a sign here."
+        //   Japanese: "墓石だ", "墓標だ"
+        // A substring match is enough to classify. Both EN and JA forms are listed so the
+        // classifier works regardless of the game's current language setting.
+        private static readonly (string Keyword, string Label)[] DialogueClassKeywords = new[]
+        {
+            // English keywords — more specific multi-word forms before single-word generics
+            ("grave marker", "Grave Marker"),
+            ("gravestone", "Gravestone"),
+            ("tombstone", "Tombstone"),
+            ("tomb", "Tomb"),
+            ("signpost", "Sign"),
+            ("sign", "Sign"),
+            ("bookcase", "Bookcase"),
+            ("bookshelf", "Bookshelf"),
+            ("altar", "Altar"),
+            ("statue", "Statue"),
+            ("throne", "Throne"),
+            ("boulder", "Boulder"),
+            ("rock", "Rock"),
+            ("crystal", "Crystal"),
+            ("orb", "Orb"),
+            ("pedestal", "Pedestal"),
+            ("plate", "Plate"),
+            ("barrel", "Barrel"),
+            ("crate", "Crate"),
+            ("pot", "Pot"),
+            ("vase", "Vase"),
+            ("jar", "Jar"),
+            ("bed", "Bed"),
+            ("table", "Table"),
+            ("chair", "Chair"),
+            ("piano", "Piano"),
+            ("painting", "Painting"),
+            ("mirror", "Mirror"),
+            ("clock", "Clock"),
+            ("lever", "Lever"),
+            ("switch", "Switch"),
+            ("button", "Button"),
+            ("chest", "Chest"),
+            ("gate", "Gate"),
+            ("ladder", "Ladder"),
+            ("stairs", "Stairs"),
+            ("well", "Well"),
+            ("fountain", "Fountain"),
+            // Japanese keywords — for users playing in Japanese where dialogue is in JA.
+            // Same labels as the EN matches; mod_text/translation handles the user-facing
+            // localization at speak time.
+            ("墓標", "Grave Marker"),
+            ("墓石", "Gravestone"),
+            ("看板", "Sign"),
+            ("立て札", "Sign"),
+            ("本棚", "Bookshelf"),
+            ("祭壇", "Altar"),
+            ("像", "Statue"),
+            ("玉座", "Throne"),
+            ("岩", "Rock"),
+            ("クリスタル", "Crystal"),
+            ("井戸", "Well"),
+            ("噴水", "Fountain"),
+            ("樽", "Barrel"),
+            ("壺", "Pot"),
+            ("ベッド", "Bed"),
+        };
+
+        private static readonly System.Collections.Generic.HashSet<string> loggedUnclassifiedKeys =
+            new System.Collections.Generic.HashSet<string>();
+
+        /// <summary>
+        /// Reads the MessageKey from a property (via IL2CPP TryCast to the subclasses that
+        /// expose it), looks up the resolved dialogue, and matches it against a keyword list to
+        /// classify the object (e.g. "Gravestone", "Sign"). Returns null if nothing matched, in
+        /// which case caller falls back to "Interactive Object". Logs the unclassified key+text
+        /// once per unique key so the keyword list can be extended without a code change.
+        /// </summary>
+        public static string ClassifyByDialogue(FieldEntity fieldEntity)
+        {
+            if (fieldEntity == null) return null;
+            try
+            {
+                PropertyEntity property = fieldEntity.Property;
+                if (property == null) return null;
+
+                // PropertyDefaultEntity inherits PropertyTalk → we get MessageKey through it.
+                string messageKey = null;
+                var def = property.TryCast<Il2CppLast.Map.PropertyDefaultEntity>();
+                if (def != null) messageKey = def.MessageKey;
+                if (string.IsNullOrEmpty(messageKey)) return null;
+
+                var mgr = MessageManager.Instance;
+                if (mgr == null) return null;
+                string text = mgr.GetMessage(messageKey, false);
+                if (string.IsNullOrWhiteSpace(text) || text == messageKey) return null;
+
+                string normalized = TextUtils.StripIconMarkup(text).ToLowerInvariant();
+                foreach (var (kw, label) in DialogueClassKeywords)
+                {
+                    if (normalized.Contains(kw)) return label;
+                }
+
+                // No keyword matched — log once per key so we can extend the list later.
+                if (loggedUnclassifiedKeys.Add(messageKey))
+                {
+                    string snippet = text.Replace('\n', ' ').Trim();
+                    if (snippet.Length > 80) snippet = snippet.Substring(0, 80) + "…";
+                    MelonLoader.MelonLogger.Msg($"[Classify] unmatched key={messageKey} text=\"{snippet}\"");
+                }
+                return null;
+            }
+            catch { return null; } // IL2CPP cast / message lookup may fail
+        }
+
         /// <summary>
         /// Gets a meaningful name for an interactive object, trying various sources.
         /// </summary>

@@ -42,7 +42,30 @@ namespace FFI_ScreenReader.Utils
             @"[(\uff08][^)\uff09]*[)\uff09]$",
             RegexOptions.Compiled);
 
-        // Matches trailing enumeration markers (circled digits ①-⑳) at end of entity names
+        // Matches leading enumeration markers (circled digits) at start of entity names
+        private static readonly Regex LeadingEnumPrefixRegex = new Regex(
+            @"^[①-⑳]+",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// Converts a string of circled digits (U+2460..U+2473) to space-separated ASCII numbers.
+        /// </summary>
+        private static string CircledDigitToNumber(string s)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c >= '①' && c <= '⑳')
+                {
+                    if (sb.Length > 0) sb.Append(' ');
+                    sb.Append((c - '①') + 1);
+                }
+            }
+            return sb.ToString();
+        }
+
+        // Matches trailing enumeration markers (circled digits) at end of entity names
         private static readonly Regex TrailingEnumSuffixRegex = new Regex(
             @"[\u2460-\u2473]+$",
             RegexOptions.Compiled);
@@ -159,25 +182,35 @@ namespace FFI_ScreenReader.Utils
                 coreName = japaneseName.Substring(0, enumMatch.Index);
             }
 
+            // Extract leading enumeration prefix (e.g., "⑭"). The numeric form is appended as
+            // a suffix to the translation, so "⑭村人（男性）" → "Male Villager 14".
+            string leadingEnumSuffix = "";
+            Match leadingMatch = LeadingEnumPrefixRegex.Match(coreName);
+            if (leadingMatch.Success)
+            {
+                leadingEnumSuffix = " " + CircledDigitToNumber(leadingMatch.Value);
+                coreName = coreName.Substring(leadingMatch.Length);
+            }
+
             // 1. Exact match
             if (TryLookup(coreName, out string exactMatch))
-                return exactMatch + enumSuffix;
+                return exactMatch + leadingEnumSuffix + enumSuffix;
 
             // 1b. Normalize full-width parens to half-width and retry exact match
             string normalized = NormalizeParens(coreName);
             if (normalized != coreName && TryLookup(normalized, out string normalizedMatch))
-                return normalizedMatch + enumSuffix;
+                return normalizedMatch + leadingEnumSuffix + enumSuffix;
 
             // 2. Strip numeric/SC prefix and try base name lookup
             StripPrefix(coreName, out string prefix, out string baseName);
             if (prefix != null && TryLookup(baseName, out string baseTranslation))
-                return prefix + " " + baseTranslation + enumSuffix;
+                return prefix + " " + baseTranslation + leadingEnumSuffix + enumSuffix;
 
             // 3. Strip parenthesized suffix (e.g., "兵士(e_v_0002専用)" → "兵士") and try base name
             string nameForSuffix = prefix != null ? baseName : coreName;
             string stripped = ParenSuffixRegex.Replace(nameForSuffix, "").Trim();
             if (stripped != nameForSuffix && stripped.Length > 0 && TryLookup(stripped, out string strippedMatch))
-                return (prefix != null ? prefix + " " + strippedMatch : strippedMatch) + enumSuffix;
+                return (prefix != null ? prefix + " " + strippedMatch : strippedMatch) + leadingEnumSuffix + enumSuffix;
 
             // 4. Track untranslated name by current map
             string trackingName = prefix != null ? baseName : coreName;
