@@ -720,7 +720,7 @@ namespace FFI_ScreenReader.Core
         public static void SpeakText(string text, bool interrupt = true)
         {
             MelonLoader.MelonLogger.Msg($"[TTS] {text}");
-            tolk?.Speak(text, interrupt);
+            tolk?.Speak(TextUtils.StripRichTextTags(text), interrupt);
         }
 
         /// <summary>
