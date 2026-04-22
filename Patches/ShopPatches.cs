@@ -131,10 +131,19 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 Type tradeType = typeof(ShopTradeWindowController);
-                var addMethod = tradeType.GetMethod("AddCount",
-                    BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
-                var takeMethod = tradeType.GetMethod("TakeCount",
-                    BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+
+                // The 5-arg GetMethod(name, flags, binder, types, modifiers) overload
+                // returns null on IL2CPP Interop proxy types for private parameterless
+                // methods. Enumerate instead — same pattern as ShopMagicPatches.
+                MethodInfo addMethod = null;
+                MethodInfo takeMethod = null;
+                foreach (var method in tradeType.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (method.GetParameters().Length != 0) continue;
+                    if (method.Name == "AddCount") addMethod = method;
+                    else if (method.Name == "TakeCount") takeMethod = method;
+                }
 
                 var postfix = new HarmonyMethod(typeof(ShopPatches), nameof(TradeWindowCount_Postfix));
 
@@ -206,7 +215,10 @@ namespace FFI_ScreenReader.Patches
                 {
                     int state = ShopMenuTracker.GetCurrentState(shopController);
                     if (state != 2 && state != 3) // SelectProduct, SelectSellItem
+                    {
+                        _lastAnnouncedListIndex = -1;
                         return;
+                    }
                 }
 
                 var mainList = FindActiveMainContentController();
@@ -237,6 +249,14 @@ namespace FFI_ScreenReader.Patches
                 if (index < 0)
                     return;
 
+                // Scoped exception to the "no dedup" rule: SetDescription also fires
+                // on stats/description panel toggle for the same focused item, and no
+                // non-dedup signal covers unaffordable items. Resets at state-exit
+                // boundaries keep re-entries on the same cursor audible.
+                if (index == _lastAnnouncedListIndex)
+                    return;
+                _lastAnnouncedListIndex = index;
+
                 IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainProductContentList);
                 if (listPtr == IntPtr.Zero)
                     return;
@@ -255,6 +275,7 @@ namespace FFI_ScreenReader.Patches
         }
 
         private static ShopListMainContentController _cachedMainList;
+        private static int _lastAnnouncedListIndex = -1;
 
         private static ShopListMainContentController FindActiveMainContentController()
         {
@@ -523,6 +544,7 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static void TradeWindowShow_Postfix(ShopTradeWindowController __instance)
         {
+            _lastAnnouncedListIndex = -1;
             AnnounceQuantity(__instance);
         }
 
@@ -630,6 +652,7 @@ namespace FFI_ScreenReader.Patches
         public static void ShopClose_Postfix()
         {
             _cachedMainList = null;
+            _lastAnnouncedListIndex = -1;
             ShopMenuTracker.ClearState();
         }
 
