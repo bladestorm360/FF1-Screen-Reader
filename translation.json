@@ -795,6 +795,32 @@
     "th": "โรงแรม",
     "pt": "Estalagem"
   },
+  "落とし穴": {
+    "en": "Pitfall",
+    "fr": "Trappe",
+    "it": "Trabocchetto",
+    "de": "Fallgrube",
+    "es": "Trampa",
+    "ko": "함정",
+    "zht": "陷阱",
+    "zhc": "陷阱",
+    "ru": "Ловушка",
+    "th": "หลุมพราง",
+    "pt": "Armadilha"
+  },
+  "ルフェイン人": {
+    "en": "Lufenian",
+    "fr": "Lufénien",
+    "it": "Lufeniano",
+    "de": "Lufenier",
+    "es": "Lufeniano",
+    "ko": "루페인 사람",
+    "zht": "魯費族",
+    "zhc": "鲁费族",
+    "ru": "Луфенианец",
+    "th": "ชาวลูเฟน",
+    "pt": "Lufeniano"
+  },
   "クリスタルのかけら青": {
     "en": "Blue Crystal Shard",
     "fr": "Éclat de cristal bleu",

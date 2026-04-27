@@ -37,6 +37,13 @@ namespace FFI_ScreenReader.Patches
     {
         private static bool isPatched = false;
 
+        // UpdateFocus / UpdateCommand fire repeatedly while a popup is active, so each
+        // handler skips re-announcing when the cursor index hasn't changed. Reset to -1
+        // on popup close so reopening starts fresh.
+        private static int lastCommonPopupCursorIndex = -1;
+        private static int lastGameOverSelectCursorIndex = -1;
+        private static int lastGameOverLoadCursorIndex = -1;
+
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             if (isPatched)
@@ -355,6 +362,10 @@ namespace FFI_ScreenReader.Patches
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
 
+                if (cursorIndex == lastCommonPopupCursorIndex)
+                    return;
+                lastCommonPopupCursorIndex = cursorIndex;
+
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.CommonCommandList);
                 if (listPtr == IntPtr.Zero) return;
 
@@ -400,6 +411,10 @@ namespace FFI_ScreenReader.Patches
 
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
+
+                if (cursorIndex == lastGameOverSelectCursorIndex)
+                    return;
+                lastGameOverSelectCursorIndex = cursorIndex;
 
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverCommandList);
                 if (listPtr == IntPtr.Zero)
@@ -448,6 +463,10 @@ namespace FFI_ScreenReader.Patches
 
                 var cursor = new GameCursor(cursorPtr);
                 int cursorIndex = cursor.Index;
+
+                if (cursorIndex == lastGameOverLoadCursorIndex)
+                    return;
+                lastGameOverLoadCursorIndex = cursorIndex;
 
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverLoadCommandList);
                 if (listPtr == IntPtr.Zero)
@@ -647,6 +666,9 @@ namespace FFI_ScreenReader.Patches
                 {
                     PopupState.Clear();
                 }
+                lastCommonPopupCursorIndex = -1;
+                lastGameOverSelectCursorIndex = -1;
+                lastGameOverLoadCursorIndex = -1;
             }
             catch (Exception ex)
             {

@@ -85,6 +85,8 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public void AnnounceCurrentEntity()
         {
+            if (!EnsureFieldContext()) return;
+
             RefreshEntitiesIfNeeded();
 
             var entity = entityScanner?.CurrentEntity;

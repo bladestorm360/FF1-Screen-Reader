@@ -200,8 +200,10 @@ namespace FFI_ScreenReader.Core
                         continue;
                     }
 
-                    // Silence when any menu or battle is active (same gate as controller routing)
-                    if (!ControllerRouter.IsFieldActive)
+                    // Silence when any menu or battle is active, or while a mod dialog is open.
+                    // SuppressGameInput covers mod menu / TextInputWindow / ConfirmationDialog —
+                    // their A* work would stutter keyboard polling in TextInputWindow.
+                    if (!ControllerRouter.IsFieldActive || ControllerRouter.SuppressGameInput)
                     {
                         if (SoundPlayer.IsWallTonePlaying())
                             SoundPlayer.StopWallTone();
@@ -280,8 +282,10 @@ namespace FFI_ScreenReader.Core
                     continue;
                 }
 
-                // Silence when any menu or battle is active (same gate as controller routing)
-                if (!ControllerRouter.IsFieldActive)
+                // Silence when any menu or battle is active, or while a mod dialog is open.
+                // The A* tick is expensive — running it during TextInputWindow typing
+                // stutters the GetAsyncKeyState poll enough to drop characters.
+                if (!ControllerRouter.IsFieldActive || ControllerRouter.SuppressGameInput)
                 {
                     nextBeaconTime = Time.time + 0.1f;
                     continue;

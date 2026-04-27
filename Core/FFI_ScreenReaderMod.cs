@@ -748,6 +748,42 @@ namespace FFI_ScreenReader.Core
         {
             ManualPatches.ClearAllMenuStates();
         }
+
+        /// <summary>
+        /// Clears menu and popup flags after a map transition completes. Battle flags
+        /// (BATTLE_*) are deliberately left alone — battle scene transitions don't change
+        /// CurrentMapId, so this never fires mid-battle, and clearing them would break
+        /// in-battle state tracking. EVENT_ITEM_SELECT is currently unused but kept
+        /// reserved. POPUP is cleared because some game flows (game-over → load, scene
+        /// reset) dismiss popups without invoking BasePopup.Close, leaking the flag and
+        /// silently making IsFieldActive false on the next map.
+        /// </summary>
+        public static void ClearMenuFlagsForMapTransition()
+        {
+            var stuck = MenuStateRegistry.GetActiveStates();
+            if (stuck.Count > 0)
+                MelonLogger.Msg($"[MapTransition] Pre-clear active flags: {string.Join(",", stuck)}");
+
+            MenuStateRegistry.Reset(
+                MenuStateRegistry.MAIN_MENU,
+                MenuStateRegistry.MAGIC_MENU,
+                MenuStateRegistry.ITEM_MENU,
+                MenuStateRegistry.EQUIP_MENU,
+                MenuStateRegistry.STATUS_MENU,
+                MenuStateRegistry.STATUS_DETAILS,
+                MenuStateRegistry.CONFIG_MENU,
+                MenuStateRegistry.SAVE_LOAD_MENU,
+                MenuStateRegistry.SHOP_MENU,
+                MenuStateRegistry.BESTIARY_LIST,
+                MenuStateRegistry.BESTIARY_DETAIL,
+                MenuStateRegistry.BESTIARY_FORMATION,
+                MenuStateRegistry.BESTIARY_MAP,
+                MenuStateRegistry.MUSIC_PLAYER,
+                MenuStateRegistry.GALLERY,
+                MenuStateRegistry.POPUP);
+            ShopMenuTracker.ClearState();
+            PopupState.Clear();
+        }
     }
 
     /// <summary>

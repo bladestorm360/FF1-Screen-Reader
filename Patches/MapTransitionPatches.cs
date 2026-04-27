@@ -238,6 +238,12 @@ namespace FFI_ScreenReader.Patches
 
                 lastAnnouncedMapId = currentMapId;
 
+                // Map actually changed — transition is over (game won't allow a menu
+                // during transition). Clear any menu flag that got stuck due to a
+                // set/clear patch mismatch, which would otherwise silently block
+                // EnsureFieldContext on the new map.
+                FFI_ScreenReaderMod.ClearMenuFlagsForMapTransition();
+
                 // Resolve map name
                 string mapName = MapNameResolver.GetCurrentMapName();
                 if (string.IsNullOrEmpty(mapName) || mapName == T("Unknown"))

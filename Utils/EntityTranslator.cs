@@ -47,6 +47,11 @@ namespace FFI_ScreenReader.Utils
             @"^[①-⑳]+",
             RegexOptions.Compiled);
 
+        // Matches leading plain ASCII digits (Unity-instance enumeration, e.g., "15ルフェイン人")
+        private static readonly Regex LeadingDigitPrefixRegex = new Regex(
+            @"^\d+",
+            RegexOptions.Compiled);
+
         /// <summary>
         /// Converts a string of circled digits (U+2460..U+2473) to space-separated ASCII numbers.
         /// </summary>
@@ -68,6 +73,11 @@ namespace FFI_ScreenReader.Utils
         // Matches trailing enumeration markers (circled digits) at end of entity names
         private static readonly Regex TrailingEnumSuffixRegex = new Regex(
             @"[\u2460-\u2473]+$",
+            RegexOptions.Compiled);
+
+        // Matches trailing ASCII digits (Unity-instance enumeration suffix, e.g., "\u843d\u3068\u3057\u7a742")
+        private static readonly Regex TrailingDigitSuffixRegex = new Regex(
+            @"\d+$",
             RegexOptions.Compiled);
 
         /// <summary>
@@ -182,6 +192,18 @@ namespace FFI_ScreenReader.Utils
                 coreName = japaneseName.Substring(0, enumMatch.Index);
             }
 
+            // Trailing plain-digit instance suffix (Unity-style enumeration). Index > 0
+            // guard avoids matching pure-numeric names.
+            if (enumSuffix.Length == 0)
+            {
+                Match digitMatch = TrailingDigitSuffixRegex.Match(coreName);
+                if (digitMatch.Success && digitMatch.Index > 0)
+                {
+                    enumSuffix = " " + digitMatch.Value;
+                    coreName = coreName.Substring(0, digitMatch.Index);
+                }
+            }
+
             // Extract leading enumeration prefix (e.g., "⑭"). The numeric form is appended as
             // a suffix to the translation, so "⑭村人（男性）" → "Male Villager 14".
             string leadingEnumSuffix = "";
@@ -190,6 +212,18 @@ namespace FFI_ScreenReader.Utils
             {
                 leadingEnumSuffix = " " + CircledDigitToNumber(leadingMatch.Value);
                 coreName = coreName.Substring(leadingMatch.Length);
+            }
+
+            // Leading plain-digit instance prefix (e.g., "15ルフェイン人" → "Lufenian 15").
+            // Length < coreName.Length guard avoids stripping a pure-numeric name.
+            if (leadingEnumSuffix.Length == 0)
+            {
+                Match leadingDigitMatch = LeadingDigitPrefixRegex.Match(coreName);
+                if (leadingDigitMatch.Success && leadingDigitMatch.Length < coreName.Length)
+                {
+                    leadingEnumSuffix = " " + leadingDigitMatch.Value;
+                    coreName = coreName.Substring(leadingDigitMatch.Length);
+                }
             }
 
             // 1. Exact match
