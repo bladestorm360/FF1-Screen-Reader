@@ -12,7 +12,7 @@ namespace FFI_ScreenReader.Field
         All = 0,
         Landmarks = 1,
         Docks = 2,
-        Miscellaneous = 3
+        LandingZones = 3
     }
 
     /// <summary>
@@ -48,14 +48,14 @@ namespace FFI_ScreenReader.Field
             {
                 case WaypointCategory.Landmarks: return T("Landmark");
                 case WaypointCategory.Docks: return T("Dock");
-                case WaypointCategory.Miscellaneous: return T("Waypoint");
+                case WaypointCategory.LandingZones: return T("Landing Zone");
                 default: return T("Waypoint");
             }
         }
 
         public static string[] GetCategoryNames()
         {
-            return new string[] { T("All"), T("Landmarks"), T("Docks"), T("Miscellaneous") };
+            return new string[] { T("All"), T("Landmarks"), T("Docks"), T("Landing Zones") };
         }
 
         /// <summary>

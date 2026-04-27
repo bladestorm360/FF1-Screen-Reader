@@ -38,7 +38,7 @@ namespace FFI_ScreenReader.Core
         {
             if (Enum.TryParse<WaypointCategory>(category, out var result))
                 return result;
-            return WaypointCategory.Miscellaneous;
+            return WaypointCategory.LandingZones;
         }
     }
 
@@ -125,7 +125,7 @@ namespace FFI_ScreenReader.Core
                 .ToList();
         }
 
-        public WaypointEntity AddWaypoint(string name, Vector3 position, string mapId, WaypointCategory category = WaypointCategory.Miscellaneous)
+        public WaypointEntity AddWaypoint(string name, Vector3 position, string mapId, WaypointCategory category = WaypointCategory.LandingZones)
         {
             string id = Guid.NewGuid().ToString();
             var data = new WaypointData(id, name, category, position);
@@ -337,7 +337,7 @@ namespace FFI_ScreenReader.Core
                 var data = new WaypointData();
                 data.id = ExtractStringValue(objJson, "id") ?? Guid.NewGuid().ToString();
                 data.name = ExtractStringValue(objJson, "name") ?? "Unnamed";
-                data.category = ExtractStringValue(objJson, "category") ?? "Miscellaneous";
+                data.category = ExtractStringValue(objJson, "category") ?? "LandingZones";
                 data.x = ExtractFloatValue(objJson, "x");
                 data.y = ExtractFloatValue(objJson, "y");
                 data.z = ExtractFloatValue(objJson, "z");
