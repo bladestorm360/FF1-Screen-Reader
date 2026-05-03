@@ -243,6 +243,8 @@ namespace FFI_ScreenReader.Field
 
         /// <summary>
         /// Cleans up an object name for display.
+        /// Translates Japanese GameObject names (e.g. "1:村人(男性)") so the fallback path used
+        /// when PropertyEntity.Name is null/empty still produces a localized announcement.
         /// </summary>
         public static string CleanObjectName(string name, string defaultName)
         {
@@ -257,7 +259,7 @@ namespace FFI_ScreenReader.Field
             if (name.StartsWith("_"))
                 return defaultName;
 
-            return name;
+            return EntityTranslator.Translate(name);
         }
 
         // Keyword → display class. Order matters: more-specific keywords first so they win.

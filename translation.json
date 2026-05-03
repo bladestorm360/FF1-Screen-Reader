@@ -12,6 +12,19 @@
     "th": "ค้างคาว",
     "pt": "Morcego"
   },
+  "妖精": {
+    "en": "Fairy",
+    "fr": "Fée",
+    "it": "Fata",
+    "de": "Fee",
+    "es": "Hada",
+    "ko": "요정",
+    "zht": "妖精",
+    "zhc": "妖精",
+    "ru": "Фея",
+    "th": "นางฟ้า",
+    "pt": "Fada"
+  },
   "妖精王": {
     "en": "Fairy King",
     "fr": "Roi des fées",

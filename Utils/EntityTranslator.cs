@@ -47,9 +47,12 @@ namespace FFI_ScreenReader.Utils
             @"^[①-⑳]+",
             RegexOptions.Compiled);
 
-        // Matches leading plain ASCII digits (Unity-instance enumeration, e.g., "15ルフェイン人")
+        // Matches leading plain ASCII digits (Unity-instance enumeration, e.g., "15ルフェイン人").
+        // Negative lookahead for [\d.:] defers "1:村人(...)" / "12:村人(...)" style names to
+        // EntityPrefixRegex without backtracking into a partial digit match (which would leave
+        // the colon orphaned and produce e.g. "2: Male Villager 1").
         private static readonly Regex LeadingDigitPrefixRegex = new Regex(
-            @"^\d+",
+            @"^\d+(?![\d.:])",
             RegexOptions.Compiled);
 
         /// <summary>
