@@ -63,79 +63,67 @@ namespace FFI_ScreenReader.Patches
     }
 
     /// <summary>
-    /// Controller-based patches for config menu navigation.
-    /// Announces menu items directly from ConfigCommandController when navigating with up/down arrows.
+    /// Hooks ConfigActualDetailsControllerBase.SelectCommand — the private method the
+    /// game invokes when the user navigates up/down within the config menu. Unlike
+    /// ConfigCommandController.SetFocus (which the game re-asserts every frame on the
+    /// focused controller), SelectCommand fires exactly once per cursor movement. That
+    /// makes this patch event-driven with no dedup required.
     /// </summary>
-    [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigCommandController), nameof(Il2CppLast.UI.KeyInput.ConfigCommandController.SetFocus))]
     public static class ConfigCommandController_SetFocus_Patch
     {
+        internal static void ResetTracking()
+        {
+            // Kept for compatibility with ConfigController_SetActive_Patch — the
+            // event-driven hook has no state to clear, but external callers reference this.
+        }
+    }
+
+    [HarmonyPatch]
+    public static class ConfigActualDetails_SelectCommand_Patch
+    {
+        static System.Reflection.MethodBase TargetMethod()
+        {
+            return AccessTools.Method(
+                typeof(Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase),
+                "SelectCommand");
+        }
+
         [HarmonyPostfix]
-        public static void Postfix(Il2CppLast.UI.KeyInput.ConfigCommandController __instance, bool isFocus)
+        public static void Postfix(Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase __instance)
         {
             try
             {
-                // Only announce when gaining focus (not losing it)
-                if (!isFocus)
-                {
-                    return;
-                }
-
-                // Safety checks
                 if (__instance == null)
-                {
                     return;
-                }
 
-                // Don't announce if controller is not active (prevents announcements during scene loading)
-                if (!__instance.gameObject.activeInHierarchy)
-                {
+                var selected = __instance.SelectedCommand;
+                if (selected == null)
                     return;
-                }
 
-                // Verify this controller is actually the selected one by checking the parent ConfigActualDetailsControllerBase
-                var configDetailsController = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_KeyInput>();
-                if (configDetailsController != null)
-                {
-                    var selectedCommand = configDetailsController.SelectedCommand;
-                    if (selectedCommand != null && selectedCommand != __instance)
-                    {
-                        // This is not the selected controller, skip
-                        return;
-                    }
-                }
+                // Skip if controller is not active (prevents announcements during scene loading)
+                if (!selected.gameObject.activeInHierarchy)
+                    return;
 
-                // Get the view which contains the localized text
-                var view = __instance.view;
+                var view = selected.view;
                 if (view == null)
-                {
                     return;
-                }
 
-                // Get the name text (localized)
                 var nameText = view.NameText;
                 if (nameText == null || string.IsNullOrWhiteSpace(nameText.text))
-                {
                     return;
-                }
 
                 string menuText = nameText.text.Trim();
 
                 // Filter out template/placeholder values
                 if (menuText == "NewText" || menuText == "Text" || menuText == "Name" || menuText == "Label")
-                {
                     return;
-                }
 
-                // Also try to get the current value for this config option
-                string configValue = ConfigMenuReader.FindConfigValueFromController(__instance);
+                string configValue = ConfigMenuReader.FindConfigValueFromController(selected);
 
-                string announcement = menuText;
-                if (!string.IsNullOrWhiteSpace(configValue))
-                {
-                    announcement = $"{menuText}: {configValue}";
-                }
+                string announcement = string.IsNullOrWhiteSpace(configValue)
+                    ? menuText
+                    : $"{menuText}: {configValue}";
 
-                // Set active state and clear other menu states
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
                 ConfigMenuState.IsActive = true;
 
@@ -143,10 +131,9 @@ namespace FFI_ScreenReader.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"Error in ConfigCommandController.SetFocus patch: {ex.Message}");
+                MelonLogger.Warning($"Error in ConfigActualDetails.SelectCommand patch: {ex.Message}");
             }
         }
-
     }
 
     /// <summary>
@@ -221,48 +208,71 @@ namespace FFI_ScreenReader.Patches
     }
 
     /// <summary>
-    /// Patch for SwitchSliderTypeProcess - called when left/right arrows change slider values.
-    /// Only announces when the value actually changes for the SAME option.
+    /// Hooks ConfigCommandController.SetSliderValue. The game calls this every frame on
+    /// the focused slider to keep the visual in sync — value-change detection turns that
+    /// per-frame stream into one announcement per actual user-driven value change. The
+    /// detection compares the formatted percentage string (what we'd say) so float drift
+    /// doesn't cause spurious announcements. State resets on menu close.
     /// </summary>
-    [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase), "SwitchSliderTypeProcess")]
-    public static class ConfigActualDetails_SwitchSliderType_Patch
+    [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigCommandController), "SetSliderValue")]
+    public static class ConfigCommandController_SetSliderValue_Patch
     {
-        private static ConfigCommandController lastController = null;
+        // Tracks the focused slider and its last-announced percentage. Single-slot is
+        // sufficient because only one slider can be focused at a time.
+        private static IntPtr lastSliderPtr = IntPtr.Zero;
+        private static string lastPercentage = null;
 
         [HarmonyPostfix]
-        public static void Postfix(
-            Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase __instance,
-            ConfigCommandController controller,
-            Key key)
+        public static void Postfix(Il2CppLast.UI.KeyInput.ConfigCommandController __instance, float value)
         {
             try
             {
-                if (controller == null || controller.view == null) return;
+                if (__instance == null) return;
 
-                var view = controller.view;
-                if (view.Slider == null) return;
+                // Only fire while user is actively in the config menu.
+                if (!ConfigMenuState.IsActive) return;
 
-                // Get setting name for context-aware value formatting
+                // Skip per-slider initialization fires for non-focused sliders.
+                var details = UnityEngine.Object.FindObjectOfType<ConfigActualDetailsControllerBase_KeyInput>();
+                if (details == null) return;
+                var selected = details.SelectedCommand;
+                IntPtr instancePtr = __instance.Pointer;
+                if (selected == null || selected.Pointer != instancePtr) return;
+
+                var view = __instance.view;
+                if (view == null || view.Slider == null) return;
+
                 string settingName = view.NameText?.text;
-
-                // Calculate value (percentage for most sliders, raw value for BGM/SFX)
                 string percentage = ConfigMenuReader.GetSliderPercentage(view.Slider, settingName);
                 if (string.IsNullOrEmpty(percentage)) return;
 
-                // If we moved to a different controller (different option), don't announce
-                // Let SetFocus handle the full "Name: Value" announcement
-                if (controller != lastController)
+                // Newly focused slider: SelectCommand already announced "Name: Value".
+                // Record the value and skip — only adjustments after this should announce.
+                if (instancePtr != lastSliderPtr)
                 {
-                    lastController = controller;
+                    lastSliderPtr = instancePtr;
+                    lastPercentage = percentage;
                     return;
                 }
 
+                // No change: this is a per-frame redundant SetSliderValue call from the
+                // UI sync loop. Not an event.
+                if (percentage == lastPercentage) return;
+
+                // Value actually changed — user adjusted the slider.
+                lastPercentage = percentage;
                 FFI_ScreenReaderMod.SpeakText(percentage, interrupt: true);
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"Error in SwitchSliderTypeProcess patch: {ex.Message}");
+                MelonLogger.Warning($"Error in SetSliderValue patch: {ex.Message}");
             }
+        }
+
+        internal static void ResetTracking()
+        {
+            lastSliderPtr = IntPtr.Zero;
+            lastPercentage = null;
         }
     }
 
@@ -396,6 +406,8 @@ namespace FFI_ScreenReader.Patches
             if (!isActive)
             {
                 ConfigMenuState.ResetState();
+                ConfigCommandController_SetFocus_Patch.ResetTracking();
+                ConfigCommandController_SetSliderValue_Patch.ResetTracking();
             }
         }
     }

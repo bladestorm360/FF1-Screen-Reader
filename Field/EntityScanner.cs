@@ -33,6 +33,7 @@ namespace FFI_ScreenReader.Field
         private Dictionary<FieldEntity, NavigableEntity> entityMap = new Dictionary<FieldEntity, NavigableEntity>();
 
         // Track selected entity by identifier to maintain focus across re-sorts
+        private NavigableEntity selectedEntity = null;
         private Vector3? selectedEntityPosition = null;
         private EntityCategory? selectedEntityCategory = null;
         private string selectedEntityName = null;
@@ -431,6 +432,7 @@ namespace FFI_ScreenReader.Field
             var entity = CurrentEntity;
             if (entity != null)
             {
+                selectedEntity = entity;
                 selectedEntityPosition = entity.Position;
                 selectedEntityCategory = entity.Category;
                 selectedEntityName = entity.Name;
@@ -439,6 +441,7 @@ namespace FFI_ScreenReader.Field
 
         public void ClearSelectedEntityIdentifier()
         {
+            selectedEntity = null;
             selectedEntityPosition = null;
             selectedEntityCategory = null;
             selectedEntityName = null;
@@ -446,6 +449,19 @@ namespace FFI_ScreenReader.Field
 
         private int FindEntityByIdentifier()
         {
+            // Reference match: the same NavigableEntity instance persists across scans,
+            // so reference equality keeps the cursor pinned to the selected entity even
+            // when it moves (mermaids in Sunken Shrine, etc.). Position/name fallbacks
+            // recover only if the entity object was replaced (e.g., respawned after rescan).
+            if (selectedEntity != null)
+            {
+                for (int i = 0; i < filteredEntities.Count; i++)
+                {
+                    if (ReferenceEquals(filteredEntities[i], selectedEntity))
+                        return i;
+                }
+            }
+
             if (!selectedEntityPosition.HasValue || !selectedEntityCategory.HasValue)
                 return -1;
 
