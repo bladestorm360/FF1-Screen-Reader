@@ -207,6 +207,12 @@ namespace FFI_ScreenReader.Utils
                 }
             }
 
+            // Exact-match lookup BEFORE leading-prefix stripping — guards dictionary keys
+            // that legitimately start with a digit (e.g., "2Fへワープ") from having that
+            // digit stripped as an instance-enumeration prefix and thus missing the lookup.
+            if (TryLookup(coreName, out string preStripMatch))
+                return preStripMatch + enumSuffix;
+
             // Extract leading enumeration prefix (e.g., "⑭"). The numeric form is appended as
             // a suffix to the translation, so "⑭村人（男性）" → "Male Villager 14".
             string leadingEnumSuffix = "";

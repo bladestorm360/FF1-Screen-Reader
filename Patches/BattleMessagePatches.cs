@@ -214,9 +214,18 @@ namespace FFI_ScreenReader.Patches
                 string targetName = GetUnitName(data);
 
                 string message;
-                if (hitTypeValue == HITTYPE_MISS || value == 0)
+                if (hitTypeValue == HITTYPE_MISS)
                 {
                     message = $"{targetName}: Miss";
+                }
+                else if (value == 0)
+                {
+                    // Buff/debuff spells (Protra, Invisira, Temper, Haste, Slow, etc.)
+                    // emit CreateDamageView with value=0 and a non-Miss hitType. The
+                    // actual condition application is announced by the
+                    // BattleConditionController.Add postfix — suppress here so we don't
+                    // speak a spurious "Miss" for every target the buff lands on.
+                    return;
                 }
                 else if (hitTypeValue == HITTYPE_MP_RECOVERY)
                 {
