@@ -1,16 +1,13 @@
-using System;
-using System.Collections;
 using UnityEngine;
-using MelonLoader;
 using FFI_ScreenReader.Patches;
-using FFI_ScreenReader.Utils;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core.Handlers
 {
     /// <summary>
-    /// Handles function key input (F1, F3, F5, F8).
-    /// Returns true if a key was consumed.
+    /// Handles function key input (F4, F5, F6, F8).
+    /// F1 (walk/run) and F3 (encounter) announcements are now delivered by GameToggleAnnouncer,
+    /// which watches the underlying game state and announces on change rather than on keypress.
     /// </summary>
     internal static class FunctionKeyHandler
     {
@@ -47,18 +44,6 @@ namespace FFI_ScreenReader.Core.Handlers
                 return true;
             }
 
-            if (Input.GetKeyDown(KeyCode.F1))
-            {
-                CoroutineManager.StartUntracked(AnnounceWalkRunState());
-                return true;
-            }
-
-            if (Input.GetKeyDown(KeyCode.F3))
-            {
-                CoroutineManager.StartUntracked(AnnounceEncounterState());
-                return true;
-            }
-
             if (Input.GetKeyDown(KeyCode.F4))
             {
                 FFI_ScreenReaderMod.Instance?.ToggleAutoDetail();
@@ -72,43 +57,6 @@ namespace FFI_ScreenReader.Core.Handlers
             }
 
             return false;
-        }
-
-        internal static IEnumerator AnnounceWalkRunState()
-        {
-            yield return null;
-            yield return null;
-            yield return null;
-
-            try
-            {
-                bool isDashing = MoveStateHelper.GetDashFlag();
-                string state = isDashing ? T("Run") : T("Walk");
-                FFI_ScreenReaderMod.SpeakText(state, interrupt: true);
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[F1] Error reading walk/run state: {ex.Message}");
-            }
-        }
-
-        internal static IEnumerator AnnounceEncounterState()
-        {
-            yield return null;
-            try
-            {
-                var userData = Il2CppLast.Management.UserDataManager.Instance();
-                if (userData?.CheatSettingsData != null)
-                {
-                    bool enabled = userData.CheatSettingsData.IsEnableEncount;
-                    string state = enabled ? T("Encounters on") : T("Encounters off");
-                    FFI_ScreenReaderMod.SpeakText(state, interrupt: true);
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[F3] Error reading encounter state: {ex.Message}");
-            }
         }
     }
 }

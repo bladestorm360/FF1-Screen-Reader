@@ -246,16 +246,39 @@ namespace FFI_ScreenReader.Core
 
         private static bool unityGamepadDisabled;
 
+        private static bool IsGamepadLike(UnityEngine.InputSystem.InputDevice device)
+        {
+            // TryCast (Il2CppInterop) — `is T` checks the managed-side type, but
+            // InputSystem.devices returns Il2Cpp-wrapped objects, so `is Gamepad`
+            // silently returns false for every device. TryCast is the canonical
+            // Il2Cpp type-check pattern used throughout this project.
+            return device.TryCast<UnityEngine.InputSystem.Gamepad>() != null
+                || device.TryCast<UnityEngine.InputSystem.Joystick>() != null;
+        }
+
+        /// <summary>
+        /// Disables every Unity InputSystem gamepad/joystick device so the game cannot
+        /// read controller input through Unity's stack — SDL is the sole source. On
+        /// reconnect Unity creates a fresh device object (Gamepad.current may be null or
+        /// stale for a frame), so iterating all devices is required, not just .current.
+        /// </summary>
         private static void DisableUnityGamepad()
         {
             try
             {
-                var gamepad = UnityEngine.InputSystem.Gamepad.current;
-                if (gamepad != null)
+                int disabled = 0;
+                foreach (var device in UnityEngine.InputSystem.InputSystem.devices)
                 {
-                    UnityEngine.InputSystem.InputSystem.DisableDevice(gamepad);
+                    if (device == null || !IsGamepadLike(device)) continue;
+                    if (!device.enabled) continue;
+
+                    UnityEngine.InputSystem.InputSystem.DisableDevice(device);
+                    disabled++;
+                }
+                if (disabled > 0)
+                {
                     unityGamepadDisabled = true;
-                    MelonLogger.Msg("[GamepadManager] Disabled Unity gamepad device");
+                    MelonLogger.Msg($"[GamepadManager] Disabled {disabled} Unity gamepad/joystick device(s)");
                 }
             }
             catch (Exception ex)
@@ -269,26 +292,37 @@ namespace FFI_ScreenReader.Core
             if (!unityGamepadDisabled) return;
             try
             {
-                var gamepad = UnityEngine.InputSystem.Gamepad.current;
-                if (gamepad != null)
-                    UnityEngine.InputSystem.InputSystem.EnableDevice(gamepad);
+                foreach (var device in UnityEngine.InputSystem.InputSystem.devices)
+                {
+                    if (device == null || !IsGamepadLike(device)) continue;
+                    if (device.enabled) continue;
+
+                    UnityEngine.InputSystem.InputSystem.EnableDevice(device);
+                }
                 unityGamepadDisabled = false;
             }
             catch { }
         }
 
         /// <summary>
-        /// Guard: re-disable if the game re-enabled the device (scene transitions, etc.).
-        /// Called from Update each frame.
+        /// Guard: re-disable if Unity has re-enabled (scene transitions, hotplug, etc.).
+        /// Called from Update each frame so we catch devices Unity registers asynchronously
+        /// after the SDL ADDED event has already fired.
         /// </summary>
         private static void EnsureUnityGamepadDisabled()
         {
             if (!IsAvailable) return;
             try
             {
-                var gamepad = UnityEngine.InputSystem.Gamepad.current;
-                if (gamepad != null && gamepad.enabled)
-                    DisableUnityGamepad();
+                foreach (var device in UnityEngine.InputSystem.InputSystem.devices)
+                {
+                    if (device == null || !IsGamepadLike(device)) continue;
+                    if (device.enabled)
+                    {
+                        DisableUnityGamepad();
+                        return;
+                    }
+                }
             }
             catch { }
         }
@@ -302,21 +336,34 @@ namespace FFI_ScreenReader.Core
             try
             {
                 uint firstId = (uint)Marshal.ReadInt32(ids, 0);
-                gamepadHandle = SDL3.SDL_OpenGamepad(firstId);
-
-                if (gamepadHandle != IntPtr.Zero)
-                {
-                    gamepadType = SDL3.SDL_GetGamepadType(gamepadHandle);
-                    IntPtr namePtr = SDL3.SDL_GetGamepadName(gamepadHandle);
-                    string name = namePtr != IntPtr.Zero
-                        ? Marshal.PtrToStringAnsi(namePtr)
-                        : "Unknown";
-                    MelonLogger.Msg($"[GamepadManager] SDL3 initialized, gamepad: {name}, type: {ControllerLabels.GetControllerTypeName(gamepadType)}");
-                }
+                OpenGamepad(firstId);
             }
             finally
             {
                 SDL3.SDL_free(ids);
+            }
+        }
+
+        /// <summary>
+        /// Opens the gamepad with the specified SDL instance ID and sets gamepadHandle/Type.
+        /// Logs success or failure. Called from OpenFirstGamepad (startup, fallback) and
+        /// directly from HandleGamepadAdded (using the event's instance ID).
+        /// </summary>
+        private static void OpenGamepad(uint instanceId)
+        {
+            gamepadHandle = SDL3.SDL_OpenGamepad(instanceId);
+            if (gamepadHandle != IntPtr.Zero)
+            {
+                gamepadType = SDL3.SDL_GetGamepadType(gamepadHandle);
+                IntPtr namePtr = SDL3.SDL_GetGamepadName(gamepadHandle);
+                string name = namePtr != IntPtr.Zero
+                    ? Marshal.PtrToStringAnsi(namePtr)
+                    : "Unknown";
+                MelonLogger.Msg($"[GamepadManager] Opened gamepad id={instanceId}, name={name}, type={ControllerLabels.GetControllerTypeName(gamepadType)}");
+            }
+            else
+            {
+                MelonLogger.Warning($"[GamepadManager] SDL_OpenGamepad({instanceId}) returned null");
             }
         }
 
@@ -334,11 +381,85 @@ namespace FFI_ScreenReader.Core
 
             SDL3.SDL_PumpEvents();
 
+            // Drain pending events — pick out gamepad add/remove so the mod recovers
+            // from controllers unplugged/replugged mid-session. Keyboard polls state
+            // directly via GetAsyncKeyState, so draining the SDL event queue is safe.
+            while (SDL3.SDL_PollEvent(out var evt))
+            {
+                if (evt.type == SDL3.SDL_EVENT_GAMEPAD_REMOVED)
+                    HandleGamepadRemoved(evt.gdevice_which);
+                else if (evt.type == SDL3.SDL_EVENT_GAMEPAD_ADDED)
+                    HandleGamepadAdded(evt.gdevice_which);
+            }
+
             if (gamepadHandle != IntPtr.Zero)
             {
                 PollGamepad();
                 EnsureUnityGamepadDisabled();
             }
+        }
+
+        private static void HandleGamepadRemoved(uint id)
+        {
+            try
+            {
+                if (gamepadHandle == IntPtr.Zero)
+                    return;
+
+                // Only react to the removal of the gamepad we currently own.
+                uint ownId = SDL3.SDL_GetGamepadID(gamepadHandle);
+                if (ownId != id)
+                    return;
+
+                CloseAndClearGamepadState();
+                MelonLogger.Msg("[GamepadManager] Controller disconnected");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[GamepadManager] Disconnect handling failed: {ex.Message}");
+            }
+        }
+
+        private static void HandleGamepadAdded(uint instanceId)
+        {
+            try
+            {
+                // Hot-swap support: if we already hold a handle (player swapped
+                // controllers without an intervening REMOVED), close it first.
+                if (gamepadHandle != IntPtr.Zero)
+                    CloseAndClearGamepadState();
+
+                OpenGamepad(instanceId);
+
+                if (gamepadHandle != IntPtr.Zero)
+                    DisableUnityGamepad();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[GamepadManager] Reconnect handling failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Closes the SDL gamepad handle and wipes cached input state. Shared by
+        /// disconnect handling and hot-swap-while-open recovery.
+        /// </summary>
+        private static void CloseAndClearGamepadState()
+        {
+            try { SDL3.SDL_CloseGamepad(gamepadHandle); } catch { }
+            gamepadHandle = IntPtr.Zero;
+            gamepadType = SDL3.SDL_GAMEPAD_TYPE_UNKNOWN;
+
+            // Wipe edge-detection state so a reconnect doesn't synthesize fake "released"
+            // or "pressed" transitions from the stale snapshot.
+            Array.Clear(btnCurrent, 0, btnCurrent.Length);
+            Array.Clear(btnPrevious, 0, btnPrevious.Length);
+            Array.Clear(rstickCurrent, 0, rstickCurrent.Length);
+            Array.Clear(rstickPrevious, 0, rstickPrevious.Length);
+            Array.Clear(lstickCurrent, 0, lstickCurrent.Length);
+            Array.Clear(lstickPrevious, 0, lstickPrevious.Length);
+            LeftStickX = LeftStickY = RightStickX = RightStickY = 0f;
+            LeftTrigger = RightTrigger = 0f;
         }
 
         private static void PollKeyboard()

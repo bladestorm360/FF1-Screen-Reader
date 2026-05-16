@@ -150,11 +150,34 @@ namespace FFI_ScreenReader.Core
         public static extern void SDL_Quit();
 
         // =====================================================================
+        // Event types (subset — gamepad hotplug). Values from SDL_events.h:
+        // the gamepad event range starts at 0x650 with AXIS_MOTION, BUTTON_DOWN,
+        // BUTTON_UP, then ADDED, REMOVED, REMAPPED.
+        // =====================================================================
+        public const uint SDL_EVENT_GAMEPAD_ADDED = 0x653;
+        public const uint SDL_EVENT_GAMEPAD_REMOVED = 0x654;
+
+        /// <summary>
+        /// SDL_Event union — 128 bytes. We only need the type field and, for
+        /// gamepad device events, the `which` instance ID at offset 16.
+        /// </summary>
+        [StructLayout(LayoutKind.Explicit, Size = 128)]
+        public struct SDL_Event
+        {
+            [FieldOffset(0)] public uint type;
+            [FieldOffset(16)] public uint gdevice_which; // SDL_GamepadDeviceEvent.which
+        }
+
+        // =====================================================================
         // P/Invoke — Events
         // =====================================================================
 
         [DllImport(SDL3_DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SDL_PumpEvents();
+
+        [DllImport(SDL3_DLL, CallingConvention = CallingConvention.Cdecl)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        public static extern bool SDL_PollEvent(out SDL_Event evt);
 
         // =====================================================================
         // P/Invoke — Gamepad enumeration
@@ -196,6 +219,9 @@ namespace FFI_ScreenReader.Core
 
         [DllImport(SDL3_DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern int SDL_GetGamepadType(IntPtr gamepad);
+
+        [DllImport(SDL3_DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint SDL_GetGamepadID(IntPtr gamepad);
 
         // SDL_GamepadType enum
         public const int SDL_GAMEPAD_TYPE_UNKNOWN = 0;

@@ -93,6 +93,14 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
+                // Gate: only announce when the real config menu is open. The
+                // title-screen language selector and load-game flow share this base
+                // class and would otherwise leak announcements like "Language" or
+                // "Cursor memory: off" outside the config menu. IsActive is driven
+                // by ConfigController.SetActive — set in the postfix below.
+                if (!ConfigMenuState.IsActive)
+                    return;
+
                 if (__instance == null)
                     return;
 
@@ -123,9 +131,6 @@ namespace FFI_ScreenReader.Patches
                 string announcement = string.IsNullOrWhiteSpace(configValue)
                     ? menuText
                     : $"{menuText}: {configValue}";
-
-                FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
-                ConfigMenuState.IsActive = true;
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
@@ -403,7 +408,16 @@ namespace FFI_ScreenReader.Patches
         [HarmonyPostfix]
         public static void Postfix(bool isActive)
         {
-            if (!isActive)
+            if (isActive)
+            {
+                // Drive IsActive from the config menu's lifecycle so the SelectCommand
+                // postfix only announces inside the real config menu, not for sibling
+                // controllers (title-screen language selector, save-load options) that
+                // share ConfigActualDetailsControllerBase.
+                FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
+                ConfigMenuState.IsActive = true;
+            }
+            else
             {
                 ConfigMenuState.ResetState();
                 ConfigCommandController_SetFocus_Patch.ResetTracking();

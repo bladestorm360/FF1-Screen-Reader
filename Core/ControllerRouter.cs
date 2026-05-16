@@ -256,20 +256,25 @@ namespace FFI_ScreenReader.Core
             var mod = FFI_ScreenReaderMod.Instance;
             if (mod == null) return;
 
-            // R3 → toggle pathfinding filter
-            if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK))
+            // When Stick Click Normalization is ON, R3/L3 fall through to the game (encounter
+            // toggle / auto-dash). Mod functions move to MOD_MODE. When OFF, mod handles them.
+            if (!FFI_ScreenReaderMod.StickClickNormalizationEnabled)
             {
-                ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK);
-                mod.TogglePathfindingFilter();
-                return;
-            }
+                // R3 → toggle pathfinding filter
+                if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK))
+                {
+                    ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+                    mod.TogglePathfindingFilter();
+                    return;
+                }
 
-            // L3 → toggle beacon navigation mode
-            if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK))
-            {
-                ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK);
-                mod.ToggleAudioBeacons();
-                return;
+                // L3 → toggle beacon navigation mode
+                if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK))
+                {
+                    ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK);
+                    mod.ToggleAudioBeacons();
+                    return;
+                }
             }
 
             // Interrupt speech on any navigation input
@@ -379,6 +384,17 @@ namespace FFI_ScreenReader.Core
 
                 if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_SOUTH))
                 { GlobalHotkeyHandler.AnnounceCurrentVehicle(); State = ControllerState.Normal; return; }
+
+                // When Stick Click Normalization is on, the stick-click mod functions move
+                // here so the player can still reach them via mod button + R3/L3.
+                if (FFI_ScreenReaderMod.StickClickNormalizationEnabled)
+                {
+                    if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK))
+                    { mod.TogglePathfindingFilter(); State = ControllerState.Normal; return; }
+
+                    if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_LEFT_STICK))
+                    { mod.ToggleAudioBeacons(); State = ControllerState.Normal; return; }
+                }
 
                 // Right stick → teleport (field only)
                 if (GamepadManager.RStickUpPressed)

@@ -28,6 +28,8 @@ namespace FFI_ScreenReader.Core
         private abstract class MenuItem
         {
             public string Name { get; protected set; }
+            // Lambda so toggle descriptions can change with the current state.
+            public Func<string> DescriptionGetter { get; protected set; } = () => "";
             public abstract string GetValueString();
             public abstract void Adjust(int delta);
             public abstract void Toggle();
@@ -38,11 +40,12 @@ namespace FFI_ScreenReader.Core
             private readonly Func<bool> getter;
             private readonly Action toggle;
 
-            public ToggleItem(string name, Func<bool> getter, Action toggle)
+            public ToggleItem(string name, Func<bool> getter, Action toggle, Func<string> description = null)
             {
                 Name = name;
                 this.getter = getter;
                 this.toggle = toggle;
+                if (description != null) DescriptionGetter = description;
             }
 
             public override string GetValueString() => getter() ? T("On") : T("Off");
@@ -55,11 +58,12 @@ namespace FFI_ScreenReader.Core
             private readonly Func<int> getter;
             private readonly Action<int> setter;
 
-            public VolumeItem(string name, Func<int> getter, Action<int> setter)
+            public VolumeItem(string name, Func<int> getter, Action<int> setter, Func<string> description = null)
             {
                 Name = name;
                 this.getter = getter;
                 this.setter = setter;
+                if (description != null) DescriptionGetter = description;
             }
 
             public override string GetValueString() => $"{getter()}%";
@@ -85,12 +89,13 @@ namespace FFI_ScreenReader.Core
             private readonly Func<int> getter;
             private readonly Action<int> setter;
 
-            public EnumItem(string name, string[] options, Func<int> getter, Action<int> setter)
+            public EnumItem(string name, string[] options, Func<int> getter, Action<int> setter, Func<string> description = null)
             {
                 Name = name;
                 this.options = options;
                 this.getter = getter;
                 this.setter = setter;
+                if (description != null) DescriptionGetter = description;
             }
 
             public override string GetValueString()
@@ -129,10 +134,11 @@ namespace FFI_ScreenReader.Core
         {
             private readonly Action action;
 
-            public ActionItem(string name, Action action)
+            public ActionItem(string name, Action action, Func<string> description = null)
             {
                 Name = name;
                 this.action = action;
+                if (description != null) DescriptionGetter = description;
             }
 
             public override string GetValueString() => "";
@@ -154,56 +160,89 @@ namespace FFI_ScreenReader.Core
                 new SectionHeader(T("Audio Feedback")),
                 new ToggleItem(T("Wall Tones"),
                     () => FFI_ScreenReaderMod.WallTonesEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.ToggleWallTones()),
+                    () => FFI_ScreenReaderMod.Instance?.ToggleWallTones(),
+                    () => FFI_ScreenReaderMod.WallTonesEnabled
+                        ? T("On. Directional tones play as you approach walls.")
+                        : T("Off. No directional wall feedback.")),
                 new ToggleItem(T("Footsteps"),
                     () => FFI_ScreenReaderMod.FootstepsEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.ToggleFootsteps()),
+                    () => FFI_ScreenReaderMod.Instance?.ToggleFootsteps(),
+                    () => FFI_ScreenReaderMod.FootstepsEnabled
+                        ? T("On. A click plays for each tile of player movement.")
+                        : T("Off. No per-tile movement sound.")),
                 new ToggleItem(T("Beacon Navigation"),
                     () => FFI_ScreenReaderMod.AudioBeaconsEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons()),
+                    () => FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons(),
+                    () => FFI_ScreenReaderMod.AudioBeaconsEnabled
+                        ? T("On. Audio beacon is the primary navigation aid; turn-by-turn pathfinding is disabled.")
+                        : T("Off. Turn-by-turn pathfinding is used for navigation.")),
 
                 // Volume Controls section
                 new SectionHeader(T("Volume Controls")),
                 new VolumeItem(T("Wall Bump Volume"),
                     () => PreferencesManager.WallBumpVolume,
-                    PreferencesManager.SetWallBumpVolume),
+                    PreferencesManager.SetWallBumpVolume,
+                    () => T("Volume of wall bump sound effects, zero to one hundred percent.")),
                 new VolumeItem(T("Footstep Volume"),
                     () => PreferencesManager.FootstepVolume,
-                    PreferencesManager.SetFootstepVolume),
+                    PreferencesManager.SetFootstepVolume,
+                    () => T("Volume of footstep sounds, zero to one hundred percent.")),
                 new VolumeItem(T("Wall Tone Volume"),
                     () => PreferencesManager.WallToneVolume,
-                    PreferencesManager.SetWallToneVolume),
+                    PreferencesManager.SetWallToneVolume,
+                    () => T("Volume of directional wall proximity tones, zero to one hundred percent.")),
                 new VolumeItem(T("Beacon Volume"),
                     () => PreferencesManager.BeaconVolume,
-                    PreferencesManager.SetBeaconVolume),
+                    PreferencesManager.SetBeaconVolume,
+                    () => T("Volume of audio beacon pings, zero to one hundred percent.")),
 
                 // Navigation Filters section
                 new SectionHeader(T("Navigation Filters")),
                 new ToggleItem(T("Pathfinding Filter"),
                     () => FFI_ScreenReaderMod.PathfindingFilterEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.TogglePathfindingFilter()),
+                    () => FFI_ScreenReaderMod.Instance?.TogglePathfindingFilter(),
+                    () => FFI_ScreenReaderMod.PathfindingFilterEnabled
+                        ? T("On. Entity cycling shows only entities reachable via pathfinding.")
+                        : T("Off. All entities appear when cycling, including unreachable ones.")),
                 new ToggleItem(T("Map Exit Filter"),
                     () => FFI_ScreenReaderMod.MapExitFilterEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.ToggleMapExitFilter()),
+                    () => FFI_ScreenReaderMod.Instance?.ToggleMapExitFilter(),
+                    () => FFI_ScreenReaderMod.MapExitFilterEnabled
+                        ? T("On. Multiple exits leading to the same destination collapse to the closest one.")
+                        : T("Off. All map exits appear in navigation.")),
                 new ToggleItem(T("Layer Transition Filter"),
                     () => FFI_ScreenReaderMod.ToLayerFilterEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.ToggleToLayerFilter()),
+                    () => FFI_ScreenReaderMod.Instance?.ToggleToLayerFilter(),
+                    () => FFI_ScreenReaderMod.ToLayerFilterEnabled
+                        ? T("On. Layer transition entities are hidden from navigation.")
+                        : T("Off. Layer transition entities appear in navigation.")),
+                new ToggleItem(T("Stick Click Normalization"),
+                    () => FFI_ScreenReaderMod.StickClickNormalizationEnabled,
+                    () => FFI_ScreenReaderMod.Instance?.ToggleStickClickNormalization(),
+                    () => FFI_ScreenReaderMod.StickClickNormalizationEnabled
+                        ? T("On. L3 and R3 pass through to the game (auto-dash and encounter toggle). Mod functions move to mod mode.")
+                        : T("Off. L3 toggles beacon navigation; R3 toggles pathfinding filter; game cannot see them.")),
 
                 // Battle Settings section
                 new SectionHeader(T("Battle Settings")),
                 new EnumItem(T("Enemy HP Display"),
                     new[] { T("Numbers"), T("Percentage"), T("Hidden") },
                     () => PreferencesManager.EnemyHPDisplay,
-                    PreferencesManager.SetEnemyHPDisplay),
+                    PreferencesManager.SetEnemyHPDisplay,
+                    () => T("Controls how enemy HP appears in battle: numeric value, percentage of max, or hidden.")),
 
                 // Announcements section
                 new SectionHeader(T("Announcements")),
                 new ToggleItem(T("Auto Detail"),
                     () => FFI_ScreenReaderMod.AutoDetailEnabled,
-                    () => FFI_ScreenReaderMod.Instance?.ToggleAutoDetail()),
+                    () => FFI_ScreenReaderMod.Instance?.ToggleAutoDetail(),
+                    () => FFI_ScreenReaderMod.AutoDetailEnabled
+                        ? T("On. Descriptions and stats announce automatically on focus for items, magic, equipment, and shops.")
+                        : T("Off. Use the I key to read descriptions on demand.")),
 
                 // Close Menu action
-                new ActionItem(T("Close Menu"), Close)
+                new ActionItem(T("Close Menu"), Close,
+                    () => T("Closes the mod menu and returns to the game."))
             };
 
         }
@@ -302,7 +341,25 @@ namespace FFI_ScreenReader.Core
                 return true;
             }
 
+            // I - read context tooltip for current item
+            if (GamepadManager.IsKeyCodePressed(KeyCode.I))
+            {
+                AnnounceCurrentItemDescription();
+                return true;
+            }
+
             return true; // Consume all input while menu is open
+        }
+
+        private static void AnnounceCurrentItemDescription()
+        {
+            if (items == null || currentIndex < 0 || currentIndex >= items.Count) return;
+
+            var item = items[currentIndex];
+            string desc = item.DescriptionGetter?.Invoke();
+            FFI_ScreenReaderMod.SpeakText(
+                string.IsNullOrWhiteSpace(desc) ? T("No description") : desc,
+                interrupt: true);
         }
 
         internal static void NavigateNext()

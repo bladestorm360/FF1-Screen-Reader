@@ -959,6 +959,19 @@ namespace FFI_ScreenReader.Patches
                             MenuStateRegistry.BESTIARY_LIST,
                             MenuStateRegistry.BESTIARY_DETAIL);
                         MenuStateRegistry.SetActive(MenuStateRegistry.BESTIARY_DETAIL, true);
+
+                        // Title-screen branch announces + builds the navigable stat buffer
+                        // via LibraryInfoController.SetData postfix. The config branch goes
+                        // through a different controller that the mod doesn't hook, so on
+                        // fresh entry (not a list→detail re-entry within the same session)
+                        // we trigger the same announcement manually so the player isn't
+                        // dropped silently into the detail view.
+                        if (previousBestiaryState != 4)
+                        {
+                            var data = BestiaryNavigationTracker.Instance.CurrentMonsterData;
+                            if (data != null)
+                                CoroutineManager.StartManaged(DelayedConfigMonsterChangeAnnouncement(data));
+                        }
                     }
 
                     _previousState = mainGameState;

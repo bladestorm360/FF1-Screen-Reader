@@ -71,6 +71,9 @@ namespace FFI_ScreenReader.Core
         private bool enableAudioBeacons = false;
         private bool enableAutoDetail = false;
 
+        // Controller normalization (L3/R3 pass-through to game when not in mod mode)
+        private bool enableStickClickNormalization = false;
+
         public override void OnInitializeMelon()
         {
             LoggerInstance.Msg("FFI Screen Reader Mod loaded!");
@@ -95,6 +98,7 @@ namespace FFI_ScreenReader.Core
             enableFootsteps = PreferencesManager.FootstepsDefault;
             enableAudioBeacons = PreferencesManager.AudioBeaconsDefault;
             enableAutoDetail = PreferencesManager.AutoDetailDefault;
+            enableStickClickNormalization = PreferencesManager.StickClickNormalizationDefault;
 
             // Initialize Tolk for screen reader support
             tolk = new TolkWrapper();
@@ -341,6 +345,9 @@ namespace FFI_ScreenReader.Core
                 // Reset movement state for new map
                 MovementSoundPatches.ResetState();
 
+                // Reset game-toggle poller cache so cross-save load doesn't spuriously announce
+                Handlers.GameToggleAnnouncer.Reset();
+
                 // Reset location message tracker (but NOT lastAnnouncedMapId —
                 // battle transitions change scenes without changing maps)
                 LocationMessageTracker.Reset();
@@ -478,6 +485,13 @@ namespace FFI_ScreenReader.Core
             SaveAndAnnounce(T("Auto detail"), enableAutoDetail);
         }
 
+        internal void ToggleStickClickNormalization()
+        {
+            enableStickClickNormalization = !enableStickClickNormalization;
+            PreferencesManager.SaveStickClickNormalization(enableStickClickNormalization);
+            SaveAndAnnounce(T("Stick click normalization"), enableStickClickNormalization);
+        }
+
         // Accessors for audio feedback state (used by AudioLoopManager and MovementSoundPatches)
         internal bool IsWallTonesEnabled() => enableWallTones;
         internal bool IsFootstepsEnabled() => enableFootsteps;
@@ -491,6 +505,7 @@ namespace FFI_ScreenReader.Core
         public static bool FootstepsEnabled => instance?.enableFootsteps ?? false;
         public static bool AudioBeaconsEnabled => instance?.enableAudioBeacons ?? false;
         public static bool AutoDetailEnabled => instance?.enableAutoDetail ?? false;
+        public static bool StickClickNormalizationEnabled => instance?.enableStickClickNormalization ?? false;
 
         /// <summary>
         /// Gets the currently selected entity for audio beacon tracking.
