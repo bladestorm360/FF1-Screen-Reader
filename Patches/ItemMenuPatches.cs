@@ -350,28 +350,21 @@ namespace FFI_ScreenReader.Patches
                 if (characterData == null)
                     return;
 
-                // Build announcement: "Character Name, Level X, HP current/max, Status effects"
+                // Build announcement: "Character Name, HP current/max, Status effects"
                 // Note: Row is intentionally NOT included for item targeting - only for status/equip menus
-                // Note: FF1 uses spell charges per level, not MP - so MP is not announced
+                // Note: FF1 has no MP system, so MP is not announced
                 string charName = characterData.Name;
                 if (string.IsNullOrWhiteSpace(charName))
                     return;
 
                 string announcement = charName;
 
-                // Add level, HP, and status information
+                // Add HP and status information
                 try
                 {
                     var parameter = characterData.Parameter;
                     if (parameter != null)
                     {
-                        // Add level
-                        int level = parameter.BaseLevel;
-                        if (level > 0)
-                        {
-                            announcement += $", Level {level}";
-                        }
-
                         // Add HP
                         int currentHp = parameter.currentHP;
                         int maxHp = parameter.ConfirmedMaxHp();

@@ -149,7 +149,6 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 ## Known Limitations
 
-- **Accuracy/evasion stat gains** — not hooked (complexity)
 - **F1 Walk/Run** — only affects dungeons/towns; world map uses fixed walk speed
 - **Battle conditions** — preemptive/back attack disabled in FF1 (`BackAttackDiameter=0`, `PreeMptiveDiameter=2`)
 

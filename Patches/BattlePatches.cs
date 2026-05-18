@@ -32,12 +32,22 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static int LastSelectedCommandIndex { get; set; } = -1;
 
+        /// <summary>
+        /// The character whose turn is currently being selected/executed.
+        /// Set by BattleCommandPatches.SetCommandData_Postfix when SetCommandData
+        /// is invoked for a player character. Cleared on battle end.
+        /// Used by AnnounceCharacterStatus (H key / Back+X) to scope the readout
+        /// to the active actor instead of dumping the whole party.
+        /// </summary>
+        public static Il2CppLast.Data.User.OwnedCharacterData CurrentActor { get; set; } = null;
+
         private class MenuStateInstance : MenuStateBase
         {
             protected override string RegistryKey => MenuStateRegistry.BATTLE_COMMAND;
             protected override void OnReset()
             {
                 LastSelectedCommandIndex = -1;
+                CurrentActor = null;
                 base.OnReset();
             }
         }

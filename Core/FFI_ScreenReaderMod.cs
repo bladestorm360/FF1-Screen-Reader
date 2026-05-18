@@ -191,7 +191,6 @@ namespace FFI_ScreenReader.Core
             // Vehicle/movement patches (ship, canoe, airship landing detection)
             VehicleLandingPatches.ApplyPatches(harmony);
             MovementSpeechPatches.ApplyPatches(harmony);
-            DashFlagPatches.ApplyPatches(harmony);
 
             // Popup patches (confirmations, save/load, battle pause, game over)
             PopupPatches.ApplyPatches(harmony);
@@ -653,76 +652,57 @@ namespace FFI_ScreenReader.Core
                 // H key only works in battle
                 if (!Patches.BattleStateHelper.IsInBattle)
                 {
-                    SpeakText(T("Party status only available in battle"), true);
+                    SpeakText(T("Party status only available in battle"), interrupt: true);
                     return;
                 }
 
-                var userDataManager = Il2CppLast.Management.UserDataManager.Instance();
-                if (userDataManager == null)
+                // Scope readout to the currently-active actor (the character whose turn
+                // is being selected/executed). BattleCommandPatches.SetCommandData_Postfix
+                // sets CurrentActor whenever SetCommandData fires for a player.
+                var charData = Patches.BattleCommandState.CurrentActor;
+                if (charData == null)
                 {
-                    SpeakText(T("Character data not available"), true);
+                    SpeakText(T("No active character"), interrupt: true);
                     return;
                 }
 
-                // Get party characters using GetOwnedCharactersClone
-                var partyList = userDataManager.GetOwnedCharactersClone(false);
-                if (partyList == null || partyList.Count == 0)
+                string name = charData.Name;
+                var param = charData.Parameter;
+                if (param == null)
                 {
-                    SpeakText(T("No party members"), true);
+                    SpeakText(T("Character status not available"), interrupt: true);
                     return;
                 }
 
-                var sb = new System.Text.StringBuilder();
-                foreach (var charData in partyList)
+                int currentHp = param.CurrentHP;
+                int maxHp = param.ConfirmedMaxHp();
+                string line = string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp);
+
+                // Append active status effects.
+                try
                 {
-                    try
+                    var conditionList = param.CurrentConditionList;
+                    if (conditionList != null && conditionList.Count > 0)
                     {
-                        if (charData != null)
+                        var statusNames = new System.Collections.Generic.List<string>();
+                        foreach (var condition in conditionList)
                         {
-                            string name = charData.Name;
-                            var param = charData.Parameter;
-                            if (param != null)
-                            {
-                                int currentHp = param.CurrentHP;
-                                int maxHp = param.ConfirmedMaxHp();
-                                string hpLine = string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp);
-
-                                // Append active status effects
-                                try
-                                {
-                                    var conditionList = param.CurrentConditionList;
-                                    if (conditionList != null && conditionList.Count > 0)
-                                    {
-                                        var statusNames = new System.Collections.Generic.List<string>();
-                                        foreach (var condition in conditionList)
-                                        {
-                                            string condName = MagicMenuState.GetConditionName(condition);
-                                            if (!string.IsNullOrWhiteSpace(condName))
-                                                statusNames.Add(condName);
-                                        }
-                                        if (statusNames.Count > 0)
-                                            hpLine += " " + string.Join(", ", statusNames);
-                                    }
-                                }
-                                catch { } // Status effect reading is non-critical
-
-                                sb.AppendLine(hpLine);
-                            }
+                            string condName = MagicMenuState.GetConditionName(condition);
+                            if (!string.IsNullOrWhiteSpace(condName))
+                                statusNames.Add(condName);
                         }
+                        if (statusNames.Count > 0)
+                            line += " " + string.Join(", ", statusNames);
                     }
-                    catch { } // Individual character data may be invalid
                 }
+                catch { } // Status effect reading is non-critical
 
-                string status = sb.ToString().Trim();
-                if (!string.IsNullOrEmpty(status))
-                    SpeakText(status, true);
-                else
-                    SpeakText(T("No character status available"), true);
+                SpeakText(line, interrupt: true);
             }
             catch (System.Exception ex)
             {
                 MelonLogger.Warning($"[AnnounceCharacterStatus] Error: {ex.Message}");
-                SpeakText(T("Character status not available"), true);
+                SpeakText(T("Character status not available"), interrupt: true);
             }
         }
 

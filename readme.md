@@ -6,21 +6,9 @@ Adds NVDA output, pathfinding, sound queues and other accessibility aides to Fin
 
 ## Known Issues
 
-Wall tones play brief false positives when opening doors or when transitioning between maps.
-
 NPCs in shops are blocked by counters, but interacting with the counter opens the shop. Usually this is straight north from the door.
 
-Shop menus are reading the first highlighted item on both entry and exit.
-
-Items that can not be purchased due to a lack of gil are not reading, either upon highlight or the description by pressing I.
-
 Secret passages, even when opened, do not show properly on the pathfinder. Can use wall bumps and estimation to find, usually near the opening mechanism.
-
-H in battle announces statistics for all characters, not active character.
-
-Level ups read HP gained, but not other statistics.
-
-F1 key (walk/run toggle) only works in dungeons and towns. World map defaults to walking speed only - use vehicles (ship, canoe, airship) for faster world map travel.
 
 ## Install
 
@@ -37,11 +25,13 @@ Ensure you purchase Final Fantasy, the page should mention being remastered in t
 Install MelonLoader into game's installation directory. Ensure nightly builds are enabled.
 https://github.com/LavaGang/MelonLoader/releases
 
-Copy NVDAControllerClient64.dll and tolk.dll into installation directory with game executable, usually c:\\Program Files (x86)\\Steam\\Steamapps\\common\\Final Fantasy PR.
+Copy NVDAControllerClient64.dll, tolk.dll and SDL3.dll into installation directory with game executable, usually c:\\Program Files (x86)\\Steam\\Steamapps\\common\\Final Fantasy PR.
 
 If you created a steam library on another drive, the path will be Drive Letter\\Path to steam library\\SteamLibrary\\steamapps\\common\\Final Fantasy PR.
 
 FFI\_screenreader.dll   goes in MelonLoader/mods folder.
+
+waypoints.json (optional) goes in the game install's UserData folder (Final Fantasy PR\\UserData\\waypoints.json). It contains pre-marked waypoints from a playthrough — town docks, landing sites, key dungeon transitions — that you can cycle with J/L or D-pad. Skip the file if you'd rather start with an empty waypoint list and mark your own. The mod creates the UserData folder automatically on first run if it doesn't already exist.
 
 ## Keys
 
@@ -51,7 +41,7 @@ WASD or arrow keys: movement
 Enter: Confirm
 Backspace: cancel
 Q: Random suggested name during character creation. Toggle between statistics and description in buy menu in shops.
-f1: toggle between walk and run
+f1: toggle between walk and run (dungeons and towns only; world map is walk-only by design — use vehicles for faster world travel).
 f3: toggle random encounters on and off.
 
 Mod:
@@ -66,12 +56,91 @@ Shift+k: Reset category to all
 9: toggle audio beacons
 G: Announce current Gil
 M: Announce current map.
-H: In battle, announce character hp, mp, status effects.
+H: In battle, announce active character hp, mp, status effects.
 I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip
 V: Announce active vehicle state.
 Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
 f5: toggle between HP display: full numbers, percentages or no HP display. NO hp display is how the game is intended to be played by the developers.
 f8: activate the mod menu where individual sound volume can be adjusted for mod sounds, as well as all togglable options.
+
+Game controller:
+
+Button names are shown Xbox (PlayStation). Nintendo Pro / Joy-Con labels are also recognized — the controller type is auto-detected.
+
+Left Stick: movement on field, navigation in menus.
+D-pad: menu navigation only. On the field, D-pad is repurposed by the mod for waypoint cycling (see Mod controller below).
+A (Cross): Confirm.
+B (Circle): Cancel.
+X (Square): Shortcut — random name in character creation, statistics/description toggle in shop buy menus (keyboard Q equivalent).
+Y (Triangle): Open / close the field menu.
+LB / RB (L1 / R1): Tab switching in menus.
+LT (L2): Page up in non-field menus. On the field, LT is reserved by the mod for pathfinding (see Mod controller).
+RT (R2): Open the pause menu on the field and in battle. In non-field menus, page down.
+L3 (Left Stick Click): toggle random encounters (keyboard F3 equivalent) — only when Stick-click normalization is enabled in the Mod Menu.
+R3 (Right Stick Click): toggle walk/run (keyboard F1 equivalent) — only when Stick-click normalization is enabled.
+
+Start (Options) is reserved by the mod for the Mod Menu and does not pass through to the game; use Triangle for the field menu and RT for the pause menu.
+
+Mod controller:
+
+The mod adds two controller modes on top of normal play:
+- Mod Mode: armed by pressing Back; the next button triggers a mod action and auto-exits.
+- Mod Menu: opened by Start; full overlay for volume and toggle preferences (same as keyboard F8).
+
+Mode switching:
+
+Back (Share / Create / Minus): toggle Mod Mode on or off.
+Start (Options / Plus): toggle Mod Menu open or closed.
+
+Mod Mode combos (press Back to arm, then one of the following):
+
+In battle:
+  X (Square): announce active character HP, MP, and status (keyboard H equivalent).
+
+On field:
+  X (Square): announce current Gil.
+  Y (Triangle): announce current map or location.
+  A (Cross): announce active vehicle state.
+  Right Stick Up / Down / Left / Right: teleport 16 tiles in that direction.
+
+Stick-click mod actions (preference-controlled in the Mod Menu):
+
+  When stick-click normalization is OFF (default):
+    L3 (Left Stick Click): toggle audio beacons.
+    R3 (Right Stick Click): toggle pathfinding filter.
+  When stick-click normalization is ON:
+    Back + L3: toggle audio beacons.
+    Back + R3: toggle pathfinding filter.
+    (L3 / R3 alone become game functions — encounter toggle / walk-run toggle.)
+
+Normal-state mod actions (no Mod button needed):
+
+Field — waypoint navigation:
+  D-pad Up / Down: previous / next waypoint.
+  D-pad Left / Right: previous / next waypoint category.
+
+Field — entity scanning:
+  Right Stick Up / Down: previous / next entity.
+  Right Stick Left / Right: previous / next entity category.
+
+Field — pathfinding:
+  Left Trigger (L2 / ZL): pathfind to last selected target / restart beacon.
+
+In menus (status, bestiary, shop, configuration, and the Mod Menu):
+  Right Stick Up: read item details (keyboard I equivalent).
+  Right Stick Down: announce context controls / help for the current screen (keyboard Shift+I equivalent).
+  Right Stick Left: announce "usable by" classes for highlighted equipment (keyboard U equivalent).
+  D-pad Up / Down or Left Stick Up / Down: previous / next stat in the status and bestiary detail screens.
+
+Mod Menu navigation (after Start opens it):
+  D-pad or Left Stick Up / Down: navigate items.
+  D-pad or Left Stick Left / Right: decrease / increase value.
+  A (Cross): toggle / confirm.
+  B (Circle) or Start: close the Mod Menu.
+
+Auto-announced state changes:
+
+Walk / run state and random-encounters state are announced automatically whenever they change, regardless of source — keyboard F1 / F3, L3 / R3 stick clicks (when normalization is on), or any cheat-menu toggle.
 
 When on a character's status screen:
 

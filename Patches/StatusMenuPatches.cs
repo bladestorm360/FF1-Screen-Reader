@@ -389,7 +389,9 @@ namespace FFI_ScreenReader.Patches
                     var parameter = characterData.Parameter;
                     if (parameter != null)
                     {
-                        int level = parameter.BaseLevel;
+                        int level = 0;
+                        try { level = parameter.ConfirmedLevel(); }
+                        catch { try { level = parameter.BaseLevel; } catch { } }
                         if (level > 0)
                             announcement += $", Lv. {level}";
 

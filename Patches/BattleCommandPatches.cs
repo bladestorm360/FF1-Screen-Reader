@@ -288,6 +288,12 @@ namespace FFI_ScreenReader.Patches
                 if (data == null) return;
 
                 int characterId = data.Id;
+                // Always track the current actor (used by AnnounceCharacterStatus / H key),
+                // even when the character ID matches the last announced turn — re-entry
+                // into SetCommandData for the same character still means they are the
+                // currently active actor.
+                BattleCommandState.CurrentActor = data;
+
                 if (characterId == lastCharacterId) return;
                 lastCharacterId = characterId;
 
@@ -669,6 +675,7 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             lastCharacterId = -1;
+            BattleCommandState.CurrentActor = null;
         }
 
         /// <summary>

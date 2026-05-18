@@ -390,7 +390,9 @@ namespace FFI_ScreenReader.Patches
 
         /// <summary>
         /// Calculate stat gains between before and after parameter data.
-        /// FF1 uses different property names than FF3 (BasePower, BaseVitality, etc.)
+        /// FF1 properties: BasePower, BaseAgility, BaseVitality, BaseIntelligence, BaseLuck,
+        /// BaseAccuracyRate, BaseEvasionRate. Prefers the Confirmed*() methods because the
+        /// auto-property getters throw under IL2CPP on some builds.
         /// </summary>
         private static string CalculateStatGains(
             Il2CppLast.Data.CharacterParameterBase before,
@@ -400,43 +402,55 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                // HP
+                // HP - Confirmed*() method calls work reliably in IL2CPP; Base* property
+                // accessors throw on the auto-property getter for many builds, so always
+                // prefer the Confirmed*() abstract methods and only fall back to the property.
                 int hpBefore = 0, hpAfter = 0;
-                try { hpBefore = before.ConfirmedMaxHp(); } catch { try { hpBefore = before.BaseMaxHp; } catch { } } // IL2CPP accessor may fail
-                try { hpAfter = after.ConfirmedMaxHp(); } catch { try { hpAfter = after.BaseMaxHp; } catch { } } // IL2CPP accessor may fail
+                try { hpBefore = before.ConfirmedMaxHp(); } catch { try { hpBefore = before.BaseMaxHp; } catch { } }
+                try { hpAfter = after.ConfirmedMaxHp(); } catch { try { hpAfter = after.BaseMaxHp; } catch { } }
                 if (hpAfter > hpBefore) gains.Add(string.Format(T("HP +{0}"), hpAfter - hpBefore));
 
-                // Strength (FF1 uses BasePower)
+                // Strength (BasePower / ConfirmedPower)
                 int strBefore = 0, strAfter = 0;
-                try { strBefore = before.BasePower; }
-                catch { } // IL2CPP accessor may fail
-                try { strAfter = after.BasePower; }
-                catch { } // IL2CPP accessor may fail
+                try { strBefore = before.ConfirmedPower(); } catch { try { strBefore = before.BasePower; } catch { } }
+                try { strAfter = after.ConfirmedPower(); } catch { try { strAfter = after.BasePower; } catch { } }
                 if (strAfter > strBefore) gains.Add(string.Format(T("Strength +{0}"), strAfter - strBefore));
 
-                // Agility (FF1 uses BaseAgility)
+                // Agility (BaseAgility / ConfirmedAgility)
                 int agiBefore = 0, agiAfter = 0;
-                try { agiBefore = before.BaseAgility; } catch { } // IL2CPP accessor may fail
-                try { agiAfter = after.BaseAgility; } catch { } // IL2CPP accessor may fail
+                try { agiBefore = before.ConfirmedAgility(); } catch { try { agiBefore = before.BaseAgility; } catch { } }
+                try { agiAfter = after.ConfirmedAgility(); } catch { try { agiAfter = after.BaseAgility; } catch { } }
                 if (agiAfter > agiBefore) gains.Add(string.Format(T("Agility +{0}"), agiAfter - agiBefore));
 
-                // Stamina (displayed as "Stamina" in-game, property is BaseVitality)
+                // Stamina (BaseVitality / ConfirmedVitality - displayed in-game as "Stamina")
                 int vitBefore = 0, vitAfter = 0;
-                try { vitBefore = before.BaseVitality; } catch { } // IL2CPP accessor may fail
-                try { vitAfter = after.BaseVitality; } catch { } // IL2CPP accessor may fail
+                try { vitBefore = before.ConfirmedVitality(); } catch { try { vitBefore = before.BaseVitality; } catch { } }
+                try { vitAfter = after.ConfirmedVitality(); } catch { try { vitAfter = after.BaseVitality; } catch { } }
                 if (vitAfter > vitBefore) gains.Add(string.Format(T("Stamina +{0}"), vitAfter - vitBefore));
 
-                // Intellect (displayed as "Intellect" in-game, property is BaseIntelligence)
+                // Intellect (BaseIntelligence / ConfirmedIntelligence)
                 int intBefore = 0, intAfter = 0;
-                try { intBefore = before.BaseIntelligence; } catch { } // IL2CPP accessor may fail
-                try { intAfter = after.BaseIntelligence; } catch { } // IL2CPP accessor may fail
+                try { intBefore = before.ConfirmedIntelligence(); } catch { try { intBefore = before.BaseIntelligence; } catch { } }
+                try { intAfter = after.ConfirmedIntelligence(); } catch { try { intAfter = after.BaseIntelligence; } catch { } }
                 if (intAfter > intBefore) gains.Add(string.Format(T("Intellect +{0}"), intAfter - intBefore));
 
-                // Luck (FF1 uses BaseLuck - same name)
+                // Luck (BaseLuck / ConfirmedLuck)
                 int luckBefore = 0, luckAfter = 0;
-                try { luckBefore = before.BaseLuck; } catch { } // IL2CPP accessor may fail
-                try { luckAfter = after.BaseLuck; } catch { } // IL2CPP accessor may fail
+                try { luckBefore = before.ConfirmedLuck(); } catch { try { luckBefore = before.BaseLuck; } catch { } }
+                try { luckAfter = after.ConfirmedLuck(); } catch { try { luckAfter = after.BaseLuck; } catch { } }
                 if (luckAfter > luckBefore) gains.Add(string.Format(T("Luck +{0}"), luckAfter - luckBefore));
+
+                // Accuracy (BaseAccuracyRate / ConfirmedAccuracyRate(false))
+                int accBefore = 0, accAfter = 0;
+                try { accBefore = before.ConfirmedAccuracyRate(false); } catch { try { accBefore = before.BaseAccuracyRate; } catch { } }
+                try { accAfter = after.ConfirmedAccuracyRate(false); } catch { try { accAfter = after.BaseAccuracyRate; } catch { } }
+                if (accAfter > accBefore) gains.Add(string.Format(T("Accuracy +{0}"), accAfter - accBefore));
+
+                // Evasion (BaseEvasionRate / ConfirmedEvasionRate(false))
+                int evaBefore = 0, evaAfter = 0;
+                try { evaBefore = before.ConfirmedEvasionRate(false); } catch { try { evaBefore = before.BaseEvasionRate; } catch { } }
+                try { evaAfter = after.ConfirmedEvasionRate(false); } catch { try { evaAfter = after.BaseEvasionRate; } catch { } }
+                if (evaAfter > evaBefore) gains.Add(string.Format(T("Evasion +{0}"), evaAfter - evaBefore));
 
             }
             catch (Exception ex)
