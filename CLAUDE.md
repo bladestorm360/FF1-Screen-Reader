@@ -22,4 +22,4 @@
 - **FF3 Reference:** `D:\Games\Dev\Unity\FFPR\ff3\ff3-screen-reader`
 - **dump.cs:** `D:\Games\Dev\Unity\FFPR\ff1\dump.cs` (grep only, never read directly)
 - **Game Install (deploy only):** `Final Fantasy PR\` — never search, only used by build_and_deploy.bat
-- **Documentation:** See `docs/plan.md` (features/structure), `docs/debug.md` (architecture/offsets/changelog)
+- **Documentation:** See `docs/plan.md` (features/structure), `docs/debug.md` (architecture/offsets/changelog), `docs/release.md` (release procedure — triggered by "prepare release X.Y")
