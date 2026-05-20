@@ -31,7 +31,7 @@ If you created a steam library on another drive, the path will be Drive Letter\\
 
 FFI\_screenreader.dll   goes in MelonLoader/mods folder.
 
-waypoints.json (optional) goes in the game install's UserData folder (Final Fantasy PR\\UserData\\waypoints.json). It contains pre-marked waypoints from a playthrough — town docks, landing sites, key dungeon transitions — that you can cycle with J/L or D-pad. Skip the file if you'd rather start with an empty waypoint list and mark your own. The mod creates the UserData folder automatically on first run if it doesn't already exist.
+waypoints.json (optional) goes in the game install's UserData folder (Final Fantasy PR\\UserData\\waypoints.json). It contains pre-marked waypoints from a playthrough — town docks, landing sites, key dungeon transitions — that you can cycle with , and . (comma / period) or D-pad. Skip the file if you'd rather start with an empty waypoint list and mark your own. The mod creates the UserData folder automatically on first run if it doesn't already exist.
 
 ## Keys
 
@@ -60,6 +60,19 @@ H: In battle, announce active character hp, mp, status effects.
 I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip
 V: Announce active vehicle state.
 Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
+
+Waypoints (field only):
+
+, (comma): previous waypoint.
+. (period): next waypoint.
+Shift+, : previous waypoint category.
+Shift+. : next waypoint category.
+/ (slash): pathfind to current waypoint.
+Shift+/ : add new waypoint at current location (prompts for name).
+Ctrl+. : rename current waypoint.
+Ctrl+/ : remove current waypoint.
+Ctrl+Shift+/ : clear all waypoints for the current map.
+
 f5: toggle between HP display: full numbers, percentages or no HP display. NO hp display is how the game is intended to be played by the developers.
 f8: activate the mod menu where individual sound volume can be adjusted for mod sounds, as well as all togglable options.
 
