@@ -1,25 +1,20 @@
 using System;
-using Il2CppLast.OutGame.Library;
 using MelonLoader;
-using FFI_ScreenReader.Utils;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core.Handlers
 {
     /// <summary>
     /// Per-frame poller for the two game-side toggles the player can flip from many sources:
-    /// random encounters (R3 in-game / cheat menu / F3 historically) and walk/run
-    /// (F1 in-game / L3 in-game / cheat menu). Announces only when the value changes inside
+    /// random encounters (R3 in-game / cheat menu) and auto-dash / walk/run (F1 in-game /
+    /// L3 in-game / cheat menu / config menu). Announces only when the value changes inside
     /// active field gameplay; map transitions and menus silently reset the seed so the next
     /// valid poll doesn't false-announce a context shift as a toggle.
-    ///
-    /// Walk/run reads the live FieldKeyController.dashFlag XOR Config.IsAutoDash via
-    /// MoveStateHelper.GetDashFlag(), so every source surfaces through the same announce.
     /// </summary>
     internal static class GameToggleAnnouncer
     {
         private static bool? lastEncounter;
-        private static bool? lastRunning;
+        private static int? lastAutoDash;
 
         internal static void Poll()
         {
@@ -30,7 +25,7 @@ namespace FFI_ScreenReader.Core.Handlers
                 if (!ControllerRouter.IsFieldActive)
                 {
                     lastEncounter = null;
-                    lastRunning = null;
+                    lastAutoDash = null;
                     return;
                 }
 
@@ -46,20 +41,14 @@ namespace FFI_ScreenReader.Core.Handlers
                     lastEncounter = e;
                 }
 
-                // Skip walk/run until a FieldKeyController exists in the scene — otherwise
-                // GetDashFlag falls back to AutoDash alone and we'd announce when the
-                // controller finally loads on the next frame.
-                var fkc = GameObjectCache.Get<FieldKeyController>() ?? GameObjectCache.Refresh<FieldKeyController>();
-                if (fkc == null)
+                var cfg = ud.Config;
+                if (cfg != null)
                 {
-                    lastRunning = null;
-                    return;
+                    int a = cfg.IsAutoDash;
+                    if (lastAutoDash.HasValue && lastAutoDash.Value != a)
+                        FFI_ScreenReaderMod.SpeakText(a != 0 ? T("Run") : T("Walk"), interrupt: true);
+                    lastAutoDash = a;
                 }
-
-                bool running = MoveStateHelper.GetDashFlag();
-                if (lastRunning.HasValue && lastRunning.Value != running)
-                    FFI_ScreenReaderMod.SpeakText(running ? T("Run") : T("Walk"), interrupt: true);
-                lastRunning = running;
             }
             catch (Exception ex)
             {
@@ -70,7 +59,7 @@ namespace FFI_ScreenReader.Core.Handlers
         internal static void Reset()
         {
             lastEncounter = null;
-            lastRunning = null;
+            lastAutoDash = null;
         }
     }
 }

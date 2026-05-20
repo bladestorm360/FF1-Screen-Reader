@@ -131,6 +131,9 @@ namespace FFI_ScreenReader.Core
             // --- Global: I key (cascading menu priority) ---
             registry.Register(KeyCode.I, KeyContext.Global, () => GlobalHotkeyHandler.HandleItemDetailsKey(mod), "Item details");
 
+            // --- Global: U key (usable-by classes) ---
+            registry.Register(KeyCode.U, KeyContext.Global, UsableByAnnouncer.AnnounceForCurrentContext, "Usable by classes");
+
             // --- Field-only toggles (blocked in battle with feedback) ---
             RegisterFieldWithBattleFeedback(KeyCode.Quote, KeyModifier.None, mod.ToggleFootsteps, "Toggle footsteps");
             RegisterFieldWithBattleFeedback(KeyCode.Semicolon, KeyModifier.None, mod.ToggleWallTones, "Toggle wall tones");
@@ -175,6 +178,10 @@ namespace FFI_ScreenReader.Core
             KeyContext context = DetermineContext();
             ControllerRouter.Update(context);
 
+            // Per-frame footstep tile-crossing poll (field-active gated, silent in vehicles).
+            // Cadence naturally tracks actual movement speed — walk slower than dash than vehicles.
+            FFI_ScreenReader.Patches.MovementSoundPatches.PollFootsteps();
+
             // Modal dialogs consume all keyboard input when open
             if (TextInputWindow.HandleInput())
                 return;
@@ -198,8 +205,14 @@ namespace FFI_ScreenReader.Core
             if (IsInputFieldFocused())
                 return;
 
+            // Modifier-bare hotkeys only fire when no modifier is held — so OS shortcuts
+            // like Alt+F4 (close), Ctrl+F4 (game's own bindings), Shift+F4 don't trigger
+            // the screen reader's F-keys. Shift+M / Shift+K etc. still work because they
+            // have explicit Shift bindings in the registry.
+            bool anyModifierHeld = IsAnyModifierHeld();
+
             // F8 to open mod menu (unavailable in battle)
-            if (GamepadManager.IsKeyCodePressed(KeyCode.F8))
+            if (!anyModifierHeld && GamepadManager.IsKeyCodePressed(KeyCode.F8))
             {
                 if (!BattleStateHelper.IsInBattle)
                     ModMenu.Open();
@@ -208,15 +221,38 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
-            // Handle function keys (F1/F3/F5)
-            HandleFunctionKeyInput();
+            // Handle function keys (F4/F5/F6) — bare keypress only
+            if (!anyModifierHeld)
+                HandleFunctionKeyInput();
 
             // Determine active context
             KeyContext activeContext = DetermineContext();
             KeyModifier currentModifiers = GetCurrentModifiers();
 
+            // Alt held with no registered Alt-binding → skip dispatch so Alt+U etc. don't
+            // accidentally trigger the unmodified U binding. (Shift/Ctrl are already
+            // routed through currentModifiers and matched exactly by the registry.)
+            if (IsAltHeld())
+                return;
+
             // Dispatch all registered keyboard bindings
             DispatchRegisteredBindings(activeContext, currentModifiers);
+        }
+
+        private static bool IsAltHeld()
+        {
+            return GamepadManager.IsKeyCodeHeld(KeyCode.LeftAlt)
+                || GamepadManager.IsKeyCodeHeld(KeyCode.RightAlt);
+        }
+
+        private static bool IsAnyModifierHeld()
+        {
+            return GamepadManager.IsKeyCodeHeld(KeyCode.LeftShift)
+                || GamepadManager.IsKeyCodeHeld(KeyCode.RightShift)
+                || GamepadManager.IsKeyCodeHeld(KeyCode.LeftControl)
+                || GamepadManager.IsKeyCodeHeld(KeyCode.RightControl)
+                || GamepadManager.IsKeyCodeHeld(KeyCode.LeftAlt)
+                || GamepadManager.IsKeyCodeHeld(KeyCode.RightAlt);
         }
 
         private KeyContext DetermineContext()
@@ -267,6 +303,9 @@ namespace FFI_ScreenReader.Core
 
         private void HandleFunctionKeyInput()
         {
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F4))
+                FFI_ScreenReaderMod.Instance?.ToggleAutoDetail();
+
             if (GamepadManager.IsKeyCodePressed(KeyCode.F5))
             {
                 if (BattleStateHelper.IsInBattle)
@@ -282,6 +321,9 @@ namespace FFI_ScreenReader.Core
                     FFI_ScreenReaderMod.SpeakText(T("Only available in battle"), interrupt: true);
                 }
             }
+
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F6))
+                FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons();
         }
 
         private static void HandleTabKey()

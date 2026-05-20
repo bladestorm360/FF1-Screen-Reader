@@ -93,11 +93,11 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                // Gate: only announce when the real config menu is open. The
-                // title-screen language selector and load-game flow share this base
-                // class and would otherwise leak announcements like "Language" or
-                // "Cursor memory: off" outside the config menu. IsActive is driven
-                // by ConfigController.SetActive — set in the postfix below.
+                // Gate: only announce when a real config menu is open. The in-game
+                // ConfigController and the title-screen OptionController both flip
+                // ConfigMenuState.IsActive via their SetActive postfixes. Without that
+                // gate, this base class would leak announcements in the load-game flow
+                // and other contexts that share ConfigActualDetailsControllerBase.
                 if (!ConfigMenuState.IsActive)
                     return;
 
@@ -414,6 +414,32 @@ namespace FFI_ScreenReader.Patches
                 // postfix only announces inside the real config menu, not for sibling
                 // controllers (title-screen language selector, save-load options) that
                 // share ConfigActualDetailsControllerBase.
+                FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
+                ConfigMenuState.IsActive = true;
+            }
+            else
+            {
+                ConfigMenuState.ResetState();
+                ConfigCommandController_SetFocus_Patch.ResetTracking();
+                ConfigCommandController_SetSliderValue_Patch.ResetTracking();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mirror of ConfigController_SetActive_Patch for the title-screen options menu.
+    /// Il2CppLast.UI.KeyInput.OptionController hosts language / screen / key / sound
+    /// settings on the title screen via the same ConfigActualDetailsControllerBase
+    /// pipeline as the in-game config — so we drive ConfigMenuState the same way.
+    /// </summary>
+    [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.OptionController), "SetActive", new Type[] { typeof(bool) })]
+    public static class OptionController_SetActive_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(bool isActive)
+        {
+            if (isActive)
+            {
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Config");
                 ConfigMenuState.IsActive = true;
             }

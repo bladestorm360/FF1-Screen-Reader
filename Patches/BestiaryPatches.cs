@@ -913,7 +913,7 @@ namespace FFI_ScreenReader.Patches
                 {
                     int previousBestiaryState = BestiaryStateTracker.CurrentState;
 
-                    if (mainGameState == 17) // MenuLibraryUi = list
+                    if (mainGameState == 19) // MenuLibraryUi = list (FF1 SubSceneManagerMainGame.State)
                     {
                         WasInConfigBestiary = true;
                         BestiaryStateTracker.CurrentState = 1;
@@ -950,7 +950,7 @@ namespace FFI_ScreenReader.Patches
                             }
                         }
                     }
-                    else if (mainGameState == 18) // MenuLibraryInfo = detail
+                    else if (mainGameState == 20) // MenuLibraryInfo = detail (FF1 SubSceneManagerMainGame.State)
                     {
                         WasInConfigBestiary = true;
                         BestiaryStateTracker.CurrentState = 4;

@@ -49,6 +49,11 @@ namespace FFI_ScreenReader.Patches
         /// Called when game state changes. Dispatches config menu bestiary states (17/18)
         /// and handles exit back to field or other states.
         /// </summary>
+        // FF1 SubSceneManagerMainGame.State: MenuLibraryUi=19 (list), MenuLibraryInfo=20 (detail).
+        // (FF3/4/5 used 17/18 — these values are game-specific.)
+        private const int STATE_MENU_LIBRARY_UI = 19;
+        private const int STATE_MENU_LIBRARY_INFO = 20;
+
         public static void ChangeState_Postfix(SubSceneManagerMainGame.State state)
         {
             try
@@ -65,7 +70,7 @@ namespace FFI_ScreenReader.Patches
 
                 }
                 // Config menu bestiary states
-                else if (stateValue == 17 || stateValue == 18)
+                else if (stateValue == STATE_MENU_LIBRARY_UI || stateValue == STATE_MENU_LIBRARY_INFO)
                 {
                     BestiaryManualPatches.ConfigBestiaryStateHandler.HandleStateChange(stateValue);
                 }

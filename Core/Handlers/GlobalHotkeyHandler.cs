@@ -10,95 +10,11 @@ using ConfigActualDetailsControllerBase_Touch = Il2CppLast.UI.Touch.ConfigActual
 namespace FFI_ScreenReader.Core.Handlers
 {
     /// <summary>
-    /// Handles global hotkeys: H, G, M, V, I, 9, =, -, ', ;, Tab, Shift+K.
+    /// Helpers shared by the InputManager keyboard dispatch and ControllerRouter gamepad
+    /// dispatch: vehicle announce, item-details cascade, config tooltip readout.
     /// </summary>
     internal static class GlobalHotkeyHandler
     {
-        internal static void HandleInput(FFI_ScreenReaderMod mod)
-        {
-            // Tab key - clear battle state as fallback
-            if (Input.GetKeyDown(KeyCode.Tab))
-            {
-                if (BattleStateHelper.IsInBattle)
-                {
-                    BattleStateHelper.ForceClearBattleState();
-                }
-            }
-
-            // H - character health/status
-            if (Input.GetKeyDown(KeyCode.H))
-            {
-                mod.AnnounceCharacterStatus();
-            }
-
-            // G - current gil
-            if (Input.GetKeyDown(KeyCode.G))
-            {
-                mod.AnnounceGilAmount();
-            }
-
-            // M - current map (Shift+M for map exit filter)
-            if (Input.GetKeyDown(KeyCode.M))
-            {
-                if (InputHelper.IsShiftHeld())
-                {
-                    mod.ToggleMapExitFilter();
-                }
-                else
-                {
-                    mod.AnnounceCurrentMap();
-                }
-            }
-
-            // Shift+K - reset to All category
-            if (Input.GetKeyDown(KeyCode.K) && InputHelper.IsShiftHeld())
-            {
-                mod.ResetToAllCategory();
-            }
-
-            // = - next category
-            if (Input.GetKeyDown(KeyCode.Equals))
-            {
-                mod.CycleNextCategory();
-            }
-
-            // - (Minus) - previous category
-            if (Input.GetKeyDown(KeyCode.Minus))
-            {
-                mod.CyclePreviousCategory();
-            }
-
-            // I - item details (config/shop/item menu)
-            if (Input.GetKeyDown(KeyCode.I))
-            {
-                HandleItemDetailsKey(mod);
-            }
-
-            // U - usable by classes (shops + inventory)
-            if (Input.GetKeyDown(KeyCode.U))
-            {
-                FFI_ScreenReader.Menus.UsableByAnnouncer.AnnounceForCurrentContext();
-            }
-
-            // V - current vehicle/movement mode
-            if (Input.GetKeyDown(KeyCode.V))
-            {
-                AnnounceCurrentVehicle();
-            }
-
-            // ' (Quote) - toggle footsteps
-            if (Input.GetKeyDown(KeyCode.Quote))
-            {
-                mod.ToggleFootsteps();
-            }
-
-            // ; (Semicolon) - toggle wall tones
-            if (Input.GetKeyDown(KeyCode.Semicolon))
-            {
-                mod.ToggleWallTones();
-            }
-        }
-
         internal static void AnnounceCurrentVehicle()
         {
             try

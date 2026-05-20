@@ -77,15 +77,6 @@ unsafe {
 | NewGameWindowController | stateMachine/newGamePopup/autoNameIndex | 0x28/0xD0/0x100 |
 | NewGamePopup | messageText/commandList | 0x30/0x40 |
 
-### Walk/Run State
-| Controller | Field | Offset |
-|------------|-------|--------|
-| UserDataManager | configSaveData | 0xB8 |
-| ConfigSaveData | isAutoDash | 0x40 |
-| FieldKeyController | dashFlag | 0x28 |
-
-**XOR logic:** `isRunning = autoDash XOR dashFlag`
-
 ### FieldController / FootEvent
 FieldController.FootEvent=0x120, FootEvent.stepOnTriggerList=0x10
 

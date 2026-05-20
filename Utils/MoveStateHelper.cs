@@ -1,8 +1,3 @@
-using System;
-using Il2CppLast.Entity.Field;
-using Il2CppLast.Map;
-using Il2CppLast.OutGame.Library;
-using MelonLoader;
 using FFI_ScreenReader.Core;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
 
@@ -38,9 +33,6 @@ namespace FFI_ScreenReader.Utils
         private static int cachedMoveState = MOVE_STATE_WALK;
         private static int cachedTransportationType = 0;
         private static int lastAnnouncedState = -1;
-
-        // FieldKeyController.dashFlag offset (private bool, dump.cs:307459)
-        private const int OFFSET_DASH_FLAG = 0x28;
 
         /// <summary>
         /// Set vehicle state when boarding (called from GetOn patch).
@@ -232,35 +224,5 @@ namespace FFI_ScreenReader.Utils
             lastAnnouncedState = -1;
         }
 
-        /// <summary>
-        /// Returns the effective running state by combining AutoDash config with the live
-        /// FieldKeyController.dashFlag. F1, L3, and the cheat menu can each flip dashFlag
-        /// without routing through the public setter, so we read the field directly each
-        /// call via pointer offset. Effective running state = AutoDash XOR dashFlag.
-        /// Returns true if running, false if walking.
-        /// </summary>
-        public static bool GetDashFlag()
-        {
-            try
-            {
-                var userData = Il2CppLast.Management.UserDataManager.Instance();
-                bool autoDash = (userData?.Config?.IsAutoDash ?? 0) != 0;
-
-                var fkc = GameObjectCache.Get<FieldKeyController>();
-                if (fkc == null)
-                    fkc = GameObjectCache.Refresh<FieldKeyController>();
-
-                if (fkc == null)
-                    return autoDash;
-
-                bool dashFlag = IL2CppFieldReader.ReadBool(fkc.Pointer, OFFSET_DASH_FLAG);
-                return autoDash != dashFlag;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"Error reading dash state: {ex.Message}");
-                return false;
-            }
-        }
     }
 }

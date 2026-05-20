@@ -34,18 +34,12 @@ namespace FFI_ScreenReader.Patches
         // Prevent multiple wall-check coroutines from stacking up
         private static bool wallCheckPending = false;
 
-        // Audio feedback cooldowns
         private const float TILE_SIZE = 16f;
-        private static float lastFootstepTime = 0f;
-        private const float FOOTSTEP_COOLDOWN = 0.15f;
-        // Note: Wall tones are now handled by continuous loop in FFI_ScreenReaderMod.OnUpdate()
 
-        // Track collision state to suppress footsteps when wall bump plays
-#pragma warning disable CS0414
+        // Track collision state to suppress the footstep on the same frame as a wall bump.
         private static bool collisionDetectedThisFrame = false;
-#pragma warning restore CS0414
 
-        // Tile position tracking for footsteps
+        // Tile position tracking for per-frame footstep poll
         private static Vector2Int lastTilePosition = Vector2Int.zero;
         private static bool tileTrackingInitialized = false;
 
@@ -128,20 +122,10 @@ namespace FFI_ScreenReader.Patches
                 // Calculate distance moved
                 float distanceMoved = Vector3.Distance(positionBefore, positionAfter);
 
-                // Check tile position change for footsteps
-                Vector2Int currentTile = GetTilePosition(positionAfter);
-
-                // Initialize tile tracking if needed
-                if (!tileTrackingInitialized)
-                {
-                    lastTilePosition = currentTile;
-                    tileTrackingInitialized = true;
-                }
-
                 // If position didn't change (within small threshold), player hit a wall
                 if (distanceMoved < 0.1f)
                 {
-                    // Mark collision detected to suppress footstep
+                    // Mark collision detected so the per-frame footstep poll skips this frame.
                     collisionDetectedThisFrame = true;
 
                     // Check if position is same as last collision
@@ -181,23 +165,6 @@ namespace FFI_ScreenReader.Patches
                 {
                     // Player successfully moved - reset collision counter
                     samePositionCount = 0;
-
-                    if (currentTile != lastTilePosition)
-                    {
-                        // Tile changed - play footstep if enabled
-                        lastTilePosition = currentTile;
-
-                        if (FFI_ScreenReaderMod.Instance != null && FFI_ScreenReaderMod.Instance.IsFootstepsEnabled()
-                            && Core.ControllerRouter.IsFieldActive)
-                        {
-                            float currentTime = Time.time;
-                            if (currentTime - lastFootstepTime >= FOOTSTEP_COOLDOWN)
-                            {
-                                SoundPlayer.PlayFootstep();
-                                lastFootstepTime = currentTime;
-                            }
-                        }
-                    }
                 }
 
                 // Reset collision flag at end of coroutine
@@ -242,6 +209,51 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
+        /// Per-frame footstep poll. Reads the live player tile and plays a footstep when it
+        /// changes — so cadence naturally tracks actual movement speed (walk vs. dash). Silent
+        /// in vehicles, in menus/battle, and on the same frame as a wall-bump tick.
+        /// Wire-up: called from InputManager.Update after ControllerRouter.Update.
+        /// </summary>
+        public static void PollFootsteps()
+        {
+            try
+            {
+                if (!Core.ControllerRouter.IsFieldActive) return;
+                if (FFI_ScreenReaderMod.Instance == null
+                    || !FFI_ScreenReaderMod.Instance.IsFootstepsEnabled()) return;
+                if (!Utils.MoveStateHelper.IsOnFoot()) return;
+
+                var player = FFI_ScreenReaderMod.GetFieldPlayer();
+                if (player?.transform == null) return;
+
+                Vector3 pos = player.transform.localPosition;
+                if (float.IsNaN(pos.x) || Mathf.Abs(pos.x) > 10000f) return;
+
+                Vector2Int currentTile = GetTilePosition(pos);
+
+                if (!tileTrackingInitialized)
+                {
+                    lastTilePosition = currentTile;
+                    tileTrackingInitialized = true;
+                    return;
+                }
+
+                if (currentTile == lastTilePosition) return;
+
+                lastTilePosition = currentTile;
+
+                // Wall-bump coroutine sets this for the frame it fires — skip the coincident step.
+                if (collisionDetectedThisFrame) return;
+
+                SoundPlayer.PlayFootstep();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error in PollFootsteps: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Resets all static state. Called on map transitions to prevent stale
         /// collision/footstep data from the previous map.
         /// </summary>
@@ -251,7 +263,6 @@ namespace FFI_ScreenReader.Patches
             lastCollisionPos = Vector3.zero;
             samePositionCount = 0;
             wallCheckPending = false;
-            lastFootstepTime = 0f;
             collisionDetectedThisFrame = false;
             lastTilePosition = Vector2Int.zero;
             tileTrackingInitialized = false;

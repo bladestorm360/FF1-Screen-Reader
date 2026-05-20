@@ -162,6 +162,8 @@ namespace FFI_ScreenReader.Core
             // Modifiers
             { KeyCode.LeftShift, 0xA0 }, { KeyCode.RightShift, 0xA1 },
             { KeyCode.LeftControl, 0xA2 }, { KeyCode.RightControl, 0xA3 },
+            { KeyCode.LeftAlt, 0xA4 }, { KeyCode.RightAlt, 0xA5 },
+            { KeyCode.LeftWindows, 0x5B }, { KeyCode.RightWindows, 0x5C },
             // Punctuation (OEM keys)
             { KeyCode.Minus, 0xBD }, { KeyCode.Equals, 0xBB },
             { KeyCode.LeftBracket, 0xDB }, { KeyCode.RightBracket, 0xDD },
