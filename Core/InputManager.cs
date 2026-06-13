@@ -305,7 +305,7 @@ namespace FFI_ScreenReader.Core
 
         private void HandleFunctionKeyInput()
         {
-            if (GamepadManager.IsKeyCodePressed(KeyCode.F4))
+            if (GamepadManager.IsKeyCodePressed(KeyCode.F7))
                 FFI_ScreenReaderMod.Instance?.ToggleAutoDetail();
 
             if (GamepadManager.IsKeyCodePressed(KeyCode.F5))
