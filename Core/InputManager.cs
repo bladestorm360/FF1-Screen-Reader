@@ -211,13 +211,15 @@ namespace FFI_ScreenReader.Core
             // have explicit Shift bindings in the registry.
             bool anyModifierHeld = IsAnyModifierHeld();
 
-            // F8 to open mod menu (unavailable in battle)
+            // F8 to open mod menu — gated to field-only via ControllerRouter.IsFieldActive
+            // (blocks battle, in-game menus, title screen). Rejection wording lives in
+            // ControllerRouter.SpeakModMenuUnavailable so Start-button and F8 stay in sync.
             if (!anyModifierHeld && GamepadManager.IsKeyCodePressed(KeyCode.F8))
             {
-                if (!BattleStateHelper.IsInBattle)
+                if (ControllerRouter.IsFieldActive)
                     ModMenu.Open();
                 else
-                    FFI_ScreenReaderMod.SpeakText(T("Unavailable in battle"), interrupt: true);
+                    ControllerRouter.SpeakModMenuUnavailable();
                 return;
             }
 
@@ -308,7 +310,7 @@ namespace FFI_ScreenReader.Core
 
             if (GamepadManager.IsKeyCodePressed(KeyCode.F5))
             {
-                if (BattleStateHelper.IsInBattle)
+                if (ControllerRouter.IsFieldActive)
                 {
                     int current = PreferencesManager.EnemyHPDisplay;
                     int next = (current + 1) % 3;
@@ -318,7 +320,7 @@ namespace FFI_ScreenReader.Core
                 }
                 else
                 {
-                    FFI_ScreenReaderMod.SpeakText(T("Only available in battle"), interrupt: true);
+                    ControllerRouter.SpeakModMenuUnavailable();
                 }
             }
 

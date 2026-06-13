@@ -146,17 +146,22 @@ namespace FFI_ScreenReader.Core
         private static void AnnounceModModeControls()
         {
             string back = ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_BACK);
+            string west = ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_WEST);
 
-            if (BattleStateHelper.IsInBattle)
+            if (MessageWindowPatches.IsInDialogue)
             {
-                string west = ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_WEST);
+                FFI_ScreenReaderMod.SpeakText(
+                    string.Format(T("{0} to repeat dialogue. {1} to cancel."), west, back),
+                    interrupt: true);
+            }
+            else if (BattleStateHelper.IsInBattle)
+            {
                 FFI_ScreenReaderMod.SpeakText(
                     string.Format(T("{0} for party HP. {1} to cancel."), west, back),
                     interrupt: true);
             }
             else
             {
-                string west = ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_WEST);
                 string north = ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_NORTH);
                 string south = ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_SOUTH);
                 FFI_ScreenReaderMod.SpeakText(
@@ -184,15 +189,17 @@ namespace FFI_ScreenReader.Core
 
         private static void HandleStateTransitions()
         {
-            // Start → mod menu toggle
+            // Start → mod menu toggle. Close is always allowed; open is gated to field-only.
             if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_START))
             {
                 ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_START);
 
                 if (State == ControllerState.ModMenu)
                     CloseModMenu();
-                else
+                else if (IsFieldActive)
                     OpenModMenu();
+                else
+                    SpeakModMenuUnavailable();
                 return;
             }
 
@@ -219,6 +226,18 @@ namespace FFI_ScreenReader.Core
             State = ControllerState.ModMenu;
             FFI_ScreenReaderMod.SpeakText(T("Mod Menu Open"), interrupt: true);
             ModMenu.Open();
+        }
+
+        /// <summary>
+        /// Announces why the mod menu can't be opened. Shared by Start-button and F8 entry points.
+        /// </summary>
+        internal static void SpeakModMenuUnavailable()
+        {
+            string reason;
+            if (BattleStateHelper.IsInBattle)                 reason = T("Unavailable in battle");
+            else if (MenuStateRegistry.AnyActive())           reason = T("Unavailable in menu");
+            else                                              reason = T("Unavailable here");
+            FFI_ScreenReaderMod.SpeakText(reason, interrupt: true);
         }
 
         private static void CloseModMenu()
@@ -367,7 +386,14 @@ namespace FFI_ScreenReader.Core
             var mod = FFI_ScreenReaderMod.Instance;
             if (mod == null) return;
 
-            if (BattleStateHelper.IsInBattle)
+            // Dialogue takes precedence over battle/field — if a message window is up,
+            // the user wants to repeat the message, not check HP or Gil.
+            if (MessageWindowPatches.IsInDialogue)
+            {
+                if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_WEST))
+                { MessageWindowPatches.RepeatLastDialogue(); State = ControllerState.Normal; return; }
+            }
+            else if (BattleStateHelper.IsInBattle)
             {
                 // Battle mod mode: X = party HP check
                 if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_WEST))

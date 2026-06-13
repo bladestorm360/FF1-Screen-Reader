@@ -1,0 +1,4 @@
+- Footsteps no longer pip while traveling in vehicles (ship, canoe, airship); pips resume after disembarking
+- Walk/run announcements should now speak reliably when F1 is pressed
+- Bestiary entries opened from the in-game config/options menu now announce monster details properly
+- The autodetail key (I) and "usable by" key (U) work consistently across menus again

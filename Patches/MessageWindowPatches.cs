@@ -7,6 +7,7 @@ using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using Il2CppInterop.Runtime;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -27,8 +28,12 @@ namespace FFI_ScreenReader.Patches
         private static string currentSpeaker = "";
         private static string lastAnnouncedSpeaker = "";
 
-        // Track if we're in a dialogue sequence
-        private static bool isInDialogue = false;
+        /// <summary>
+        /// True while a dialogue / message window is on screen. Set true in SetContent_Postfix,
+        /// false in ClearState (called from Close_Postfix). Used by ControllerRouter to route
+        /// mod-mode + Square to RepeatLastDialogue.
+        /// </summary>
+        public static bool IsInDialogue { get; private set; }
 
         /// <summary>
         /// Applies message window patches using manual Harmony patching.
@@ -402,7 +407,7 @@ namespace FFI_ScreenReader.Patches
 
                 // Reset page tracking
                 lastAnnouncedPageIndex = -1;
-                isInDialogue = true;
+                IsInDialogue = true;
 
             }
             catch (Exception ex)
@@ -494,7 +499,7 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                if (!isInDialogue || currentPageBreaks.Count == 0)
+                if (!IsInDialogue || currentPageBreaks.Count == 0)
                     return;
 
                 // Get current page number from instance
@@ -659,7 +664,34 @@ namespace FFI_ScreenReader.Patches
             lastAnnouncedPageIndex = -1;
             currentSpeaker = "";
             lastAnnouncedSpeaker = "";
-            isInDialogue = false;
+            IsInDialogue = false;
+        }
+
+        /// <summary>
+        /// Re-speaks the most recently announced dialogue page (with speaker prefix if known).
+        /// Used by mod-mode + Square while a message window is open.
+        /// </summary>
+        public static void RepeatLastDialogue()
+        {
+            if (!IsInDialogue
+                || lastAnnouncedPageIndex < 0
+                || lastAnnouncedPageIndex >= currentPageBreaks.Count)
+            {
+                FFI_ScreenReaderMod.SpeakText(T("Nothing to repeat"), interrupt: true);
+                return;
+            }
+
+            string pageText = GetPageText(lastAnnouncedPageIndex);
+            if (string.IsNullOrWhiteSpace(pageText))
+            {
+                FFI_ScreenReaderMod.SpeakText(T("Nothing to repeat"), interrupt: true);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(lastAnnouncedSpeaker))
+                pageText = $"{lastAnnouncedSpeaker}: {pageText}";
+
+            FFI_ScreenReaderMod.SpeakText(pageText, interrupt: true);
         }
     }
 }

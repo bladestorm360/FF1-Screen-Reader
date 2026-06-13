@@ -1,10 +1,10 @@
 **/.claude/
 **/bin/
-**/scripts/
 **/obj/
 **/Releases/
+**/docs/scripts/
+**/scripts/
 build_log.txt
-docs/scripts/run_ghidra_analysis.bat
-NUL
 nul
+NUL
 NUL.*
