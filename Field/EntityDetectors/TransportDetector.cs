@@ -1,4 +1,5 @@
 using PropertyTransportation = Il2CppLast.Map.PropertyTransportation;
+using FFI_ScreenReader.Utils;
 
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
@@ -40,7 +41,9 @@ namespace FFI_ScreenReader.Field.EntityDetectors
             string vehicleName = EntityDetectionHelpers.GetVehicleNameFromProperty(
                 context.GameObjectName, context.TypeName);
             int vehicleType = EntityDetectionHelpers.GetVehicleTypeFromName(vehicleName);
-            if (vehicleType == 0)
+            // Skip unknown types (0) and the canoe — the canoe is an auto-used key item, not a
+            // navigable vehicle (its map object is summoned out of bounds when needed).
+            if (vehicleType == 0 || vehicleType == FF1Constants.TransportTypes.CANOE)
                 return DetectionResult.Skip;
             return DetectionResult.Detected(
                 new VehicleEntity(context.FieldEntity, context.Position, vehicleName, vehicleType));

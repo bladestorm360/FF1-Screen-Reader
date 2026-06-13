@@ -97,6 +97,8 @@ namespace FFI_ScreenReader.Core
             if (FFI_ScreenReaderMod.AudioBeaconsEnabled)
             {
                 FFI_ScreenReaderMod.Instance?.RestartBeacon();
+                if (FFI_ScreenReaderMod.AnnounceOnBeaconRestartEnabled)
+                    FFI_ScreenReaderMod.SpeakText(waypointNavigator.FormatCurrentWaypoint());
                 return;
             }
 

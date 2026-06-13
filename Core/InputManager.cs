@@ -75,7 +75,7 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.Backslash, KeyModifier.None, () =>
             {
                 NavigationTargetTracker.MarkEntity();
-                if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartEntityBeacon();
                 else mod.AnnounceCurrentEntity();
             }, "Announce current entity / restart beacon");
 
@@ -92,7 +92,7 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.None, () =>
             {
                 NavigationTargetTracker.MarkEntity();
-                if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartEntityBeacon();
                 else mod.AnnounceCurrentEntity();
             }, "Announce current entity / restart beacon (alt)");
 

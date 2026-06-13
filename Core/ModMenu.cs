@@ -239,6 +239,12 @@ namespace FFI_ScreenReader.Core
                     () => FFI_ScreenReaderMod.AutoDetailEnabled
                         ? T("On. Descriptions and stats announce automatically on focus for items, magic, equipment, and shops.")
                         : T("Off. Use the I key to read descriptions on demand.")),
+                new ToggleItem(T("Beacon Destination Announcement"),
+                    () => FFI_ScreenReaderMod.AnnounceOnBeaconRestartEnabled,
+                    () => FFI_ScreenReaderMod.Instance?.ToggleAnnounceOnBeaconRestart(),
+                    () => FFI_ScreenReaderMod.AnnounceOnBeaconRestartEnabled
+                        ? T("On. Restarting the beacon also re-speaks the current destination.")
+                        : T("Off. Restarting the beacon only re-pings, without speaking.")),
 
                 // Close Menu action
                 new ActionItem(T("Close Menu"), Close,
@@ -261,14 +267,16 @@ namespace FFI_ScreenReader.Core
             if (items != null && items.Count > 1 && items[0] is SectionHeader)
                 currentIndex = 1;
 
-            // Announce mod menu open + first item after a short delay
+            // Announce that the menu opened (both F8 and the controller Start button reach here),
+            // then the first item after a short delay.
             // Game input suppressed via ControllerRouter.SuppressGameInput + InputSystemManager patches
+            FFI_ScreenReaderMod.SpeakText(T("Mod menu"), interrupt: true);
             CoroutineManager.StartUntracked(AnnounceFirstItemDelayed());
         }
 
         private static IEnumerator AnnounceFirstItemDelayed()
         {
-            // Wait for "Mod Menu Open" to be queued before announcing first item
+            // Wait for "Mod menu" to be queued before announcing first item
             yield return new WaitForSeconds(0.15f);
 
             if (IsOpen) // Still open after delay
@@ -285,6 +293,8 @@ namespace FFI_ScreenReader.Core
             if (!IsOpen) return;
 
             IsOpen = false;
+            // Announce on every close path (keyboard Escape/F8, "Close Menu" item, controller B/Start).
+            FFI_ScreenReaderMod.SpeakText(T("Mod menu closed"), interrupt: true);
             // Game input restored automatically — ControllerRouter.SuppressGameInput becomes false
         }
 

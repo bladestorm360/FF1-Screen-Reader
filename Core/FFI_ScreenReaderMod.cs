@@ -70,6 +70,7 @@ namespace FFI_ScreenReader.Core
         private bool enableFootsteps = false;
         private bool enableAudioBeacons = false;
         private bool enableAutoDetail = false;
+        private bool enableAnnounceOnBeaconRestart = false;
 
         // Controller normalization (L3/R3 pass-through to game when not in mod mode)
         private bool enableStickClickNormalization = false;
@@ -99,6 +100,7 @@ namespace FFI_ScreenReader.Core
             enableAudioBeacons = PreferencesManager.AudioBeaconsDefault;
             enableAutoDetail = PreferencesManager.AutoDetailDefault;
             enableStickClickNormalization = PreferencesManager.StickClickNormalizationDefault;
+            enableAnnounceOnBeaconRestart = PreferencesManager.AnnounceOnBeaconRestartDefault;
 
             // Initialize Tolk for screen reader support
             tolk = new TolkWrapper();
@@ -480,11 +482,28 @@ namespace FFI_ScreenReader.Core
 
         internal void RestartBeacon() => audioLoopManager?.RestartBeacon();
 
+        /// <summary>
+        /// Re-target the beacon to the current entity. When the "announce destination on
+        /// beacon restart" toggle is on, also re-speaks the entity (same as cycling the list).
+        /// </summary>
+        internal void RestartEntityBeacon()
+        {
+            RestartBeacon();
+            if (enableAnnounceOnBeaconRestart) AnnounceEntityOnly();
+        }
+
         internal void ToggleAutoDetail()
         {
             enableAutoDetail = !enableAutoDetail;
             PreferencesManager.SaveAutoDetail(enableAutoDetail);
             SaveAndAnnounce(T("Auto detail"), enableAutoDetail);
+        }
+
+        internal void ToggleAnnounceOnBeaconRestart()
+        {
+            enableAnnounceOnBeaconRestart = !enableAnnounceOnBeaconRestart;
+            PreferencesManager.SaveAnnounceOnBeaconRestart(enableAnnounceOnBeaconRestart);
+            SaveAndAnnounce(T("Beacon destination announcement"), enableAnnounceOnBeaconRestart);
         }
 
         internal void ToggleStickClickNormalization()
@@ -508,6 +527,7 @@ namespace FFI_ScreenReader.Core
         public static bool AudioBeaconsEnabled => instance?.enableAudioBeacons ?? false;
         public static bool AutoDetailEnabled => instance?.enableAutoDetail ?? false;
         public static bool StickClickNormalizationEnabled => instance?.enableStickClickNormalization ?? false;
+        public static bool AnnounceOnBeaconRestartEnabled => instance?.enableAnnounceOnBeaconRestart ?? false;
 
         /// <summary>
         /// Gets the currently selected entity for audio beacon tracking.

@@ -224,8 +224,7 @@ namespace FFI_ScreenReader.Core
         private static void OpenModMenu()
         {
             State = ControllerState.ModMenu;
-            FFI_ScreenReaderMod.SpeakText(T("Mod Menu Open"), interrupt: true);
-            ModMenu.Open();
+            ModMenu.Open(); // speaks "Mod menu" + first item
         }
 
         /// <summary>
@@ -243,8 +242,7 @@ namespace FFI_ScreenReader.Core
         private static void CloseModMenu()
         {
             State = ControllerState.Normal;
-            ModMenu.Close();
-            FFI_ScreenReaderMod.SpeakText(T("Mod menu closed"), interrupt: true);
+            ModMenu.Close(); // speaks "Mod menu closed"
         }
 
         // =====================================================================
@@ -339,7 +337,7 @@ namespace FFI_ScreenReader.Core
                         WaypointHandler.PathfindToCurrentWaypoint();
                         break;
                     case NavigationTargetTracker.Kind.Entity:
-                        if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartBeacon();
+                        if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartEntityBeacon();
                         else mod.AnnounceCurrentEntity();
                         break;
                     default:
