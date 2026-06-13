@@ -57,7 +57,7 @@ Shift+k: Reset category to all
 G: Announce current Gil
 M: Announce current map.
 H: In battle, announce active character hp, mp, status effects.
-I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip
+I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip. In the 15 puzzle minigame, announces the row and column of the highlighted tile.
 V: Announce active vehicle state.
 Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
 
@@ -160,6 +160,10 @@ When on a character's status screen:
 up and down arrows read through statistics.
 Shift plus arrows: jumps between groups, character info, vitals, statistics, combat statistics, progression.
 control plus arrows: jump to beginning or end of statistics screen.
+
+## The 15 puzzle minigame
+
+The number on the highlighted tile is spoken automatically as you move the cursor over the board (or "empty" for the blank space). Press I on the keyboard, or Right Stick Up on a controller, to hear the current tile's row and column.
 
 ## Credits:
 ZKline for making the original ff6 mod, without which I likely never would have tried modding these games.
