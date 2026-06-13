@@ -57,6 +57,7 @@ Shift+k: Reset category to all
 G: Announce current Gil
 M: Announce current map.
 H: In battle, announce active character hp, mp, status effects.
+R: Repeat the current dialogue or message.
 I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip. In the 15 puzzle minigame, announces the row and column of the highlighted tile.
 V: Announce active vehicle state.
 Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
@@ -115,6 +116,9 @@ On field:
   Y (Triangle): announce current map or location.
   A (Cross): announce active vehicle state.
   Right Stick Up / Down / Left / Right: teleport 16 tiles in that direction.
+
+While a dialogue or message window is open:
+  X (Square): repeat the current message (keyboard R equivalent).
 
 Stick-click mod actions (preference-controlled in the Mod Menu):
 

@@ -56,7 +56,6 @@ namespace FFI_ScreenReader.Core
             registry.Register(KeyCode.UpArrow, KeyModifier.Ctrl, KeyContext.Status, StatusNavigationReader.JumpToTop, "Jump to top stat");
             registry.Register(KeyCode.UpArrow, KeyModifier.Shift, KeyContext.Status, StatusNavigationReader.JumpToPreviousGroup, "Jump to previous stat group");
             registry.Register(KeyCode.UpArrow, KeyModifier.None, KeyContext.Status, StatusNavigationReader.NavigatePrevious, "Previous stat");
-            registry.Register(KeyCode.R, KeyContext.Status, StatusNavigationReader.ReadCurrentStat, "Read current stat");
 
             // --- Bestiary detail: arrow key navigation ---
             registry.Register(KeyCode.DownArrow, KeyModifier.Ctrl, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToBottom, "Jump to bottom stat (bestiary)");
@@ -65,7 +64,6 @@ namespace FFI_ScreenReader.Core
             registry.Register(KeyCode.UpArrow, KeyModifier.Ctrl, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToTop, "Jump to top stat (bestiary)");
             registry.Register(KeyCode.UpArrow, KeyModifier.Shift, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToPreviousGroup, "Jump to previous group (bestiary)");
             registry.Register(KeyCode.UpArrow, KeyModifier.None, KeyContext.BestiaryDetail, BestiaryNavigationReader.NavigatePrevious, "Previous stat (bestiary)");
-            registry.Register(KeyCode.R, KeyContext.BestiaryDetail, BestiaryNavigationReader.ReadCurrentStat, "Read current stat (bestiary)");
 
             // --- Field: entity navigation (brackets + backslash) — with battle feedback ---
             RegisterFieldWithBattleFeedback(KeyCode.LeftBracket, KeyModifier.Shift, mod.CyclePreviousCategory, "Previous entity category");
@@ -124,6 +122,13 @@ namespace FFI_ScreenReader.Core
 
             // --- Global: V key (movement state) ---
             registry.Register(KeyCode.V, KeyContext.Global, () => GlobalHotkeyHandler.AnnounceCurrentVehicle(), "Announce vehicle state");
+
+            // --- Global: R key (repeat current dialogue / message) ---
+            registry.Register(KeyCode.R, KeyContext.Global, () =>
+            {
+                if (MessageWindowPatches.IsInDialogue)
+                    MessageWindowPatches.RepeatLastDialogue();
+            }, "Repeat dialogue");
 
             // --- Global: Shift+I key (context-aware controls) ---
             registry.Register(KeyCode.I, KeyModifier.Shift, KeyContext.Global, ControllerRouter.AnnounceContextControls, "Announce controls");
