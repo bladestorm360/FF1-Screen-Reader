@@ -52,6 +52,25 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// 15-puzzle minigame offsets (Serial.FF1.MiniGame namespace).
+        /// MiniGamePuzzleController holds the cursor/board; PuzzlePiece holds the tile number.
+        /// </summary>
+        public static class Puzzle
+        {
+            /// <summary>MiniGamePuzzleController.pieceList (List&lt;PuzzlePiece&gt;)</summary>
+            public const int PieceList = 0x18;
+
+            /// <summary>MiniGamePuzzleController.cursorPos (int, current cursor board position 0-15)</summary>
+            public const int CursorPos = 0x40;
+
+            /// <summary>MiniGamePuzzleController.emptyPiece (int, board position of the empty tile)</summary>
+            public const int EmptyPiece = 0x44;
+
+            /// <summary>PuzzlePiece.index (int, the tile's number identity)</summary>
+            public const int PieceIndex = 0x48;
+        }
+
+        /// <summary>
         /// Magic menu (AbilityContentListController) offsets.
         /// </summary>
         public static class MagicMenu

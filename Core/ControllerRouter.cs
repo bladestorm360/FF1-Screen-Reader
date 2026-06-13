@@ -260,6 +260,14 @@ namespace FFI_ScreenReader.Core
              || GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_NORTH))
                 FFI_ScreenReaderMod.InterruptSpeech();
 
+            // 15-puzzle: right-stick up announces the current cursor row/column.
+            // Checked before the field branch so it works regardless of computed context.
+            if (PuzzleGameState.IsActive)
+            {
+                if (GamepadManager.RStickUpPressed) PuzzlePatches.AnnouncePosition();
+                return;
+            }
+
             if (IsFieldActive)
                 HandleNormalField();
             else

@@ -36,6 +36,7 @@ namespace FFI_ScreenReader.Utils
         public const string MUSIC_PLAYER = "MusicPlayer";
         public const string GALLERY = "Gallery";
         public const string MAIN_MENU = "MainMenu";
+        public const string PUZZLE_GAME = "PuzzleGame";
 
         // Central state storage
         private static readonly Dictionary<string, bool> _states = new Dictionary<string, bool>();

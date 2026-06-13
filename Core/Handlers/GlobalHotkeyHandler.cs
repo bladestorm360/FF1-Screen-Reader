@@ -33,6 +33,13 @@ namespace FFI_ScreenReader.Core.Handlers
         {
             try
             {
+                // 15-puzzle: announce current cursor row/column
+                if (PuzzleGameState.IsActive)
+                {
+                    PuzzlePatches.AnnouncePosition();
+                    return;
+                }
+
                 // Config menu tooltip
                 var configController = TryGetActiveConfigController(out bool isKeyInput);
                 if (configController != IntPtr.Zero)

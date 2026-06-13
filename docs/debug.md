@@ -77,6 +77,14 @@ unsafe {
 | NewGameWindowController | stateMachine/newGamePopup/autoNameIndex | 0x28/0xD0/0x100 |
 | NewGamePopup | messageText/commandList | 0x30/0x40 |
 
+### 15-Puzzle (Serial.FF1.MiniGame namespace)
+| Type | Field | Offset |
+|------|-------|--------|
+| MiniGamePuzzleController | pieceList/cursorPos/emptyPiece | 0x18/0x40/0x44 |
+| PuzzlePiece | index | 0x48 |
+
+`cursorPos`/`emptyPiece` are flat board positions 0-15 (row=pos/4, col=pos%4). Tile numbers are sprites, not Text — derived from `PuzzlePiece.index`. Movement methods: NextPiece/PrevPiece/SkipNextPeice/SkipPrevPeice (game's spelling)/TouchPiece. `cursorPos == emptyPiece` ⇒ empty square.
+
 ### FieldController / FootEvent
 FieldController.FootEvent=0x120, FootEvent.stepOnTriggerList=0x10
 
@@ -147,6 +155,7 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 ## Version History
 
+- **2026-06-13** — 15-puzzle minigame support: arrowing over a tile speaks the number (or "empty"); on-demand position key (keyboard I / controller right-stick up) speaks row/column. New `PuzzlePatches` postfixes MiniGamePuzzleController movement methods; `PuzzleGameState` (PUZZLE_GAME registry key) gates the position key. One-time `[Puzzle] SNAPSHOT` log dumps board state to confirm pieceList ordering + index→number mapping at runtime.
 - **2026-02-02** — Save slot speech now includes timestamp and matches visual order (slot name, date, character/level, location, playtime)
 - **2026-01-31** — Scroll message line-by-line announcement (uses scrollTime parameter, timed coroutine speaks lines progressively); Battle defeat message fix (patch BattleCommandMessageController.SetMessage instead of LineFade; removed unused LineFadeClientPlay_Postfix)
 - **2026-01-29** — EnsureFieldContext utility integration (MenuStateRegistry short-circuit, GameObjectCache.Refresh fallback, AnnouncementDeduplicator for "Not on map" spam prevention)

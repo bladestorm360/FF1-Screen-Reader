@@ -16,6 +16,8 @@ MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Screen reader 
 
 **Battle:** Command/target selection, damage/healing/status, item/magic menus (spell charges), victory screen, battle start/escape, pause menu (spacebar). Note: accuracy/evasion stat gains not hooked.
 
+**Minigames:** 15-puzzle — arrowing over a tile speaks the number (or "empty"); I key / right-stick up speaks row/column
+
 ---
 
 ## Hotkeys
@@ -40,7 +42,7 @@ MelonLoader accessibility mod for Final Fantasy I Pixel Remaster. Screen reader 
 **Core:** `FFI_ScreenReaderMod.cs`, `InputManager.cs`, `ModMenu.cs`, `Filters/`
 **Field:** `EntityScanner.cs`, `NavigableEntity.cs`, `FieldNavigationHelper.cs`, `MapNameResolver.cs`, `FilterContext.cs`
 **Menus:** `MenuTextDiscovery.cs`, `SaveSlotReader.cs`, `ConfigMenuReader.cs`, `ItemDetailsAnnouncer.cs`, `StatusDetailsReader.cs`, `CharacterSelectionReader.cs`
-**Patches:** `*MenuPatches.cs`, `Battle*Patches.cs`, `MessageWindowPatches.cs`, `ScrollMessagePatches.cs`, `PopupPatches.cs`, `BattlePausePatches.cs`, `MapTransitionPatches.cs`, `MovementSoundPatches.cs`, `CursorNavigationPatches.cs`, `SaveLoadPatches.cs`, `ShopPatches.cs`, `VehicleLandingPatches.cs`, `JobSelectionPatches.cs`, `NewGamePatches.cs`
+**Patches:** `*MenuPatches.cs`, `Battle*Patches.cs`, `MessageWindowPatches.cs`, `ScrollMessagePatches.cs`, `PopupPatches.cs`, `BattlePausePatches.cs`, `MapTransitionPatches.cs`, `MovementSoundPatches.cs`, `CursorNavigationPatches.cs`, `SaveLoadPatches.cs`, `ShopPatches.cs`, `VehicleLandingPatches.cs`, `JobSelectionPatches.cs`, `NewGamePatches.cs`, `PuzzlePatches.cs`
 **Utils:** `TolkWrapper.cs`, `SpeechHelper.cs`, `TextUtils.cs`, `SoundPlayer.cs`, `GameObjectCache.cs`, `MenuStateRegistry.cs`, `EntityTranslator.cs`, `LocationMessageTracker.cs`, `AnnouncementDeduplicator.cs`, `CoroutineManager.cs`, `MoveStateHelper.cs`, `StateMachineHelper.cs`, `IL2CppOffsets.cs`
 
 ---

@@ -200,6 +200,9 @@ namespace FFI_ScreenReader.Core
             // New game character creation/naming
             NewGamePatches.ApplyPatches(harmony);
 
+            // 15-puzzle minigame (tile-number announcements)
+            PuzzlePatches.ApplyPatches(harmony);
+
             // Map transition fade detection (suppress wall tones during screen fades)
             MapTransitionPatches.ApplyPatches(harmony);
 
