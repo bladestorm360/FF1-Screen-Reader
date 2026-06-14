@@ -9,6 +9,7 @@
 5. **No shell file commands** - No dir/find/Get-ChildItem/ls; use Glob, Read, and Grep tools only
 6. **Stay In Bounds** - Only work within `D:\Games\Dev\Unity\FFPR\ff1\` and `D:\Games\Dev\Unity\FFPR\ff1\ff1-screen-reader\`. NEVER search the game installation directory (`Final Fantasy PR\`), Steam library, parent directories, or any directory above `D:\Games\Dev\Unity\FFPR\ff1\`. The game directory is deployment-only — never search it. All decompiled output and analysis files are within the ff1 workspace.
 7. **No FF3 Reference** - NEVER reference or search the ff3 codebase unless the user explicitly asks to port code from that mod.
+8. **Game-Specific Translations** - Translations are game-specific; NEVER copy or look up translation strings from another FF mod (phrasing and presentation differ per game, and are not likely to repeat). When a string has no existing translation, translate it live yourself and add a self-contained entry to this mod's `translation.json`.
 
 ## Coding Rules
 
