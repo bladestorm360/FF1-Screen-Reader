@@ -35,141 +35,140 @@ waypoints.json (optional) goes in the game install's UserData folder (Final Fant
 
 ## Keys
 
-Game:
+### Game
 
-WASD or arrow keys: movement
-Enter: Confirm
-Backspace: cancel
-Q: Random suggested name during character creation. Toggle between statistics and description in buy menu in shops.
-f1: toggle between walk and run (dungeons and towns only; world map is walk-only by design — use vehicles for faster world travel).
-f3: toggle random encounters on and off.
+- WASD or arrow keys: movement
+- Enter: Confirm
+- Backspace/escape: cancel
+- Q: Random suggested name during character creation. Toggle between statistics and description in menus that have them.
+- f1: toggle between walk and run (dungeons and towns only; world map is walk-only by design — use vehicles for faster world travel).
+- f3: toggle random encounters on and off.
 
-Mod:
+### Mod
 
-J and L or \[ and ]: cycle destinations in pathfinder
-Shift+J and L or - and =: change destination categories
-\\ or p: get directions to selected destination
-Shift+\\ or P: Toggle pathfinding filter so that not all destinations are visible, just ones with a valid path.
-Shift+k: Reset category to all
-': Toggle footsteps
-;: toggle wall tones
-9: toggle audio beacons
-G: Announce current Gil
-M: Announce current map.
-H: In battle, announce active character hp, mp, status effects.
-R: Repeat the current dialogue or message.
-I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip. In the 15 puzzle minigame, announces the row and column of the highlighted tile.
-V: Announce active vehicle state.
-Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
+- J and L or \[ and ]: cycle destinations in pathfinder
+- Shift+J and L or - and =: change destination categories
+- \\ or p: get directions to selected destination
+- Shift+\\ or P: Toggle pathfinding filter so that not all destinations are visible, just ones with a valid path.
+- Shift+k: Reset category to all
+- ': Toggle footsteps
+- ;: toggle wall tones
+- f4: toggle audio beacons
+- G: Announce current Gil
+- M: Announce current map.
+- H: In battle, announce active character hp, mp, status effects.
+- R: Repeat the current dialogue or message.
+- I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip. In the 15 puzzle minigame, announces the row and column of the highlighted tile.
+- V: Announce active vehicle state.
+- Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
 
-Waypoints (field only):
+### Waypoints (field only)
 
-, (comma): previous waypoint.
-. (period): next waypoint.
-Shift+, : previous waypoint category.
-Shift+. : next waypoint category.
-/ (slash): pathfind to current waypoint.
-Shift+/ : add new waypoint at current location (prompts for name).
-Ctrl+. : rename current waypoint.
-Ctrl+/ : remove current waypoint.
-Ctrl+Shift+/ : clear all waypoints for the current map.
+- , (comma): previous waypoint.
+- . (period): next waypoint.
+- Shift+, : previous waypoint category.
+- Shift+. : next waypoint category.
+- / (slash): pathfind to current waypoint.
+- Shift+/ : add new waypoint at current location (prompts for name).
+- Ctrl+. : rename current waypoint.
+- Ctrl+/ : remove current waypoint.
+- Ctrl+Shift+/ : clear all waypoints for the current map.
 
-f5: toggle between HP display: full numbers, percentages or no HP display. NO hp display is how the game is intended to be played by the developers.
-f8: activate the mod menu where individual sound volume can be adjusted for mod sounds, as well as all togglable options.
+### Other toggles
 
-Game controller:
+- f5: toggle between HP display: full numbers, percentages or no HP display. NO hp display is how the game is intended to be played by the developers.
+- f7: Toggle autodetail mode. Reads stats/descriptions of items and spells when navigating instead of pressing I to request the information.
+- f8: activate the mod menu where individual sound volume can be adjusted for mod sounds, as well as all togglable options.
+
+### When on a character's status screen
+
+- up and down arrows read through statistics.
+- Shift plus arrows: jumps between groups, character info, vitals, statistics, combat statistics, progression.
+- control plus arrows: jump to beginning or end of statistics screen.
+
+### Game controller
 
 Button names are shown Xbox (PlayStation). Nintendo Pro / Joy-Con labels are also recognized — the controller type is auto-detected.
 
-Left Stick: movement on field, navigation in menus.
-D-pad: menu navigation only. On the field, D-pad is repurposed by the mod for waypoint cycling (see Mod controller below).
-A (Cross): Confirm.
-B (Circle): Cancel.
-X (Square): Shortcut — random name in character creation, statistics/description toggle in shop buy menus (keyboard Q equivalent).
-Y (Triangle): Open / close the field menu.
-LB / RB (L1 / R1): Tab switching in menus.
-LT (L2): Page up in non-field menus. On the field, LT is reserved by the mod for pathfinding (see Mod controller).
-RT (R2): Open the pause menu on the field and in battle. In non-field menus, page down.
-L3 (Left Stick Click): toggle random encounters (keyboard F3 equivalent) — only when Stick-click normalization is enabled in the Mod Menu.
-R3 (Right Stick Click): toggle walk/run (keyboard F1 equivalent) — only when Stick-click normalization is enabled.
+- Left Stick: movement on field, navigation in menus.
+- D-pad: menu navigation only. On the field, D-pad is repurposed by the mod for waypoint cycling (see Mod controller below).
+- A (Cross): Confirm.
+- B (Circle): Cancel.
+- X (Square): Shortcut — random name in character creation, statistics/description toggle in shop buy menus (keyboard Q equivalent).
+- Y (Triangle): Open / close the field menu.
+- LB / RB (L1 / R1): Tab switching in menus.
+- LT (L2): Page up in non-field menus. On the field, LT is reserved by the mod for pathfinding (see Mod controller).
+- RT (R2): Open the pause menu on the field and in battle. In non-field menus, page down.
+- L3 (Left Stick Click): toggle random encounters (keyboard F3 equivalent) — only when Stick-click normalization is enabled in the Mod Menu.
+- R3 (Right Stick Click): toggle walk/run (keyboard F1 equivalent) — only when Stick-click normalization is enabled.
 
-Start (Options) is reserved by the mod for the Mod Menu and does not pass through to the game; use Triangle for the field menu and RT for the pause menu.
+### Mod controller
 
-Mod controller:
+- Back/Select: Mod mode
+- Start/Menu: Mod menu
 
-The mod adds two controller modes on top of normal play:
-- Mod Mode: armed by pressing Back; the next button triggers a mod action and auto-exits.
-- Mod Menu: opened by Start; full overlay for volume and toggle preferences (same as keyboard F8).
+#### Mod Mode combos (press Back/select, then one of the following)
 
-Mode switching:
+##### In battle
 
-Back (Share / Create / Minus): toggle Mod Mode on or off.
-Start (Options / Plus): toggle Mod Menu open or closed.
+- X (Square): announce active character HP, MP, and status (keyboard H equivalent).
 
-Mod Mode combos (press Back to arm, then one of the following):
+##### On field
 
-In battle:
-  X (Square): announce active character HP, MP, and status (keyboard H equivalent).
+- X (Square): announce current Gil.
+- Y (Triangle): announce current map or location.
+- A (Cross): announce active vehicle state.
+- Right Stick Up / Down / Left / Right: teleport 16 tiles in that direction.
 
-On field:
-  X (Square): announce current Gil.
-  Y (Triangle): announce current map or location.
-  A (Cross): announce active vehicle state.
-  Right Stick Up / Down / Left / Right: teleport 16 tiles in that direction.
+##### While a dialogue or message window is open
 
-While a dialogue or message window is open:
-  X (Square): repeat the current message (keyboard R equivalent).
+- X (Square): repeat the current message (keyboard R equivalent).
 
-Stick-click mod actions (preference-controlled in the Mod Menu):
+#### Stick-click mod actions (preference-controlled in the Mod Menu)
 
-  When stick-click normalization is OFF (default):
-    L3 (Left Stick Click): toggle audio beacons.
-    R3 (Right Stick Click): toggle pathfinding filter.
-  When stick-click normalization is ON:
-    Back + L3: toggle audio beacons.
-    Back + R3: toggle pathfinding filter.
-    (L3 / R3 alone become game functions — encounter toggle / walk-run toggle.)
+##### When stick-click normalization is OFF (default)
 
-Normal-state mod actions (no Mod button needed):
+- L3 (Left Stick Click): toggle audio beacons.
+- R3 (Right Stick Click): toggle pathfinding filter.
 
-Field — waypoint navigation:
-  D-pad Up / Down: previous / next waypoint.
-  D-pad Left / Right: previous / next waypoint category.
+##### When stick-click normalization is ON
 
-Field — entity scanning:
-  Right Stick Up / Down: previous / next entity.
-  Right Stick Left / Right: previous / next entity category.
+- Back + L3: toggle audio beacons.
+- Back + R3: toggle pathfinding filter.
+- (L3 / R3 alone become game functions — encounter toggle / walk-run toggle.)
 
-Field — pathfinding:
-  Left Trigger (L2 / ZL): pathfind to last selected target / restart beacon.
+#### Normal-state mod actions (no Mod button needed)
 
-In menus (status, bestiary, shop, configuration, and the Mod Menu):
-  Right Stick Up: read item details (keyboard I equivalent).
-  Right Stick Down: announce context controls / help for the current screen (keyboard Shift+I equivalent).
-  Right Stick Left: announce "usable by" classes for highlighted equipment (keyboard U equivalent).
-  D-pad Up / Down or Left Stick Up / Down: previous / next stat in the status and bestiary detail screens.
+##### Field — waypoint navigation
 
-Mod Menu navigation (after Start opens it):
-  D-pad or Left Stick Up / Down: navigate items.
-  D-pad or Left Stick Left / Right: decrease / increase value.
-  A (Cross): toggle / confirm.
-  B (Circle) or Start: close the Mod Menu.
+- D-pad Up / Down: previous / next waypoint.
+- D-pad Left / Right: previous / next waypoint category.
 
-Auto-announced state changes:
+##### Field — entity scanning
 
-Walk / run state and random-encounters state are announced automatically whenever they change, regardless of source — keyboard F1 / F3, L3 / R3 stick clicks (when normalization is on), or any cheat-menu toggle.
+- Right Stick Up / Down: previous / next entity.
+- Right Stick Left / Right: previous / next entity category.
 
-When on a character's status screen:
+##### Field — pathfinding
 
-up and down arrows read through statistics.
-Shift plus arrows: jumps between groups, character info, vitals, statistics, combat statistics, progression.
-control plus arrows: jump to beginning or end of statistics screen.
+- Left Trigger (L2 / ZL): pathfind to last selected target / restart beacon.
 
-## The 15 puzzle minigame
+##### In menus (status, bestiary, shop, configuration, and the Mod Menu)
 
-The number on the highlighted tile is spoken automatically as you move the cursor over the board (or "empty" for the blank space). Press I on the keyboard, or Right Stick Up on a controller, to hear the current tile's row and column.
+- Right Stick Up: read item details (keyboard I equivalent).
+- Right Stick Down: announce context controls / help for the current screen (keyboard Shift+I equivalent).
+- Right Stick Left: announce "usable by" classes for highlighted equipment (keyboard U equivalent).
+- D-pad Up / Down or Left Stick Up / Down: previous / next stat in the status and bestiary detail screens.
+
+##### Mod Menu navigation (after Start opens it)
+
+- D-pad or Left Stick Up / Down: navigate items.
+- D-pad or Left Stick Left / Right: decrease / increase value.
+- A (Cross): toggle / confirm.
+- B (Circle) or Start: close the Mod Menu.
 
 ## Credits:
-ZKline for making the original ff6 mod, without which I likely never would have tried modding these games.
-Stirlock and UnexplainedEntity for help testing the builds before public release.
-Stirlock for obtaining Japanese entity names so they could be translated.
+
+- ZKline for making the original ff6 mod, without which I likely never would have tried modding these games.
+- Stirlock and UnexplainedEntity for help testing the builds before public release.
+- Stirlock for obtaining Japanese entity names so they could be translated.
