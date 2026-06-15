@@ -16,13 +16,16 @@ namespace FFI_ScreenReader.Utils
 
         /// <summary>
         /// Wall tone frequencies per direction (Hz).
-        /// Higher frequencies for vertical, lower for horizontal.
+        /// The four tones form an E minor 7th chord: E3-G3-B3-D4.
+        /// NORTH=D4 (highest) and SOUTH=E3 (lowest) are the outer voices;
+        /// WEST=G3 (left) and EAST=B3 (right) are spread symmetrically
+        /// around the center so left/right are clearly distinguishable.
         /// </summary>
         public static class WallToneFrequencies
         {
             public const int NORTH = 294;
             public const int SOUTH = 165;
-            public const int EAST = 220;
+            public const int EAST = 247;
             public const int WEST = 196;
         }
 
