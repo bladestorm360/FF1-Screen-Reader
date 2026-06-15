@@ -64,6 +64,7 @@ waypoints.json (optional) goes in the game install's UserData folder (Final Fant
 - R: Repeat the current dialogue or message.
 - I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip. In the 15 puzzle minigame, announces the row and column of the highlighted tile.
 - Shift+I: announce the controls for the current screen.
+- U: announce which classes can use the highlighted weapon or armor, in shop menus and the equipment menu.
 - V: Announce active vehicle state.
 - Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
 
