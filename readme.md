@@ -50,15 +50,20 @@ waypoints.json (optional) goes in the game install's UserData folder (Final Fant
 - Shift+J and L or - and =: change destination categories
 - \\ or p: get directions to selected destination
 - Shift+\\ or P: Toggle pathfinding filter so that not all destinations are visible, just ones with a valid path.
+- Ctrl+\\ or Ctrl+P: Toggle layer transition filter (hides stairs and layer-change destinations from navigation).
+- K: announce the currently selected entity again.
+- Backtick (the key above Tab): rescan nearby entities.
 - Shift+k: Reset category to all
 - ': Toggle footsteps
 - ;: toggle wall tones
-- f4: toggle audio beacons
+- f6: toggle audio beacons
 - G: Announce current Gil
 - M: Announce current map.
+- Shift+M: Toggle map exit filter so multiple exits to the same place collapse to the nearest one.
 - H: In battle, announce active character hp, mp, status effects.
 - R: Repeat the current dialogue or message.
 - I: In configuration  menu accessible from tab menu, read description of highlighted setting. In shop menus, reads description or stats or of highlighted item. . In item menu with equipment highlighted, reads which jobs can equip. In the 15 puzzle minigame, announces the row and column of the highlighted tile.
+- Shift+I: announce the controls for the current screen.
 - V: Announce active vehicle state.
 - Ctrl+Arrow keys: Teleport to direction of selected entity (Ctrl+Up = north of entity, etc.)
 

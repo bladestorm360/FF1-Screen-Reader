@@ -88,6 +88,7 @@ namespace FFI_ScreenReader.Core
             RegisterFieldWithBattleFeedback(KeyCode.K, KeyModifier.None, mod.AnnounceEntityOnly, "Announce entity name (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.L, KeyModifier.Shift, mod.CycleNextCategory, "Next entity category (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.L, KeyModifier.None, mod.CycleNext, "Next entity (alt)");
+            RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.Ctrl, mod.ToggleToLayerFilter, "Toggle layer filter (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.Shift, mod.TogglePathfindingFilter, "Toggle pathfinding filter (alt)");
             RegisterFieldWithBattleFeedback(KeyCode.P, KeyModifier.None, () =>
             {
@@ -142,7 +143,7 @@ namespace FFI_ScreenReader.Core
             // --- Field-only toggles (blocked in battle with feedback) ---
             RegisterFieldWithBattleFeedback(KeyCode.Quote, KeyModifier.None, mod.ToggleFootsteps, "Toggle footsteps");
             RegisterFieldWithBattleFeedback(KeyCode.Semicolon, KeyModifier.None, mod.ToggleWallTones, "Toggle wall tones");
-            RegisterFieldWithBattleFeedback(KeyCode.Alpha9, KeyModifier.None, mod.ToggleAudioBeacons, "Toggle audio beacons");
+            RegisterFieldWithBattleFeedback(KeyCode.F6, KeyModifier.None, mod.ToggleAudioBeacons, "Toggle audio beacons");
 
             // --- Field-only category shortcuts ---
             RegisterFieldWithBattleFeedback(KeyCode.K, KeyModifier.Shift, mod.ResetToAllCategory, "Reset to All category");
@@ -228,7 +229,7 @@ namespace FFI_ScreenReader.Core
                 return;
             }
 
-            // Handle function keys (F4/F5/F6) — bare keypress only
+            // Handle function keys (F5/F7) — bare keypress only
             if (!anyModifierHeld)
                 HandleFunctionKeyInput();
 
@@ -328,9 +329,6 @@ namespace FFI_ScreenReader.Core
                     ControllerRouter.SpeakModMenuUnavailable();
                 }
             }
-
-            if (GamepadManager.IsKeyCodePressed(KeyCode.F6))
-                FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons();
         }
 
         private static void HandleTabKey()
