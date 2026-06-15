@@ -78,8 +78,23 @@ namespace FFI_ScreenReader.Core
 
         private void AnnounceCategoryChange()
         {
-            string categoryName = GetCategoryName(currentCategory);
-            FFI_ScreenReaderMod.SpeakText(string.Format(T("Category: {0}"), categoryName));
+            string categoryText = string.Format(T("Category: {0}"), GetCategoryName(currentCategory));
+
+            // Refresh so the new category's nearest entity is the current selection.
+            entityNav.RefreshEntitiesIfNeeded();
+            string entityDescription = entityNav.FormatCurrentEntity();
+
+            if (entityDescription == null)
+            {
+                // Empty category: announce the category name only (silent on the entity).
+                FFI_ScreenReaderMod.SpeakText(categoryText);
+                return;
+            }
+
+            // Category has an entity: announce the category and its first entity, and make it
+            // the active navigation target (matches AnnounceEntityOnly behavior).
+            NavigationTargetTracker.MarkEntity();
+            FFI_ScreenReaderMod.SpeakText($"{categoryText}, {entityDescription}");
         }
 
         /// <summary>

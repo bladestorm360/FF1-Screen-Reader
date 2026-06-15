@@ -178,8 +178,8 @@ namespace FFI_ScreenReader.Core
 
             RefreshEntitiesIfNeeded();
 
-            var entity = entityScanner?.CurrentEntity;
-            if (entity == null)
+            string announcement = FormatCurrentEntity();
+            if (announcement == null)
             {
                 string categoryName = CategoryManager.GetCategoryName(getCategory());
                 int count = entityScanner?.Entities?.Count ?? 0;
@@ -191,6 +191,19 @@ namespace FFI_ScreenReader.Core
             }
 
             NavigationTargetTracker.MarkEntity();
+            FFI_ScreenReaderMod.SpeakText(announcement);
+        }
+
+        /// <summary>
+        /// Returns the formatted description of the currently selected entity
+        /// (name/direction plus "N of M" index), or null if no entity is selected.
+        /// Does not speak — callers decide how to present it.
+        /// </summary>
+        public string FormatCurrentEntity()
+        {
+            var entity = entityScanner?.CurrentEntity;
+            if (entity == null)
+                return null;
 
             var context = new FilterContext();
             string announcement = entity.FormatDescription(context.PlayerPosition);
@@ -199,7 +212,7 @@ namespace FFI_ScreenReader.Core
             int total = entityScanner.Entities.Count;
             announcement += " " + string.Format(T("({0} of {1})"), index, total);
 
-            FFI_ScreenReaderMod.SpeakText(announcement);
+            return announcement;
         }
     }
 }
