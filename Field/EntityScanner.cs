@@ -309,6 +309,33 @@ namespace FFI_ScreenReader.Field
         }
 
         /// <summary>
+        /// When the pathfinding filter is on, advances the selection to the first reachable entity,
+        /// searching from the current index (inclusive) and wrapping; returns false if none are
+        /// reachable. When the filter is off, leaves the selection unchanged and returns whether the
+        /// list is non-empty. Used by category-change so it lands on / announces a reachable entity.
+        /// </summary>
+        public bool SelectFirstReachable()
+        {
+            if (filteredEntities.Count == 0)
+                return false;
+            if (!pathfindingFilter.IsEnabled)
+                return true;
+
+            var context = new FilterContext();
+            for (int i = 0; i < filteredEntities.Count; i++)
+            {
+                int idx = (currentIndex + i) % filteredEntities.Count;
+                if (pathfindingFilter.PassesFilter(filteredEntities[idx], context))
+                {
+                    currentIndex = idx;
+                    SaveSelectedEntityIdentifier();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Moves to the previous entity.
         /// If pathfinding filter is enabled, skips entities without valid paths.
         /// </summary>

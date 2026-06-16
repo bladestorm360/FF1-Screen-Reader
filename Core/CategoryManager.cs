@@ -82,6 +82,16 @@ namespace FFI_ScreenReader.Core
 
             // Refresh so the new category's nearest entity is the current selection.
             entityNav.RefreshEntitiesIfNeeded();
+
+            // Obey the pathfinding filter: select the nearest reachable entity. If none are reachable
+            // (or the category is empty), treat the category as empty — announce only its name (the
+            // "No reachable entities" message is reserved for entity cycling).
+            if (entityScanner == null || !entityScanner.SelectFirstReachable())
+            {
+                FFI_ScreenReaderMod.SpeakText(categoryText);
+                return;
+            }
+
             string entityDescription = entityNav.FormatCurrentEntity();
 
             if (entityDescription == null)
