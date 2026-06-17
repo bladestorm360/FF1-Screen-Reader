@@ -85,95 +85,11 @@ namespace FFI_ScreenReader.Patches
                 {
                     MelonLogger.Warning("[MessageWindow] MessageWindowManager type not found");
                 }
-
-                // Patch MessageMultipleWindowManager for concurrent windows
-                PatchMessageMultipleWindowManager(harmony);
-
-                // Patch MessageSelectWindowManager for choice dialogs
-                PatchMessageSelectWindowManager(harmony);
-
-                // Patch SystemMessageWindowManager for system prompts
-                PatchSystemMessageWindowManager(harmony);
             }
             catch (Exception ex)
             {
                 MelonLogger.Error($"[MessageWindow] Error applying message window patches: {ex.Message}");
                 MelonLogger.Error($"[MessageWindow] Stack trace: {ex.StackTrace}");
-            }
-        }
-
-        /// <summary>
-        /// Patches MessageMultipleWindowManager for concurrent dialogue windows.
-        /// </summary>
-        private static void PatchMessageMultipleWindowManager(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                Type mmwmType = FindType("MessageMultipleWindowManager");
-                if (mmwmType != null)
-                {
-                    var playMethod = AccessTools.Method(mmwmType, "Play");
-                    if (playMethod != null)
-                    {
-                        var postfix = typeof(MessageWindowPatches).GetMethod("MultipleWindowPlay_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error patching MessageMultipleWindowManager: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Patches MessageSelectWindowManager for choice dialogs.
-        /// </summary>
-        private static void PatchMessageSelectWindowManager(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                Type mswmType = FindType("MessageSelectWindowManager");
-                if (mswmType != null)
-                {
-                    var playMethod = AccessTools.Method(mswmType, "Play");
-                    if (playMethod != null)
-                    {
-                        var postfix = typeof(MessageWindowPatches).GetMethod("SelectWindowPlay_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(playMethod, postfix: new HarmonyMethod(postfix));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error patching MessageSelectWindowManager: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Patches SystemMessageWindowManager for system prompts.
-        /// </summary>
-        private static void PatchSystemMessageWindowManager(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                Type smwmType = FindType("SystemMessageWindowManager");
-                if (smwmType != null)
-                {
-                    var openMethod = AccessTools.Method(smwmType, "Open");
-                    if (openMethod != null)
-                    {
-                        var postfix = typeof(MessageWindowPatches).GetMethod("SystemMessageOpen_Postfix",
-                            BindingFlags.Public | BindingFlags.Static);
-                        harmony.Patch(openMethod, postfix: new HarmonyMethod(postfix));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error patching SystemMessageWindowManager: {ex.Message}");
             }
         }
 
@@ -218,59 +134,6 @@ namespace FFI_ScreenReader.Patches
             }
 
             return clean.Trim();
-        }
-
-        /// <summary>
-        /// Reads the messageList field from a manager instance and returns combined text.
-        /// Uses pointer-based access for IL2CPP types.
-        /// </summary>
-        private static string ReadMessageListFromInstance(object instance)
-        {
-            if (instance == null)
-                return null;
-
-            try
-            {
-                // Get the IL2CPP object pointer
-                var il2cppObj = instance as Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase;
-                if (il2cppObj == null)
-                    return null;
-
-                IntPtr instancePtr = il2cppObj.Pointer;
-                if (instancePtr == IntPtr.Zero)
-                    return null;
-
-                // Read messageList pointer at offset 0x88
-                IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.MessageWindow.MessageList);
-                if (listPtr == IntPtr.Zero)
-                    return null;
-
-                // Wrap as IL2CPP List<string>
-                var il2cppList = new Il2CppSystem.Collections.Generic.List<string>(listPtr);
-                if (il2cppList == null)
-                    return null;
-
-                var sb = new StringBuilder();
-                int count = il2cppList.Count;
-
-                for (int i = 0; i < count; i++)
-                {
-                    var msg = il2cppList[i];
-                    if (!string.IsNullOrWhiteSpace(msg))
-                    {
-                        if (sb.Length > 0)
-                            sb.Append(" ");
-                        sb.Append(msg.Trim());
-                    }
-                }
-
-                return sb.Length > 0 ? sb.ToString() : null;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error reading messageList: {ex.Message}");
-                return null;
-            }
         }
 
         /// <summary>
@@ -576,81 +439,6 @@ namespace FFI_ScreenReader.Patches
             catch
             {
                 return -1; // Pointer read may fail during transitions
-            }
-        }
-
-        /// <summary>
-        /// Postfix for MessageMultipleWindowManager.Play - handles concurrent dialogue windows.
-        /// </summary>
-        public static void MultipleWindowPlay_Postfix(object __instance)
-        {
-            try
-            {
-                // Read messageList from instance
-                string fullText = ReadMessageListFromInstance(__instance);
-
-                if (string.IsNullOrWhiteSpace(fullText))
-                    return;
-
-                string cleanMessage = CleanMessage(fullText);
-                if (!string.IsNullOrWhiteSpace(cleanMessage))
-                {
-                    FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error in MultipleWindowPlay_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Postfix for MessageSelectWindowManager.Play - handles choice dialogs.
-        /// </summary>
-        public static void SelectWindowPlay_Postfix(object __instance)
-        {
-            try
-            {
-                // Read messageList from instance
-                string fullText = ReadMessageListFromInstance(__instance);
-
-                if (string.IsNullOrWhiteSpace(fullText))
-                    return;
-
-                string cleanMessage = CleanMessage(fullText);
-                if (!string.IsNullOrWhiteSpace(cleanMessage))
-                {
-                    FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error in SelectWindowPlay_Postfix: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Postfix for SystemMessageWindowManager.Open - reads system messages.
-        /// </summary>
-        public static void SystemMessageOpen_Postfix(object __instance)
-        {
-            try
-            {
-                // Try to read messageList from instance
-                string message = ReadMessageListFromInstance(__instance);
-
-                if (string.IsNullOrWhiteSpace(message))
-                    return;
-
-                string cleanMessage = CleanMessage(message);
-                if (!string.IsNullOrWhiteSpace(cleanMessage))
-                {
-                    FFI_ScreenReaderMod.SpeakText(cleanMessage, interrupt: false);
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[MessageWindow] Error in SystemMessageOpen_Postfix: {ex.Message}");
             }
         }
 
