@@ -280,7 +280,11 @@ namespace FFI_ScreenReader.Core
             // (prevents Field keys from firing on title screen, boot screen, etc.)
             try
             {
+                // Self-heal the cache (like every other FieldPlayerController reader) so a cleared or
+                // stale entry can't wedge the field context into Global and silently disable field hotkeys.
                 var pc = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
+                if (pc == null)
+                    pc = GameObjectCache.Refresh<Il2CppLast.Map.FieldPlayerController>();
                 if (pc?.fieldPlayer != null)
                     return KeyContext.Field;
             }

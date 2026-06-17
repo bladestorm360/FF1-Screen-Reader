@@ -67,7 +67,10 @@ namespace FFI_ScreenReader.Core
 
             if (mapChanged)
             {
-                GameObjectCache.Clear<Il2CppLast.Map.FieldPlayerController>();
+                // Refresh (not Clear) the cached controller: an early-return later in the nav action
+                // would otherwise leave the entry empty, and DetermineContext()'s cache-only Get would
+                // then collapse the field context to Global, silently disabling all field hotkeys.
+                GameObjectCache.Refresh<Il2CppLast.Map.FieldPlayerController>();
                 entityScanner.ForceRescan();
                 lastScannedMapId = currentMapId;
                 NavigationTargetTracker.Clear();
