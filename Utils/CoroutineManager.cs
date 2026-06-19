@@ -16,6 +16,10 @@ namespace FFI_ScreenReader.Utils
         private static readonly Dictionary<IEnumerator, IEnumerator> originalToWrapper = new Dictionary<IEnumerator, IEnumerator>();
         // Reverse mapping for O(1) lookup when evicting oldest coroutine
         private static readonly Dictionary<IEnumerator, IEnumerator> wrapperToOriginal = new Dictionary<IEnumerator, IEnumerator>();
+        // Wrapper -> the token MelonCoroutines.Start returned. Stopping must use this token, NOT the
+        // IEnumerator: MelonCoroutines.Stop given the raw IEnumerator resolves to a null UnityEngine
+        // .Coroutine and StopCoroutine(null) throws ("routine is null") at teardown.
+        private static readonly Dictionary<IEnumerator, object> wrapperToToken = new Dictionary<IEnumerator, object>();
         private static readonly object coroutineLock = new object();
         private static int maxConcurrentCoroutines = 20;
 
@@ -38,20 +42,12 @@ namespace FFI_ScreenReader.Utils
             {
                 if (activeCoroutines.Count > 0)
                 {
-                    foreach (var coroutine in activeCoroutines)
-                    {
-                        try
-                        {
-                            MelonCoroutines.Stop(coroutine);
-                        }
-                        catch (Exception ex)
-                        {
-                            MelonLogger.Error($"Error stopping coroutine: {ex.Message}");
-                        }
-                    }
+                    foreach (var wrapper in activeCoroutines)
+                        StopByToken(wrapper);
                     activeCoroutines.Clear();
                     originalToWrapper.Clear();
                     wrapperToOriginal.Clear();
+                    wrapperToToken.Clear();
                 }
             }
         }
@@ -85,8 +81,7 @@ namespace FFI_ScreenReader.Utils
                         originalToWrapper.Remove(original);
                         wrapperToOriginal.Remove(oldest);
                     }
-                    try { MelonCoroutines.Stop(oldest); }
-                    catch (Exception ex) { MelonLogger.Error($"Error stopping evicted coroutine: {ex.Message}"); }
+                    StopByToken(oldest);
                 }
 
                 // Use a holder to pass the wrapper reference into the iterator
@@ -95,13 +90,15 @@ namespace FFI_ScreenReader.Utils
                 holder.Wrapper = wrapper;
                 holder.Original = coroutine;
 
-                // Start the wrapper coroutine
+                // Start the wrapper coroutine, keeping the token MelonCoroutines hands back so we
+                // can stop it cleanly later.
                 try
                 {
-                    MelonCoroutines.Start(wrapper);
+                    object token = MelonCoroutines.Start(wrapper);
                     activeCoroutines.Add(wrapper);
                     originalToWrapper[coroutine] = wrapper;
                     wrapperToOriginal[wrapper] = coroutine;
+                    wrapperToToken[wrapper] = token;
                 }
                 catch (Exception ex)
                 {
@@ -125,10 +122,24 @@ namespace FFI_ScreenReader.Utils
                     originalToWrapper.Remove(original);
                     wrapperToOriginal.Remove(wrapper);
                     activeCoroutines.Remove(wrapper);
-                    try { MelonCoroutines.Stop(wrapper); }
-                    catch (Exception ex) { MelonLogger.Error($"Error stopping managed coroutine: {ex.Message}"); }
+                    StopByToken(wrapper);
                 }
             }
+        }
+
+        /// <summary>
+        /// Stops a wrapper using the token MelonCoroutines.Start returned, and forgets the token.
+        /// Must be called while holding coroutineLock. Tolerates a missing/null token (the coroutine
+        /// already finished), which is what prevents the teardown "routine is null" NRE.
+        /// </summary>
+        private static void StopByToken(IEnumerator wrapper)
+        {
+            if (wrapper == null) return;
+            if (!wrapperToToken.TryGetValue(wrapper, out var token)) return;
+            wrapperToToken.Remove(wrapper);
+            if (token == null) return;
+            try { MelonCoroutines.Stop(token); }
+            catch (Exception ex) { MelonLogger.Error($"Error stopping managed coroutine: {ex.Message}"); }
         }
 
         /// <summary>
@@ -150,6 +161,7 @@ namespace FFI_ScreenReader.Utils
                     {
                         activeCoroutines.Remove(holder.Wrapper);
                         wrapperToOriginal.Remove(holder.Wrapper);
+                        wrapperToToken.Remove(holder.Wrapper);
                     }
                     if (holder.Original != null)
                         originalToWrapper.Remove(holder.Original);

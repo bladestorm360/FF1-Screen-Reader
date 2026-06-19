@@ -300,7 +300,7 @@ namespace FFI_ScreenReader.Core
             // Stop audio loops
             audioLoopManager?.StopAll();
 
-            // Shutdown sound player (closes waveOut handles, frees unmanaged memory)
+            // Shutdown sound player (destroys SDL audio streams + device, frees scratch buffer)
             SoundPlayer.Shutdown();
 
             CoroutineManager.CleanupAll();

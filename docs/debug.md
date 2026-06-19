@@ -35,6 +35,16 @@ unsafe {
 | ShopInfoController | view | 0x18 |
 | ShopInfoView | descriptionText | 0x38 |
 | ShopMagicTargetSelectController | isFoundEquipSlot | 0x70 |
+| ConfigControllCommandController | gamePadIconController / keyboardIconController / view | 0x40 / 0x48 / 0x58 |
+| ConfigKeyIconController | view | 0x18 |
+| ConfigControllCommandView | nameTexts | 0x30 |
+| ConfigKeyIconView | iconTextList | 0x30 |
+| ConfigKeysSettingController | keydata (KeyConfigData) | 0xC0 |
+| OptionController (KeyInput) | selectedItem / selectedDoropDown / isSetting | 0x98 / 0x88 / 0xB8 |
+| OptionLanguageContentController (Touch) | view | 0x20 |
+| OptionLanguageContentView (Touch) | nameText | 0x18 |
+
+`ConfigKeysSettingController.SelectContent` is **overloaded** (5-arg navigation + 2-arg variant) — patch must pass the explicit `Type[] { int, CustomScrollView, Cursor, IEnumerable<ConfigControllCommandController>, CustomScrollView.WithinRangeType }` or `AccessTools.Method` throws `AmbiguousMatchException` and the patch silently never attaches.
 
 ### Battle Controllers
 | Controller | Field | Offset |
@@ -120,7 +130,9 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 **Dialogue:** `newPageLineList` = END indices (inclusive); `[0,2]` → pages `[0,1,3]`; patch `PlayingInit` + `NewPageInputWaitInit`
 
-**Config Menu:** `SetFocus` → "Setting: Value"; `SwitchArrow/SliderTypeProcess` → just new value
+**Config Menu:** `SetFocus` → "Setting: Value"; `SwitchArrow/SliderTypeProcess` → just new value. The **Language row** value comes from `ConfigCommandType.Language` → a self-contained `Language→name` map keyed on `MessageManager.currentLanguage` (the game's `LangugeUtility.GetLanguageMessage` returns EMPTY for the *current* language). **Controls/remap screen:** postfix `ConfigKeysSettingController.SelectContent` (5-arg overload — disambiguate the `Type[]`); announce action `nameTexts` + keyboard binding (`keyboardIconController.iconTextList`, readable key names). The gamepad icon is a sprite glyph with NO text, so when the keyboard binding is empty (= gamepad section) read the LIVE bound button: `keydata` (`KeyConfigData`, 0xC0) → `GetGamePadKeyConfigtDictionary()[command.key]` → Unity `KeyCode` → `JoystickButtonN`→SDL index → `ControllerLabels.GetButtonLabel` → "{action} ({button})". FFPR stores Confirm/Cancel JP-style: JB1=Confirm→`SOUTH` (A/Cross), JB0=Cancel→`EAST` (B/Circle); JB2/3→`WEST`/`NORTH`. **Language dropdown:** KeyInput `OptionController.SetDropDownItemFocus` (event-driven, no dedup) speaks the focused language via `GetFocusedLanguageLabel` (item LabelText → dropdown value → current-language name map for the blank current item), gated on `ConfigMenuState.IsActive` so it can't speak over the title "Press any button." Do NOT hook `OptionController.UpdateSelectLanguage` (empty 0x2698F0 stub → launch crash).
+
+**Audio (SDL3):** One SDL audio device, 7 `SDL_AudioStream`s bound to it (Footstep, WallBump, Beacon + WallTone N/S/E/W) — SDL mixes all bound streams, replacing the old 4× winmm waveOut handles and the manual `MixWavFiles`/`GenerateMixedLoopTone`. Per-stream `SDL_SetAudioStreamGain` replaces per-sample `ScaleSamples` (user volume) and carries the `1/sqrt(N)` headroom on the active wall-tone set. Wall-tone loops have no hardware loop flag: `SoundPlayer.PlayWallTonesLooped` (called ~100ms by `AudioLoopManager`) tops up each active direction stream via `SDL_PutAudioStreamData` when `SDL_GetAudioStreamQueued` drops below ~2 buffers; per-direction sustain buffers are cycle-aligned so re-queued loops are click-free. SDL is init/quit per-subsystem (`SDL_InitSubSystem`/`SDL_QuitSubSystem`) so audio (`AudioEngine`) and gamepad (`GamepadManager`) don't tear each other down — no blanket `SDL_Quit`. Device opens paused → `SDL_ResumeAudioDevice` required.
 
 **Popups:** `PopupState` tracks pointer + offset; `Open()` uses `TryCast<T>()`; 1-frame delay; `ShouldSuppress()` = has buttons
 
@@ -142,7 +154,7 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 **New Game Grid:** `characterIndex = cursorIndex / 2`, `isClassField = cursorIndex % 2 == 1` (indices 0-7 = 4 chars × name/class, 8+ = Done)
 
-**Performance:** Static Vector3 directions (avoid allocs); IList\<Direction\> (avoid ToArray); single-pass lookups; O(1) reverse mapping; pre-allocated buffers (wallDirectionsBuffer, SoundPlayer 32KB); early-return bitmask checks
+**Performance:** Static Vector3 directions (avoid allocs); IList\<Direction\> (avoid ToArray); single-pass lookups; O(1) reverse mapping; pre-allocated buffers (wallDirectionsBuffer, AudioEngine beacon scratch 32KB); early-return bitmask checks; wall-tone loop submits pre-generated sustain buffers (no per-tick synthesis)
 
 ---
 
@@ -155,6 +167,7 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 ## Version History
 
+- **2026-06-18** — Audio backend moved from Windows waveOut to SDL3: new `AudioEngine` opens one SDL audio device with 7 bound `SDL_AudioStream`s and lets SDL mix; deleted `AudioChannel` (winmm), `ToneGenerator.MixWavFiles`/`GenerateMixedLoopTone`, `ScaleSamples`, and `SoundConstants.WaveFlags`. Volume + `1/sqrt(N)` headroom now via `SDL_SetAudioStreamGain`; wall-tone loops driven by per-direction stream top-up from `PlayWallTonesLooped`. `GamepadManager` switched to `SDL_InitSubSystem`/`SDL_QuitSubSystem(GAMEPAD)` (no blanket `SDL_Quit`). Removed dead `PlayWallTone`/`PlayWallTones`/`StopChannel`/`WallToneRequest`/`SoundChannel`. Fixes: keyboard/gamepad **remapping screen** was silent — `ConfigKeysSettingController.SelectContent` gained a 2nd overload in a game update, so the unqualified `AccessTools.Method` threw `AmbiguousMatchException` and the patch never attached; now disambiguated with the 5-arg `Type[]`. Remap rows read action + keyboard key name + the LIVE gamepad button (`keydata.GetGamePadKeyConfigtDictionary()[GameKey]` → `KeyCode` → SDL button → `ControllerLabels`; FFPR stores Confirm/Cancel JP-style so JB1→A/Cross, JB0→B/Circle). New: **Language menu** — row reads "Language: <current>" via a `Language→name` map off `MessageManager.currentLanguage`, and the dropdown announces each option via KeyInput `OptionController.SetDropDownItemFocus`, gated on `ConfigMenuState.IsActive` so it can't speak over the title "Press any button."
 - **2026-06-13** — Fixes: mod-menu open/close announcements moved into `ModMenu.Open`/`Close` so every entry/exit path speaks consistently (F8, Escape, "Close Menu" item, controller Start/B) — F8 now says "Mod menu" on open (trimmed from "Mod Menu Open") and keyboard/menu-item closes now say "Mod menu closed". Canoe no longer appears in the entity scanner — `VehicleDetector`/`TransportDetector` skip `TransportTypes.CANOE` (it's an auto-used key item whose map object sits out of bounds).
 - **2026-06-13** — Mod-menu toggle "Beacon Destination Announcement" (PreferencesManager `AnnounceOnBeaconRestart`, default off): when on, user-triggered beacon restarts re-announce the current target — entity via `RestartEntityBeacon`/`AnnounceEntityOnly`, waypoint via `WaypointController` + `FormatCurrentWaypoint`. `RestartBeacon` itself unchanged so background restarts stay silent.
 - **2026-06-13** — 15-puzzle minigame support: arrowing over a tile speaks the number (or "empty"); on-demand position key (keyboard I / controller right-stick up) speaks row/column. New `PuzzlePatches` postfixes MiniGamePuzzleController movement methods; `PuzzleGameState` (PUZZLE_GAME registry key) gates the position key. One-time `[Puzzle] SNAPSHOT` log dumps board state to confirm pieceList ordering + index→number mapping at runtime.

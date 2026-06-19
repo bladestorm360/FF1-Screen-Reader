@@ -11,7 +11,7 @@ namespace FFI_ScreenReader.Utils
         /// <summary>WAV file header size in bytes.</summary>
         public const int WAV_HEADER_SIZE = 44;
 
-        /// <summary>Pre-allocated buffer size per channel (bytes).</summary>
+        /// <summary>Cap (bytes) for the reusable beacon scratch buffer in AudioEngine.</summary>
         public const int CHANNEL_BUFFER_SIZE = 32768;
 
         /// <summary>
@@ -71,7 +71,7 @@ namespace FFI_ScreenReader.Utils
         {
             public const int FREQUENCY = 500;
             public const int DURATION_MS = 25;
-            public const float VOLUME = 0.338f;
+            public const float VOLUME = 0.1436f; // lowered ~57.5% from original 0.338 (0.338→0.169→0.1436)
         }
 
         /// <summary>
@@ -91,21 +91,7 @@ namespace FFI_ScreenReader.Utils
         /// </summary>
         public static class WallToneTiming
         {
-            public const int ONE_SHOT_DURATION_MS = 150;
             public const int SUSTAIN_DURATION_MS = 200;
-        }
-
-        /// <summary>
-        /// waveOut API flag constants.
-        /// </summary>
-        public static class WaveFlags
-        {
-            public const uint WHDR_DONE = 0x01;
-            public const uint WHDR_PREPARED = 0x02;
-            public const uint WHDR_BEGINLOOP = 0x04;
-            public const uint WHDR_ENDLOOP = 0x08;
-            public const int WAVE_MAPPER = -1;
-            public const int CALLBACK_NULL = 0;
         }
     }
 }

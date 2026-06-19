@@ -39,6 +39,38 @@ namespace FFI_ScreenReader.Menus
             }
         }
 
+        // Self-contained Language(enum int) → display name. The game's own GetLanguageMessage returns
+        // EMPTY for the CURRENT language (it blanks the current item's label), so we map here instead.
+        // Names match the game's English-name style observed in the language dropdown.
+        private static readonly System.Collections.Generic.Dictionary<int, string> LanguageNames = new()
+        {
+            { 1, "Japanese" }, { 2, "English" }, { 3, "French" }, { 4, "Italian" },
+            { 5, "German" }, { 6, "Spanish" }, { 7, "Korean" }, { 8, "Chinese (Traditional)" },
+            { 9, "Chinese (Simplified)" }, { 10, "Russian" }, { 11, "Thai" }, { 12, "Brazilian Portuguese" },
+        };
+
+        /// <summary>
+        /// Current game language display name, mapped from MessageManager.currentLanguage (the same
+        /// source EntityTranslator uses). Used for the Language config row and the open dropdown's
+        /// current item (whose LabelText is blank). Deliberately does NOT use
+        /// LangugeUtility.GetLanguageMessage, which returns empty for the current language.
+        /// </summary>
+        public static string GetCurrentLanguageDisplayName()
+        {
+            try
+            {
+                var mgr = Il2CppLast.Management.MessageManager.Instance;
+                if (mgr == null) return null;
+                int langId = (int)mgr.currentLanguage;
+                return LanguageNames.TryGetValue(langId, out string name) ? name : null;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Config Menu] GetCurrentLanguageDisplayName failed: {ex.Message}");
+                return null;
+            }
+        }
+
         /// <summary>
         /// Converts a slider value to percentage based on its min/max range.
         /// For BGM/SFX sliders (1-10 range), returns the raw integer value instead.
@@ -79,6 +111,17 @@ namespace FFI_ScreenReader.Menus
 
             var view = command.view;
 
+            // Language row: its dropdown OptionData text is empty while the popup is closed, so read
+            // the current language straight from the game → "Language: <current>". Identified by the
+            // command's config type (not a localized string match).
+            var cmdData = command.ConfigCommandsData;
+            if (cmdData != null && cmdData.ConfigCommandType == Il2CppLast.UI.ConfigCommandType.Language)
+            {
+                string lang = GetCurrentLanguageDisplayName();
+                if (!string.IsNullOrEmpty(lang))
+                    return lang;
+            }
+
             // Check arrow change text (for toggle/selection options like BGM Type)
             if (view.ArrowSelectTypeRoot != null && view.ArrowSelectTypeRoot.activeSelf)
             {
@@ -103,19 +146,19 @@ namespace FFI_ScreenReader.Menus
                 }
             }
 
-            // Check dropdown (for language selection, etc.)
-            if (view.DropDownTypeRoot != null && view.DropDownTypeRoot.activeSelf)
+            // Check dropdown — ONLY while the popup is actually open. Reading closed dropdowns made
+            // sub-screen-opening rows (Gamepad/Keyboard Settings) announce Unity's default placeholder
+            // "Option A". The Language row's current value is handled above via ConfigCommandType.Language.
+            if (view.DropDownTypeRoot != null && view.DropDownTypeRoot.activeSelf && view.DropDown != null)
             {
-                if (view.DropDown != null)
+                var dropdown = view.DropDown;
+                if (dropdown.options != null && dropdown.value >= 0 && dropdown.value < dropdown.options.Count)
                 {
-                    var dropdown = view.DropDown;
-                    if (dropdown.options != null && dropdown.value >= 0 && dropdown.value < dropdown.options.Count)
+                    var opt = dropdown.options[dropdown.value];
+                    string dropdownText = opt != null ? opt.text : null;
+                    if (!string.IsNullOrEmpty(dropdownText))
                     {
-                        string dropdownText = dropdown.options[dropdown.value].text;
-                        if (!string.IsNullOrEmpty(dropdownText))
-                        {
-                            return dropdownText;
-                        }
+                        return dropdownText;
                     }
                 }
             }
