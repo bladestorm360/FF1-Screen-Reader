@@ -152,6 +152,8 @@ All delegate deduplication to `AnnouncementDeduplicator` with context keys (e.g.
 
 **Title Screen:** `InitializeTitle` captures text; `SystemIndicator.Hide` speaks; `SetEnableMainMenu(true)` clears states
 
+**Field Menu (initial focus):** `FieldMenuPatches` postfixes `KeyInput.MainMenuController.Show(bool)` → gated coroutine reads `commandMenuController.selectCursor` (the non-Touch `Last.UI.CommandMenuController` carries the generic cursor; Touch variant does not) → reuses `MenuTextDiscovery.WaitAndReadCursor` (same reader navigation uses). Gate on `MenuManager.IsOpen` (checked one frame later) so it never reads during a map/asset load. Never read `MainMenuController.focusId` — that's the SELECTED, not focused, command (prior attempt removed for this)
+
 **New Game Grid:** `characterIndex = cursorIndex / 2`, `isClassField = cursorIndex % 2 == 1` (indices 0-7 = 4 chars × name/class, 8+ = Done)
 
 **Performance:** Static Vector3 directions (avoid allocs); IList\<Direction\> (avoid ToArray); single-pass lookups; O(1) reverse mapping; pre-allocated buffers (wallDirectionsBuffer, AudioEngine beacon scratch 32KB); early-return bitmask checks; wall-tone loop submits pre-generated sustain buffers (no per-tick synthesis)
