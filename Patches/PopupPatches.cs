@@ -44,6 +44,12 @@ namespace FFI_ScreenReader.Patches
         private static int lastGameOverSelectCursorIndex = -1;
         private static int lastGameOverLoadCursorIndex = -1;
 
+        // On a CommonPopup open, the message must be read BEFORE the focused button. UpdateFocus fires
+        // immediately (button) while the message read is one frame delayed, so it would otherwise read
+        // backwards ("No. Would you like to return to title screen?"). The open-read speaks
+        // "message. button" together and this flag suppresses the first UpdateFocus announce.
+        private static bool _suppressNextCommonFocus = false;
+
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             if (isPatched)
@@ -366,6 +372,13 @@ namespace FFI_ScreenReader.Patches
                     return;
                 lastCommonPopupCursorIndex = cursorIndex;
 
+                // The open-read speaks the message + this button; don't also speak it here (out of order).
+                if (_suppressNextCommonFocus)
+                {
+                    _suppressNextCommonFocus = false;
+                    return;
+                }
+
                 IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.CommonCommandList);
                 if (listPtr == IntPtr.Zero) return;
 
@@ -567,8 +580,14 @@ namespace FFI_ScreenReader.Patches
                 var commonPopup = __instance.TryCast<KeyInputCommonPopup>();
                 if (commonPopup != null)
                 {
-                    HandlePopupDetected("CommonPopup", commonPopup.Pointer, IL2CppOffsets.Popup.CommonCommandList,
-                        () => ReadCommonPopup(commonPopup.Pointer));
+                    // Read message + focused button together (message first); suppress the first
+                    // UpdateFocus so the button isn't spoken before the message. CommonPopup has its own
+                    // UpdateFocus reader, so the generic cursor reader must not also read the button.
+                    _suppressNextCommonFocus = true;
+                    lastCommonPopupCursorIndex = -1;
+                    PopupState.SetActive("CommonPopup", commonPopup.Pointer, IL2CppOffsets.Popup.CommonCommandList,
+                        hasOwnFocusReader: true);
+                    CoroutineManager.StartManaged(DelayedCommonPopupRead(commonPopup.Pointer));
                     return;
                 }
 
@@ -583,8 +602,9 @@ namespace FFI_ScreenReader.Patches
                 var gameOver = __instance.TryCast<KeyInputGameOverSelectPopup>();
                 if (gameOver != null)
                 {
+                    // Has its own UpdateFocus reader — don't let the generic reader also read the button.
                     HandlePopupDetected("GameOverSelectPopup", gameOver.Pointer, IL2CppOffsets.Popup.GameOverCommandList,
-                        () => ReadGameOverSelectPopup(gameOver.Pointer));
+                        () => ReadGameOverSelectPopup(gameOver.Pointer), hasOwnFocusReader: true);
                     return;
                 }
 
@@ -632,9 +652,9 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static void HandlePopupDetected(string typeName, IntPtr ptr, int cmdListOffset, Func<string> readFunc)
+        private static void HandlePopupDetected(string typeName, IntPtr ptr, int cmdListOffset, Func<string> readFunc, bool hasOwnFocusReader = false)
         {
-            PopupState.SetActive(typeName, ptr, cmdListOffset);
+            PopupState.SetActive(typeName, ptr, cmdListOffset, hasOwnFocusReader);
             CoroutineManager.StartManaged(DelayedPopupRead(ptr, typeName, readFunc));
         }
 
@@ -658,6 +678,51 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        // CommonPopup open-read: message FIRST, then the focused button — so "Would you like to return
+        // to title screen? No" instead of the reversed "No. Would you like to return to title screen?".
+        private static IEnumerator DelayedCommonPopupRead(IntPtr popupPtr)
+        {
+            yield return null;
+            string announcement = null;
+            try
+            {
+                if (popupPtr != IntPtr.Zero)
+                {
+                    string message = ReadCommonPopup(popupPtr);
+                    string button = ReadFocusedCommonButton(popupPtr);
+                    if (!string.IsNullOrWhiteSpace(message) && !string.IsNullOrWhiteSpace(button))
+                        announcement = $"{message} {button}";
+                    else
+                        announcement = string.IsNullOrWhiteSpace(message) ? button : message;
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Popup] Error in CommonPopup read: {ex.Message}");
+            }
+            finally
+            {
+                _suppressNextCommonFocus = false;
+            }
+            if (!string.IsNullOrWhiteSpace(announcement))
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
+        }
+
+        /// <summary>Reads the CommonPopup's currently-focused button label (and primes the dedup index).</summary>
+        private static string ReadFocusedCommonButton(IntPtr popupPtr)
+        {
+            try
+            {
+                IntPtr cursorPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.CommonSelectCursor);
+                if (cursorPtr == IntPtr.Zero) return null;
+                int idx = new GameCursor(cursorPtr).Index;
+                lastCommonPopupCursorIndex = idx;   // so UpdateFocus won't re-announce the same button
+                string btn = ReadButtonFromCommandList(popupPtr, IL2CppOffsets.Popup.CommonCommandList, idx);
+                return string.IsNullOrWhiteSpace(btn) ? null : TextUtils.StripIconMarkup(btn);
+            }
+            catch { return null; }
+        }
+
         public static void PopupClose_Postfix()
         {
             try
@@ -669,6 +734,7 @@ namespace FFI_ScreenReader.Patches
                 lastCommonPopupCursorIndex = -1;
                 lastGameOverSelectCursorIndex = -1;
                 lastGameOverLoadCursorIndex = -1;
+                _suppressNextCommonFocus = false;
             }
             catch (Exception ex)
             {

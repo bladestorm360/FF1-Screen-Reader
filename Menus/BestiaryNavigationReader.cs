@@ -7,15 +7,12 @@ using FFI_ScreenReader.Patches;
 namespace FFI_ScreenReader.Menus
 {
     /// <summary>
-    /// Virtual buffer navigation for bestiary detail stats.
-    /// Follows the StatusNavigationReader pattern.
-    /// Arrow keys navigate through a flat list of visible stats read from UI elements.
+    /// Virtual buffer navigation for bestiary detail stats. Builds a shared <see cref="NavigationBuffer"/>
+    /// of the visible stats (with dynamic group boundaries + names) and delegates all navigation to it.
     /// </summary>
     public static class BestiaryNavigationReader
     {
-        private static List<BestiaryStatEntry> statBuffer = null;
-        private static List<int> groupStartIndices = null;
-        private static int currentIndex = 0;
+        private static NavigationBuffer buffer = null;
 
         /// <summary>
         /// Initialize the stat buffer from the current detail view's UI elements.
@@ -23,177 +20,61 @@ namespace FFI_ScreenReader.Menus
         /// </summary>
         public static void Initialize(List<BestiaryStatEntry> entries)
         {
-            statBuffer = entries;
-            currentIndex = 0;
+            var funcs = new List<Func<string>>();
+            var groupStarts = new List<int>();
+            var groupNames = new List<string>();
 
-            // Build group start indices
-            groupStartIndices = new List<int>();
-            if (statBuffer != null && statBuffer.Count > 0)
+            if (entries != null && entries.Count > 0)
             {
-                BestiaryStatGroup lastGroup = statBuffer[0].Group;
-                groupStartIndices.Add(0);
+                BestiaryStatGroup lastGroup = entries[0].Group;
+                groupStarts.Add(0);
+                groupNames.Add(GetGroupDisplayName(entries[0].Group));
 
-                for (int i = 1; i < statBuffer.Count; i++)
+                for (int i = 0; i < entries.Count; i++)
                 {
-                    if (statBuffer[i].Group != lastGroup)
+                    var entry = entries[i]; // capture per-iteration
+                    funcs.Add(() => entry.ToString());
+
+                    if (i > 0 && entry.Group != lastGroup)
                     {
-                        groupStartIndices.Add(i);
-                        lastGroup = statBuffer[i].Group;
+                        groupStarts.Add(i);
+                        groupNames.Add(GetGroupDisplayName(entry.Group));
+                        lastGroup = entry.Group;
                     }
                 }
             }
+
+            buffer = new NavigationBuffer(funcs, groupStarts, groupNames);
         }
 
-        /// <summary>
-        /// Clear navigation state.
-        /// </summary>
+        /// <summary>Clear navigation state.</summary>
         public static void Reset()
         {
-            statBuffer = null;
-            groupStartIndices = null;
-            currentIndex = 0;
+            buffer = null;
         }
 
-        /// <summary>
-        /// Whether navigation is currently active (has a populated stat buffer).
-        /// </summary>
-        public static bool IsActive => statBuffer != null && statBuffer.Count > 0 &&
+        /// <summary>Whether navigation is currently active (populated buffer + the tracker is active).</summary>
+        public static bool IsActive => buffer != null && !buffer.IsEmpty &&
                                         BestiaryNavigationTracker.Instance.IsNavigationActive;
 
-        /// <summary>
-        /// Navigate to the next stat (wraps to top).
-        /// </summary>
-        public static void NavigateNext()
+        public static void NavigateNext() => Move(b => b.Next());
+        public static void NavigatePrevious() => Move(b => b.Previous());
+        public static void JumpToNextGroup() => Move(b => b.NextGroup());
+        public static void JumpToPreviousGroup() => Move(b => b.PreviousGroup());
+        public static void JumpToTop() => Move(b => b.JumpTop());
+        public static void JumpToBottom() => Move(b => b.JumpBottom());
+        public static void ReadCurrentStat() => Move(b => b.Current());
+
+        // All wrap/group logic lives in NavigationBuffer; this just gates + speaks.
+        private static void Move(Func<NavigationBuffer, string> op)
         {
             if (!IsActive) return;
-
-            currentIndex = (currentIndex + 1) % statBuffer.Count;
-            ReadCurrentStat();
+            string value = op(buffer);
+            if (!string.IsNullOrEmpty(value))
+                FFI_ScreenReaderMod.SpeakText(value, true);
         }
 
-        /// <summary>
-        /// Navigate to the previous stat (wraps to bottom).
-        /// </summary>
-        public static void NavigatePrevious()
-        {
-            if (!IsActive) return;
-
-            currentIndex--;
-            if (currentIndex < 0)
-                currentIndex = statBuffer.Count - 1;
-            ReadCurrentStat();
-        }
-
-        /// <summary>
-        /// Jump to the first stat of the next group.
-        /// </summary>
-        public static void JumpToNextGroup()
-        {
-            if (!IsActive || groupStartIndices == null || groupStartIndices.Count == 0) return;
-
-            int nextGroupIndex = -1;
-            for (int i = 0; i < groupStartIndices.Count; i++)
-            {
-                if (groupStartIndices[i] > currentIndex)
-                {
-                    nextGroupIndex = groupStartIndices[i];
-                    break;
-                }
-            }
-
-            // Wrap to first group
-            if (nextGroupIndex == -1)
-                nextGroupIndex = groupStartIndices[0];
-
-            currentIndex = nextGroupIndex;
-            ReadCurrentStatWithGroup();
-        }
-
-        /// <summary>
-        /// Jump to the first stat of the previous group.
-        /// </summary>
-        public static void JumpToPreviousGroup()
-        {
-            if (!IsActive || groupStartIndices == null || groupStartIndices.Count == 0) return;
-
-            int prevGroupIndex = -1;
-            for (int i = groupStartIndices.Count - 1; i >= 0; i--)
-            {
-                if (groupStartIndices[i] < currentIndex)
-                {
-                    prevGroupIndex = groupStartIndices[i];
-                    break;
-                }
-            }
-
-            // Wrap to last group
-            if (prevGroupIndex == -1)
-                prevGroupIndex = groupStartIndices[groupStartIndices.Count - 1];
-
-            currentIndex = prevGroupIndex;
-            ReadCurrentStatWithGroup();
-        }
-
-        /// <summary>
-        /// Jump to the top (first stat).
-        /// </summary>
-        public static void JumpToTop()
-        {
-            if (!IsActive) return;
-
-            currentIndex = 0;
-            ReadCurrentStat();
-        }
-
-        /// <summary>
-        /// Jump to the bottom (last stat).
-        /// </summary>
-        public static void JumpToBottom()
-        {
-            if (!IsActive) return;
-
-            currentIndex = statBuffer.Count - 1;
-            ReadCurrentStat();
-        }
-
-        /// <summary>
-        /// Read the stat at the current index.
-        /// </summary>
-        public static void ReadCurrentStat()
-        {
-            if (!IsActive) return;
-
-            if (currentIndex < 0 || currentIndex >= statBuffer.Count)
-            {
-                currentIndex = 0;
-                if (statBuffer.Count == 0) return;
-            }
-
-            var entry = statBuffer[currentIndex];
-            FFI_ScreenReaderMod.SpeakText(entry.ToString(), true);
-        }
-
-        /// <summary>
-        /// Read the current stat with group name prefix (used for group jumps).
-        /// </summary>
-        private static void ReadCurrentStatWithGroup()
-        {
-            if (!IsActive) return;
-
-            if (currentIndex < 0 || currentIndex >= statBuffer.Count)
-            {
-                currentIndex = 0;
-                if (statBuffer.Count == 0) return;
-            }
-
-            var entry = statBuffer[currentIndex];
-            string groupName = GetGroupDisplayName(entry.Group);
-            FFI_ScreenReaderMod.SpeakText($"{groupName}. {entry}", true);
-        }
-
-        /// <summary>
-        /// Get display-friendly name for a stat group.
-        /// </summary>
+        /// <summary>Get display-friendly name for a stat group.</summary>
         private static string GetGroupDisplayName(BestiaryStatGroup group)
         {
             switch (group)

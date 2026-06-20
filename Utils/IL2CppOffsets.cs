@@ -40,6 +40,29 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Command-bar controllers (KeyInput) — private fields read by the announce-on-open reader
+        /// (CommandBarPatches). Equip reads its public EquipmentCommandIdCash property instead, so it
+        /// needs no offset here. Field focusId matches FF2 (0x90).
+        /// </summary>
+        public static class CommandBar
+        {
+            /// <summary>MainMenuController.focusId (MenuCommandId)</summary>
+            public const int FieldFocusId = 0x90;
+
+            /// <summary>ItemCommandController.selectCursor (Cursor)</summary>
+            public const int ItemSelectCursor = 0x50;
+
+            /// <summary>ItemCommandController.contentList (List&lt;ItemCommandContentView&gt;)</summary>
+            public const int ItemContentList = 0x40;
+
+            /// <summary>Serial.FF1 AbilityCommandController.selectCursor (Cursor)</summary>
+            public const int MagicSelectCursor = 0x50;
+
+            /// <summary>Serial.FF1 AbilityCommandController.contentList (List&lt;AbilityCommandContentView&gt;)</summary>
+            public const int MagicContentList = 0x40;
+        }
+
+        /// <summary>
         /// Config menu offsets for tooltip/description reading.
         /// </summary>
         public static class ConfigMenu

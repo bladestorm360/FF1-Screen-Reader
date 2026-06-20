@@ -13,6 +13,7 @@ namespace FFI_ScreenReader.Menus
     public static class StatusNavigationReader
     {
         private static List<StatusStatDefinition> statList = null;
+        private static NavigationBuffer buffer = null;
         private static readonly int[] GroupStartIndices = new int[] { 0, 5, 14, 19 };
 
         public static void InitializeStatList()
@@ -51,145 +52,67 @@ namespace FFI_ScreenReader.Menus
             statList.Add(new StatusStatDefinition("Accuracy", StatGroup.CombatStats, ReadAccuracy));
             statList.Add(new StatusStatDefinition("Defense", StatGroup.CombatStats, ReadDefense));
             statList.Add(new StatusStatDefinition("Evasion", StatGroup.CombatStats, ReadEvasion));
+
+            BuildBuffer();
         }
 
-        public static void NavigateNext()
+        // Build the shared navigation buffer once. Each entry reads its stat LIVE from the tracker's
+        // current character at navigation time. No group names supplied → status group-jumps don't
+        // prefix the group name (preserves prior behavior).
+        private static void BuildBuffer()
         {
-            if (statList == null) InitializeStatList();
-
-            var tracker = StatusNavigationTracker.Instance;
-            if (!tracker.IsNavigationActive) return;
-
-            tracker.CurrentStatIndex = (tracker.CurrentStatIndex + 1) % statList.Count;
-            ReadCurrentStat();
-        }
-
-        public static void NavigatePrevious()
-        {
-            if (statList == null) InitializeStatList();
-
-            var tracker = StatusNavigationTracker.Instance;
-            if (!tracker.IsNavigationActive) return;
-
-            tracker.CurrentStatIndex--;
-            if (tracker.CurrentStatIndex < 0)
-                tracker.CurrentStatIndex = statList.Count - 1;
-            ReadCurrentStat();
-        }
-
-        public static void JumpToNextGroup()
-        {
-            if (statList == null) InitializeStatList();
-
-            var tracker = StatusNavigationTracker.Instance;
-            if (!tracker.IsNavigationActive) return;
-
-            int currentIndex = tracker.CurrentStatIndex;
-            int nextGroupIndex = -1;
-
-            for (int i = 0; i < GroupStartIndices.Length; i++)
+            var entries = new List<Func<string>>(statList.Count);
+            foreach (var def in statList)
             {
-                if (GroupStartIndices[i] > currentIndex)
-                {
-                    nextGroupIndex = GroupStartIndices[i];
-                    break;
-                }
+                var stat = def; // capture per-iteration
+                entries.Add(() => stat.Reader(StatusNavigationTracker.Instance.CurrentCharacterData));
             }
-
-            if (nextGroupIndex == -1)
-                nextGroupIndex = GroupStartIndices[0];
-
-            tracker.CurrentStatIndex = nextGroupIndex;
-            ReadCurrentStat();
+            buffer = new NavigationBuffer(entries, new List<int>(GroupStartIndices));
         }
 
-        public static void JumpToPreviousGroup()
+        public static void NavigateNext() => Move(b => b.Next());
+        public static void NavigatePrevious() => Move(b => b.Previous());
+        public static void JumpToNextGroup() => Move(b => b.NextGroup());
+        public static void JumpToPreviousGroup() => Move(b => b.PreviousGroup());
+        public static void JumpToTop() => Move(b => b.JumpTop());
+        public static void JumpToBottom() => Move(b => b.JumpBottom());
+        public static void ReadCurrentStat() => Move(b => b.Current());
+
+        // Shared dispatch: validate, sync the tracker's persisted index into the buffer, run the
+        // navigation op (all wrap/group logic lives in NavigationBuffer), sync back, and speak.
+        private static void Move(Func<NavigationBuffer, string> op)
         {
             if (statList == null) InitializeStatList();
 
             var tracker = StatusNavigationTracker.Instance;
             if (!tracker.IsNavigationActive) return;
-
-            int currentIndex = tracker.CurrentStatIndex;
-            int prevGroupIndex = -1;
-
-            for (int i = GroupStartIndices.Length - 1; i >= 0; i--)
-            {
-                if (GroupStartIndices[i] < currentIndex)
-                {
-                    prevGroupIndex = GroupStartIndices[i];
-                    break;
-                }
-            }
-
-            if (prevGroupIndex == -1)
-                prevGroupIndex = GroupStartIndices[GroupStartIndices.Length - 1];
-
-            tracker.CurrentStatIndex = prevGroupIndex;
-            ReadCurrentStat();
-        }
-
-        public static void JumpToTop()
-        {
-            var tracker = StatusNavigationTracker.Instance;
-            if (!tracker.IsNavigationActive) return;
-
-            tracker.CurrentStatIndex = 0;
-            ReadCurrentStat();
-        }
-
-        public static void JumpToBottom()
-        {
-            if (statList == null) InitializeStatList();
-
-            var tracker = StatusNavigationTracker.Instance;
-            if (!tracker.IsNavigationActive) return;
-
-            tracker.CurrentStatIndex = statList.Count - 1;
-            ReadCurrentStat();
-        }
-
-        public static void ReadCurrentStat()
-        {
-            var tracker = StatusNavigationTracker.Instance;
             if (!tracker.ValidateState())
             {
                 FFI_ScreenReaderMod.SpeakText(T("Navigation not available"));
                 return;
             }
-
-            ReadStatAtIndex(tracker.CurrentStatIndex);
-        }
-
-        private static void ReadStatAtIndex(int index)
-        {
-            if (statList == null) InitializeStatList();
-
-            var tracker = StatusNavigationTracker.Instance;
-
-            if (index < 0 || index >= statList.Count)
-            {
-                MelonLogger.Warning($"Invalid stat index: {index}");
-                return;
-            }
-
             if (tracker.CurrentCharacterData == null)
             {
                 FFI_ScreenReaderMod.SpeakText(T("No character data"));
                 return;
             }
 
+            buffer.Index = tracker.CurrentStatIndex;
+            string value;
             try
             {
-                var stat = statList[index];
-                string value = stat.Reader(tracker.CurrentCharacterData);
-                FFI_ScreenReaderMod.SpeakText(value, true);
+                value = op(buffer);
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"Error reading stat at index {index}: {ex.Message}");
+                MelonLogger.Error($"Error reading stat at index {buffer.Index}: {ex.Message}");
                 FFI_ScreenReaderMod.SpeakText(T("Error reading stat"));
+                return;
             }
+            tracker.CurrentStatIndex = buffer.Index;
+
+            if (!string.IsNullOrEmpty(value))
+                FFI_ScreenReaderMod.SpeakText(value, true);
         }
 
         #region Character Info Readers

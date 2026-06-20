@@ -208,8 +208,11 @@ namespace FFI_ScreenReader.Core
             // Map transition fade detection (suppress wall tones during screen fades)
             MapTransitionPatches.ApplyPatches(harmony);
 
-            // Config menu controls reading
+            // Config menu controls reading (incl. the Gamepad/Keyboard Controls pop-up buffer)
             ConfigMenuPatches.ApplyPatches(harmony);
+
+            // Command bars (field/item/equip): announce the initially-focused command on open
+            CommandBarPatches.ApplyPatches(harmony);
 
             // Game state patches (config menu bestiary dispatch)
             GameStatePatches.ApplyPatches(harmony);
@@ -341,6 +344,13 @@ namespace FFI_ScreenReader.Core
 
                 // Clear old cache
                 GameObjectCache.ClearAll();
+
+                // Config menu / controls-help must never survive a scene change. ClearAllMenuStates
+                // only runs on battle exit, so without this a stale ConfigMenuState.IsActive (left by an
+                // in-game config session) leaks into title (re)construction and speaks "Language" over
+                // the title screen.
+                ConfigMenuState.ResetState();
+                KeyHelpReader.CloseControlsHelp();
 
                 // Stop audio loops during scene transition and suppress briefly
                 audioLoopManager?.StopAll();
@@ -861,10 +871,12 @@ namespace FFI_ScreenReader.Core
                 // Only suppress when specific patches are actively handling announcements
                 // ShouldSuppress() validates controller is still active (auto-resets stuck flags)
 
-                // Popup with buttons - read button text via PopupPatches
+                // Popup with buttons - read button text via PopupPatches, UNLESS the popup has its own
+                // UpdateFocus reader (e.g. CommonPopup), which would otherwise double-read the button.
                 if (PopupState.ShouldSuppress())
                 {
-                    PopupPatches.ReadCurrentButton(cursor);
+                    if (!PopupState.HasOwnFocusReader)
+                        PopupPatches.ReadCurrentButton(cursor);
                     return;
                 }
 

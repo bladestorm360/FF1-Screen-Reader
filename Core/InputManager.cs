@@ -65,6 +65,12 @@ namespace FFI_ScreenReader.Core
             registry.Register(KeyCode.UpArrow, KeyModifier.Shift, KeyContext.BestiaryDetail, BestiaryNavigationReader.JumpToPreviousGroup, "Jump to previous group (bestiary)");
             registry.Register(KeyCode.UpArrow, KeyModifier.None, KeyContext.BestiaryDetail, BestiaryNavigationReader.NavigatePrevious, "Previous stat (bestiary)");
 
+            // --- Key-help / controls display: arrow navigation (flat list, no groups) ---
+            registry.Register(KeyCode.DownArrow, KeyModifier.Ctrl, KeyContext.KeyHelp, KeyHelpReader.JumpToBottom, "Jump to last control");
+            registry.Register(KeyCode.DownArrow, KeyModifier.None, KeyContext.KeyHelp, KeyHelpReader.NavigateNext, "Next control");
+            registry.Register(KeyCode.UpArrow, KeyModifier.Ctrl, KeyContext.KeyHelp, KeyHelpReader.JumpToTop, "Jump to first control");
+            registry.Register(KeyCode.UpArrow, KeyModifier.None, KeyContext.KeyHelp, KeyHelpReader.NavigatePrevious, "Previous control");
+
             // --- Field: entity navigation (brackets + backslash) — with battle feedback ---
             RegisterFieldWithBattleFeedback(KeyCode.LeftBracket, KeyModifier.Shift, mod.CyclePreviousCategory, "Previous entity category");
             RegisterFieldWithBattleFeedback(KeyCode.LeftBracket, KeyModifier.None, mod.CyclePrevious, "Previous entity");
@@ -265,6 +271,10 @@ namespace FFI_ScreenReader.Core
 
         private KeyContext DetermineContext()
         {
+            // The key-help / controls overlay (config controls + post-new-game) takes priority while shown.
+            if (KeyHelpReader.IsScreenActive)
+                return KeyContext.KeyHelp;
+
             var statusTracker = StatusNavigationTracker.Instance;
             if (statusTracker.IsNavigationActive && statusTracker.ValidateState())
                 return KeyContext.Status;
@@ -304,12 +314,27 @@ namespace FFI_ScreenReader.Core
             return KeyModifier.None;
         }
 
+        private static bool IsBufferContext(KeyContext ctx)
+            => ctx == KeyContext.Status || ctx == KeyContext.BestiaryDetail || ctx == KeyContext.KeyHelp;
+
         private void DispatchRegisteredBindings(KeyContext activeContext, KeyModifier currentModifiers)
         {
             foreach (var key in registry.RegisteredKeys)
             {
                 if (GamepadManager.IsKeyCodePressed(key))
                     registry.TryExecute(key, currentModifiers, activeContext);
+            }
+
+            // WASD as alternative arrow keys — ONLY in navigation-buffer contexts, so game WASD
+            // movement and letter hotkeys in other contexts are untouched. Reuses the arrow bindings,
+            // so modifiers carry (Shift+W = Shift+Up = previous group, etc.). Left/Right (A/D) are
+            // unregistered in these contexts and harmlessly no-op.
+            if (IsBufferContext(activeContext))
+            {
+                if (GamepadManager.IsKeyCodePressed(KeyCode.W)) registry.TryExecute(KeyCode.UpArrow, currentModifiers, activeContext);
+                if (GamepadManager.IsKeyCodePressed(KeyCode.S)) registry.TryExecute(KeyCode.DownArrow, currentModifiers, activeContext);
+                if (GamepadManager.IsKeyCodePressed(KeyCode.A)) registry.TryExecute(KeyCode.LeftArrow, currentModifiers, activeContext);
+                if (GamepadManager.IsKeyCodePressed(KeyCode.D)) registry.TryExecute(KeyCode.RightArrow, currentModifiers, activeContext);
             }
         }
 

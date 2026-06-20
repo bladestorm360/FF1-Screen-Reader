@@ -24,7 +24,8 @@ namespace FFI_ScreenReader.Core
         Field,          // Only on field map (not in battle/dialogue)
         Battle,         // Only in battle
         Status,         // Only on status screen
-        BestiaryDetail  // Only on bestiary detail view
+        BestiaryDetail, // Only on bestiary detail view
+        KeyHelp         // Only on the key-help / controls-display screen
     }
 
     /// <summary>

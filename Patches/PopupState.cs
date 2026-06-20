@@ -34,12 +34,19 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static int CommandListOffset { get; private set; }
 
-        public static void SetActive(string typeName, IntPtr ptr, int cmdListOffset)
+        /// <summary>
+        /// True when the popup has its OWN focus reader (e.g. CommonPopup.UpdateFocus). Then the generic
+        /// cursor reader must NOT also call ReadCurrentButton, or the button double-reads on navigation.
+        /// </summary>
+        public static bool HasOwnFocusReader { get; private set; }
+
+        public static void SetActive(string typeName, IntPtr ptr, int cmdListOffset, bool hasOwnFocusReader = false)
         {
             IsConfirmationPopupActive = true;
             CurrentPopupType = typeName;
             ActivePopupPtr = ptr;
             CommandListOffset = cmdListOffset;
+            HasOwnFocusReader = hasOwnFocusReader;
         }
 
         public static void Clear()
@@ -48,6 +55,7 @@ namespace FFI_ScreenReader.Patches
             CurrentPopupType = null;
             ActivePopupPtr = IntPtr.Zero;
             CommandListOffset = -1;
+            HasOwnFocusReader = false;
         }
 
         /// <summary>

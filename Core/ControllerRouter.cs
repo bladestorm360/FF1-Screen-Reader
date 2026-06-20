@@ -377,6 +377,13 @@ namespace FFI_ScreenReader.Core
                 if (GamepadManager.DpadDownPressed || GamepadManager.LeftStickDownPressed)
                 { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_DOWN); BestiaryNavigationReader.NavigateNext(); }
             }
+            else if (context == KeyContext.KeyHelp)
+            {
+                if (GamepadManager.DpadUpPressed || GamepadManager.LeftStickUpPressed)
+                { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_UP); KeyHelpReader.NavigatePrevious(); }
+                if (GamepadManager.DpadDownPressed || GamepadManager.LeftStickDownPressed)
+                { ConsumeButton(SDL3.SDL_GAMEPAD_BUTTON_DPAD_DOWN); KeyHelpReader.NavigateNext(); }
+            }
         }
 
         // =====================================================================

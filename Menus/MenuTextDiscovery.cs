@@ -57,9 +57,14 @@ namespace FFI_ScreenReader.Menus
         {
             string menuText = null;
 
-            // Strategy 1: Save/Load slot information (check early - very specific)
-            menuText = SaveSlotReader.TryReadSaveSlot(cursor.transform, cursor.Index);
-            if (menuText != null) return menuText;
+            // Strategy 1: Save/Load slot information (check early - very specific).
+            // Only when a real save/load menu is up — otherwise a background save list being constructed
+            // during a map load gets read ("Autosave: Empty") outside the save menu.
+            if (FFI_ScreenReader.Patches.SaveListController_SetActive_Patch.ShouldReadSaveSlot())
+            {
+                menuText = SaveSlotReader.TryReadSaveSlot(cursor.transform, cursor.Index);
+                if (menuText != null) return menuText;
+            }
 
             // Strategy 2: Character selection (formation, status, magic, equipment, etc.)
             menuText = CharacterSelectionReader.TryReadCharacterSelection(cursor.transform, cursor.Index);
