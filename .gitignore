@@ -5,6 +5,7 @@
 **/docs/scripts/
 **/scripts/
 build_log.txt
+release-notes-*.txt
 nul
 NUL
 NUL.*
