@@ -127,7 +127,7 @@ namespace FFI_ScreenReader.Patches
                 // NOTE: Do NOT set IsActive here - wait until AFTER validation succeeds
 
                 // Try to get ability data - use the cursor index with dataList
-                string announcement = TryGetAbilityAnnouncement(controller, index);
+                string announcement = TryGetAbilityAnnouncement(controller, index, out int count);
 
                 if (string.IsNullOrEmpty(announcement))
                     return;
@@ -136,6 +136,9 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleMagic");
                 BattleMagicMenuState.IsActive = true;
                 BattleTargetState.SetTargetSelectionActive(false);
+
+                // Append "(X of Y)" position AFTER the full announcement (incl. description)
+                announcement = MenuPosition.Format(announcement, index, count);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
@@ -154,8 +157,9 @@ namespace FFI_ScreenReader.Patches
         /// Uses dataList (offset 0x70) which has OwnedAbility items.
         /// Uses IL2CPP pointer-based access since reflection doesn't work for IL2CPP fields.
         /// </summary>
-        private static string TryGetAbilityAnnouncement(BattleFrequencyAbilityInfomationController controller, int index)
+        private static string TryGetAbilityAnnouncement(BattleFrequencyAbilityInfomationController controller, int index, out int count)
         {
+            count = -1;
             try
             {
                 // Method 1: Try dataList via IL2CPP pointer access - offset 0x70
@@ -185,7 +189,10 @@ namespace FFI_ScreenReader.Patches
                         {
                             string result = FormatAbilityAnnouncement(ability);
                             if (!string.IsNullOrEmpty(result))
+                            {
+                                count = dataList.Count;
                                 return result;
+                            }
                         }
                         // Slot exists but is empty/null - only announce if already in magic menu
                         // This prevents "Empty" during target selection when dataList has leftover data

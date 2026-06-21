@@ -29,6 +29,12 @@ namespace FFI_ScreenReader.Menus
             FFI_ScreenReaderMod.SpeakText(commandName, interrupt: true);
         }
 
+        /// <summary>Speaks a command name with a positional "(n of N)" suffix (index is ZERO-BASED).</summary>
+        public static void Announce(string commandName, int index, int count)
+        {
+            Announce(FFI_ScreenReader.Utils.MenuPosition.Format(commandName, index, count));
+        }
+
         public static string GetShopCommandName(ShopCommandId id) => id switch
         {
             ShopCommandId.Buy => T("Buy"),

@@ -33,6 +33,32 @@ namespace FFI_ScreenReader.Core
         public int Count => entries.Count;
         public bool IsEmpty => entries.Count == 0;
 
+        /// <summary>
+        /// Position of the current entry for an "(X of Y)" announcement. When groups were supplied,
+        /// returns (within-group index, group size) so a reader says e.g. "Strength (1 of 5)" within
+        /// its group rather than a meaningless "(15 of 23)"; with no groups, returns (Index, Count) for
+        /// the whole buffer. The caller passes the pair to MenuPosition.Format.
+        /// </summary>
+        public (int localIndex, int groupCount) CurrentGroupPosition()
+        {
+            if (IsEmpty) return (0, 0);
+            if (groupStarts == null || groupStarts.Count == 0)
+                return (Index, Count);
+
+            int gStart = 0;
+            int gEnd = Count;
+            for (int i = 0; i < groupStarts.Count; i++)
+            {
+                if (groupStarts[i] <= Index)
+                {
+                    gStart = groupStarts[i];
+                    gEnd = (i + 1 < groupStarts.Count) ? groupStarts[i + 1] : Count;
+                }
+                else break;
+            }
+            return (Index - gStart, gEnd - gStart);
+        }
+
         /// <summary>The announce string for the current entry (null if empty). Clamps a stray index.</summary>
         public string Current()
         {

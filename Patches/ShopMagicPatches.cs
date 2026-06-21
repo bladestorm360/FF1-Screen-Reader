@@ -218,6 +218,8 @@ namespace FFI_ScreenReader.Patches
                     announcement = string.Format(T("Slot {0}: {1}"), slotType, spellName);
                 }
 
+                announcement = MenuPosition.Format(announcement, cursorIndex, contentList.Count);
+
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)

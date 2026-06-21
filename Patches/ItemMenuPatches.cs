@@ -297,6 +297,7 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
                 ItemMenuState.IsItemMenuActive = true;
 
+                announcement = MenuPosition.Format(announcement, index, targetList.Count);
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
@@ -401,6 +402,7 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
                 ItemMenuState.IsItemMenuActive = true;
 
+                announcement = MenuPosition.Format(announcement, index, contentList.Count);
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)

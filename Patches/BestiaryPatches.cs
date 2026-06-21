@@ -576,6 +576,8 @@ namespace FFI_ScreenReader.Patches
                 string entry = BestiaryReader.ReadListEntry(pbData);
                 if (!string.IsNullOrEmpty(entry))
                 {
+                    // No position suffix: bestiary entries carry ordered catalog numbers ("042: Goblin"),
+                    // so the leading number already conveys the position.
                     FFI_ScreenReaderMod.SpeakText(entry, interrupt: true);
                 }
             }

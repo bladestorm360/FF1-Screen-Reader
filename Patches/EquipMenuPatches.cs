@@ -334,6 +334,9 @@ namespace FFI_ScreenReader.Patches
                 }
                 catch { } // Non-critical — fall through to slot announcement
 
+                // Append positional "(X of Y)" suffix (post-AutoDetail, so position speaks last)
+                announcement = MenuPosition.Format(announcement, index, contentList.Count);
+
                 // After character switch, queue slot behind character name; otherwise interrupt
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: !characterSwitched);
             }
@@ -442,6 +445,9 @@ namespace FFI_ScreenReader.Patches
                 // Also clear other menu states to prevent conflicts
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Equip");
                 EquipMenuState.IsActive = true;
+
+                // Append positional "(X of Y)" suffix (post-AutoDetail, so position speaks last)
+                announcement = MenuPosition.Format(announcement, index, contentDataList.Count);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

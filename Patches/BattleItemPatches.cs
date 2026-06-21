@@ -97,7 +97,7 @@ namespace FFI_ScreenReader.Patches
                 // Setting it early causes suppression during menu transitions
 
                 // Try to get item data - use the index parameter directly
-                string announcement = TryGetItemAnnouncement(controller, index);
+                string announcement = TryGetItemAnnouncement(controller, index, out int count);
 
                 if (string.IsNullOrEmpty(announcement))
                     return;
@@ -106,6 +106,8 @@ namespace FFI_ScreenReader.Patches
                 FFI_ScreenReaderMod.ClearOtherMenuStates("BattleItem");
                 BattleItemMenuState.IsActive = true;
                 BattleTargetState.SetTargetSelectionActive(false);
+
+                announcement = MenuPosition.Format(announcement, index, count);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
@@ -124,8 +126,9 @@ namespace FFI_ScreenReader.Patches
         /// Uses displayDataList (offset 0xC8) which has ItemListContentData with Description.
         /// Uses IL2CPP pointer-based access since reflection doesn't work for IL2CPP fields.
         /// </summary>
-        private static string TryGetItemAnnouncement(BattleItemInfomationController controller, int index)
+        private static string TryGetItemAnnouncement(BattleItemInfomationController controller, int index, out int count)
         {
+            count = -1;
             try
             {
                 // Method 1 (BEST): Try displayDataList via IL2CPP pointer access - offset 0xC8
@@ -150,6 +153,7 @@ namespace FFI_ScreenReader.Patches
                     var data = displayDataList[index];
                     if (data != null)
                     {
+                        count = displayDataList.Count;
                         return FormatItemAnnouncement(data);
                     }
                 }
@@ -179,9 +183,10 @@ namespace FFI_ScreenReader.Patches
                         if (!string.IsNullOrEmpty(name))
                         {
                             name = TextUtils.StripIconMarkup(name);
-                            int count = itemData.Count;
-                            if (count > 1)
-                                return $"{name}, {count}";
+                            count = dataList.Count;
+                            int quantity = itemData.Count;
+                            if (quantity > 1)
+                                return $"{name}, {quantity}";
                             return name;
                         }
                     }

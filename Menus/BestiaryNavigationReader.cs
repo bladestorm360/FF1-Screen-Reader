@@ -71,7 +71,11 @@ namespace FFI_ScreenReader.Menus
             if (!IsActive) return;
             string value = op(buffer);
             if (!string.IsNullOrEmpty(value))
+            {
+                var (localIndex, groupCount) = buffer.CurrentGroupPosition();
+                value = FFI_ScreenReader.Utils.MenuPosition.Format(value, localIndex, groupCount);
                 FFI_ScreenReaderMod.SpeakText(value, true);
+            }
         }
 
         /// <summary>Get display-friendly name for a stat group.</summary>

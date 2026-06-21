@@ -290,21 +290,22 @@ namespace FFI_ScreenReader.Patches
                 if (index < 0 || index >= contentList.Count)
                     return;
 
+                int count = contentList.Count;
                 var contentController = contentList[index];
                 if (contentController == null)
                 {
-                    AnnounceEmpty();
+                    AnnounceEmpty(index, count);
                     return;
                 }
 
                 var ability = contentController.Data;
                 if (ability == null)
                 {
-                    AnnounceEmpty();
+                    AnnounceEmpty(index, count);
                     return;
                 }
 
-                AnnounceSpell(ability);
+                AnnounceSpell(ability, index, count);
             }
             catch (Exception ex)
             {
@@ -312,12 +313,12 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static void AnnounceEmpty()
+        private static void AnnounceEmpty(int index, int count)
         {
-            FFI_ScreenReaderMod.SpeakText(T("Empty"), interrupt: true);
+            FFI_ScreenReaderMod.SpeakText(MenuPosition.Format(T("Empty"), index, count), interrupt: true);
         }
 
-        private static void AnnounceSpell(OwnedAbility ability)
+        private static void AnnounceSpell(OwnedAbility ability, int index, int count)
         {
             try
             {
@@ -371,6 +372,8 @@ namespace FFI_ScreenReader.Patches
                     catch { }
                 }
 
+                // Position last — after any AutoDetail description.
+                announcement = MenuPosition.Format(announcement, index, count);
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch { } // Spell announcement is best-effort

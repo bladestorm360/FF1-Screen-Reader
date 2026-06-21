@@ -21,6 +21,7 @@ namespace FFI_ScreenReader.Core
         private static MelonPreferences_Entry<bool> prefAutoDetail;
         private static MelonPreferences_Entry<bool> prefStickClickNormalization;
         private static MelonPreferences_Entry<bool> prefAnnounceOnBeaconRestart;
+        private static MelonPreferences_Entry<bool> prefMenuPositionAnnouncements;
 
         // Volume preferences (0-100, default 50)
         private static MelonPreferences_Entry<int> prefWallBumpVolume;
@@ -44,9 +45,10 @@ namespace FFI_ScreenReader.Core
             prefWallTones = prefsCategory.CreateEntry<bool>("WallTones", false, "Wall Tones", "Play directional tones when approaching walls");
             prefFootsteps = prefsCategory.CreateEntry<bool>("Footsteps", false, "Footsteps", "Play click sound on each tile movement");
             prefAudioBeacons = prefsCategory.CreateEntry<bool>("AudioBeacons", false, "Beacon Navigation", "Use audio beacon as the primary navigation aid (replaces turn-by-turn pathfinding)");
-            prefAutoDetail = prefsCategory.CreateEntry<bool>("AutoDetail", false, "Auto Announcement Detail", "Announce descriptions/stats on focus for items, magic, equipment, and shops");
+            prefAutoDetail = prefsCategory.CreateEntry<bool>("AutoDetail", true, "Auto Announcement Detail", "Announce descriptions/stats on focus for items, magic, equipment, and shops");
             prefStickClickNormalization = prefsCategory.CreateEntry<bool>("StickClickNormalization", false, "Stick Click Normalization", "Pass L3/R3 through to game (auto-dash / encounter toggle); mod functions require mod mode");
             prefAnnounceOnBeaconRestart = prefsCategory.CreateEntry<bool>("AnnounceOnBeaconRestart", false, "Announce Destination on Beacon Restart", "Re-speak the current destination when the beacon is restarted");
+            prefMenuPositionAnnouncements = prefsCategory.CreateEntry<bool>("MenuPositionAnnouncements", true, "Menu Position Announcements", "Append the cursor's position in a list when navigating menus, e.g. (3 of 12)");
 
             prefWallBumpVolume = prefsCategory.CreateEntry<int>("WallBumpVolume", 50, "Wall Bump Volume", "Volume for wall bump sounds (0-100)");
             prefFootstepVolume = prefsCategory.CreateEntry<int>("FootstepVolume", 50, "Footstep Volume", "Volume for footstep sounds (0-100)");
@@ -64,9 +66,10 @@ namespace FFI_ScreenReader.Core
         public static bool WallTonesDefault => prefWallTones?.Value ?? false;
         public static bool FootstepsDefault => prefFootsteps?.Value ?? false;
         public static bool AudioBeaconsDefault => prefAudioBeacons?.Value ?? false;
-        public static bool AutoDetailDefault => prefAutoDetail?.Value ?? false;
+        public static bool AutoDetailDefault => prefAutoDetail?.Value ?? true;
         public static bool StickClickNormalizationDefault => prefStickClickNormalization?.Value ?? false;
         public static bool AnnounceOnBeaconRestartDefault => prefAnnounceOnBeaconRestart?.Value ?? false;
+        public static bool MenuPositionAnnouncementsDefault => prefMenuPositionAnnouncements?.Value ?? true;
 
         #endregion
 
@@ -144,6 +147,11 @@ namespace FFI_ScreenReader.Core
         public static void SaveAnnounceOnBeaconRestart(bool value)
         {
             if (prefAnnounceOnBeaconRestart != null) { prefAnnounceOnBeaconRestart.Value = value; prefsCategory?.SaveToFile(false); }
+        }
+
+        public static void SaveMenuPositionAnnouncements(bool value)
+        {
+            if (prefMenuPositionAnnouncements != null) { prefMenuPositionAnnouncements.Value = value; prefsCategory?.SaveToFile(false); }
         }
 
         #endregion

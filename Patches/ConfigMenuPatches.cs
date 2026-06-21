@@ -131,11 +131,33 @@ namespace FFI_ScreenReader.Patches
         {
             if (instance == null)
                 return null;
-            return AnnounceConfigCommand(instance.SelectedCommand);
+
+            // Position of the focused row within the config list. CommandList is the same list the cursor
+            // navigates and SelectedCommand is the focused row, so this serves both the in-game config and
+            // the title-screen Options menu (both use this base). Best-effort: -1 → no position suffix.
+            int index = -1, count = -1;
+            try
+            {
+                var selectedCmd = instance.SelectedCommand;
+                var list = instance.CommandList;
+                if (list != null && selectedCmd != null)
+                {
+                    count = list.Count;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var c = list[i];
+                        if (c != null && c.Pointer == selectedCmd.Pointer) { index = i; break; }
+                    }
+                }
+            }
+            catch { } // position is best-effort
+
+            return AnnounceConfigCommand(instance.SelectedCommand, index, count);
         }
 
-        /// <summary>Announces a focused config command ("Name: Value"). Returns the spoken text or null.</summary>
-        internal static string AnnounceConfigCommand(ConfigCommandController selected)
+        /// <summary>Announces a focused config command ("Name: Value", plus its "(X of Y)" row position).
+        /// Returns the spoken text or null.</summary>
+        internal static string AnnounceConfigCommand(ConfigCommandController selected, int index = -1, int count = -1)
         {
             if (selected == null)
                 return null;
@@ -164,6 +186,7 @@ namespace FFI_ScreenReader.Patches
                 ? menuText
                 : $"{menuText}: {configValue}";
 
+            announcement = FFI_ScreenReader.Utils.MenuPosition.Format(announcement, index, count);
             FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             return announcement;
         }
@@ -1088,9 +1111,30 @@ namespace FFI_ScreenReader.Patches
                 if (!ConfigMenuState.IsActive) { lastDropDownLabel = null; return; }
                 if (string.IsNullOrWhiteSpace(label)) return;
                 string trimmed = label.Trim();
-                if (trimmed == lastDropDownLabel) return;   // drop the open-time duplicate fire
+                if (trimmed == lastDropDownLabel) return;   // drop the open-time duplicate fire (dedup on the bare label)
                 lastDropDownLabel = trimmed;
-                FFI_ScreenReaderMod.SpeakText(trimmed, interrupt: true);
+
+                // Position within the language list. The dropdown's `value` is the COMMITTED selection
+                // (it does NOT track the highlighted row), so derive the focused index from the focused
+                // item's position within the item list instead.
+                int index = -1, count = -1;
+                try
+                {
+                    var list = __instance.dropdownItemList;   // List<CommandDropdownItemController>
+                    var item = __instance.selectedItem;        // the highlighted item
+                    if (list != null && item != null)
+                    {
+                        count = list.Count;
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            var li = list[i];
+                            if (li != null && li.Pointer == item.Pointer) { index = i; break; }
+                        }
+                    }
+                }
+                catch { } // best-effort; -1 → no suffix
+
+                FFI_ScreenReaderMod.SpeakText(FFI_ScreenReader.Utils.MenuPosition.Format(trimmed, index, count), interrupt: true);
             }
             catch (Exception ex)
             {

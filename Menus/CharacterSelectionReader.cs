@@ -20,8 +20,9 @@ namespace FFI_ScreenReader.Menus
         /// Returns a formatted string with character information, or null if not a character selection.
         /// Format: "Name, Job, Level X, HP current/max, MP current/max"
         /// </summary>
-        public static string TryReadCharacterSelection(Transform cursorTransform, int cursorIndex)
+        public static string TryReadCharacterSelection(Transform cursorTransform, int cursorIndex, out int count)
         {
+            count = -1;
             try
             {
                 // Safety check: Only read character data if we're in a menu or battle
@@ -66,6 +67,7 @@ namespace FFI_ScreenReader.Menus
 
                         if (contentList != null && cursorIndex >= 0 && cursorIndex < contentList.childCount)
                         {
+                            count = contentList.childCount;
                             Transform characterSlot = contentList.GetChild(cursorIndex);
 
                             // Try to read the character information

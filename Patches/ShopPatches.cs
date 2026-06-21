@@ -266,7 +266,7 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 var content = list[index];
-                AnnounceFocusedItem(content);
+                AnnounceFocusedItem(content, index, list.Count);
             }
             catch (Exception ex)
             {
@@ -323,7 +323,7 @@ namespace FFI_ScreenReader.Patches
         /// those keys continue to describe the last real item while the cursor passes
         /// over gaps in the sell inventory.
         /// </summary>
-        private static void AnnounceFocusedItem(ShopListItemContentController content)
+        private static void AnnounceFocusedItem(ShopListItemContentController content, int index, int count)
         {
             string itemName = null;
             if (content != null)
@@ -334,7 +334,7 @@ namespace FFI_ScreenReader.Patches
 
             if (string.IsNullOrEmpty(itemName))
             {
-                FFI_ScreenReaderMod.SpeakText(T("Empty"), interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(MenuPosition.Format(T("Empty"), index, count), interrupt: true);
                 return;
             }
 
@@ -366,7 +366,7 @@ namespace FFI_ScreenReader.Patches
                     announcement = $"{baseAnnouncement}: {detail}";
             }
 
-            FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+            FFI_ScreenReaderMod.SpeakText(MenuPosition.Format(announcement, index, count), interrupt: true);
         }
 
         private static string ExtractPrice(ShopListItemContentController content)
@@ -488,7 +488,7 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrEmpty(commandName))
                     return;
 
-                FFI_ScreenReaderMod.SpeakText(commandName, interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(MenuPosition.Format(commandName, index, contentList.Count), interrupt: true);
             }
             catch (Exception ex)
             {

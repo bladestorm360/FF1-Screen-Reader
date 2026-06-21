@@ -123,8 +123,15 @@ namespace FFI_ScreenReader.Menus
 
         private static void Speak(string s)
         {
-            if (!string.IsNullOrEmpty(s))
-                FFI_ScreenReaderMod.SpeakText(s, interrupt: true);
+            if (string.IsNullOrEmpty(s)) return;
+            // Flat controls list → whole-buffer position. buffer.Index is already updated by the
+            // nav op that produced `s`, so CurrentGroupPosition reflects the entry being spoken.
+            if (buffer != null && !buffer.IsEmpty)
+            {
+                var (localIndex, groupCount) = buffer.CurrentGroupPosition();
+                s = MenuPosition.Format(s, localIndex, groupCount);
+            }
+            FFI_ScreenReaderMod.SpeakText(s, interrupt: true);
         }
 
         /// <summary>Shift+I: read every visible control hint at once (on-screen KeyHelpController).</summary>

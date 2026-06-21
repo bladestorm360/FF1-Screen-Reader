@@ -158,6 +158,13 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
+                // Don't announce if the new-game screen is no longer active: backing out to the title
+                // fires a transient SelectContent during teardown, and reading the first slot then is
+                // stale (it would speak over the loading title). Mirrors SaveListPatches.DelayedReadSlot.
+                var ctrl = listController as CharacterContentListController;
+                if (ctrl == null || ctrl.gameObject == null || !ctrl.gameObject.activeInHierarchy)
+                    yield break;   // finally still clears IsHandlingCursor
+
                 if (!hasLoggedContentList)
                 {
                     hasLoggedContentList = true;

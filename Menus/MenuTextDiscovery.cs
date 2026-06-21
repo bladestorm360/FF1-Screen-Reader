@@ -36,11 +36,21 @@ namespace FFI_ScreenReader.Menus
                 // Get cursor index
                 int cursorIndex = cursor.Index;
 
-                // Try multiple strategies to find menu text
-                string menuText = TryAllStrategies(cursor);
+                // Try multiple strategies to find menu text. Strategies that read an indexed list
+                // (content list, save slots, character select) report the list size via count; the
+                // others leave it -1 so MenuPosition.Format emits no position suffix.
+                string menuText = TryAllStrategies(cursor, out int listCount);
 
                 if (!string.IsNullOrEmpty(menuText))
                 {
+                    // The title and field menus store their commands in C# lists, not Content transforms,
+                    // so no strategy yields a count — fall back to the controller's command count (each
+                    // returns -1, i.e. inert, on every other menu).
+                    if (listCount < 0)
+                        listCount = TitleMenuReader.TryGetActiveCommandCount(cursor);
+                    if (listCount < 0)
+                        listCount = FieldMenuReader.TryGetFieldCommandCount(cursor);
+                    menuText = MenuPosition.Format(menuText, cursorIndex, listCount);
                     FFI_ScreenReaderMod.SpeakText(menuText);
                 }
             }
@@ -53,8 +63,9 @@ namespace FFI_ScreenReader.Menus
         /// <summary>
         /// Try all text discovery strategies in sequence until one succeeds.
         /// </summary>
-        private static string TryAllStrategies(GameCursor cursor)
+        private static string TryAllStrategies(GameCursor cursor, out int count)
         {
+            count = -1;
             string menuText = null;
 
             // Strategy 1: Save/Load slot information (check early - very specific).
@@ -62,12 +73,12 @@ namespace FFI_ScreenReader.Menus
             // during a map load gets read ("Autosave: Empty") outside the save menu.
             if (FFI_ScreenReader.Patches.SaveListController_SetActive_Patch.ShouldReadSaveSlot())
             {
-                menuText = SaveSlotReader.TryReadSaveSlot(cursor.transform, cursor.Index);
+                menuText = SaveSlotReader.TryReadSaveSlot(cursor.transform, cursor.Index, out count);
                 if (menuText != null) return menuText;
             }
 
             // Strategy 2: Character selection (formation, status, magic, equipment, etc.)
-            menuText = CharacterSelectionReader.TryReadCharacterSelection(cursor.transform, cursor.Index);
+            menuText = CharacterSelectionReader.TryReadCharacterSelection(cursor.transform, cursor.Index, out count);
             if (menuText != null) return menuText;
 
             // Strategy 3: Walk up parent hierarchy looking for direct text components
@@ -75,7 +86,7 @@ namespace FFI_ScreenReader.Menus
             if (menuText != null) return menuText;
 
             // Strategy 4: Try to find text in Content list by cursor index
-            menuText = TryContentListSearch(cursor);
+            menuText = TryContentListSearch(cursor, out count);
             if (menuText != null) return menuText;
 
             // Strategy 5: Fallback with GetComponentInChildren
@@ -127,8 +138,9 @@ namespace FFI_ScreenReader.Menus
         /// <summary>
         /// Strategy 2: Try to find text in Content list by cursor index.
         /// </summary>
-        private static string TryContentListSearch(GameCursor cursor)
+        private static string TryContentListSearch(GameCursor cursor, out int count)
         {
+            count = -1;
             try
             {
                 Transform current = cursor.transform;
@@ -151,6 +163,7 @@ namespace FFI_ScreenReader.Menus
                                 string menuText = TextUtils.StripIconMarkup(text.text.Trim());
                                 if (!string.IsNullOrEmpty(menuText))
                                 {
+                                    count = contentList.childCount;
                                     return menuText;
                                 }
                             }

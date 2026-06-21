@@ -40,9 +40,9 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
-        /// Command-bar controllers (KeyInput) — private fields read by the announce-on-open reader
-        /// (CommandBarPatches). Equip reads its public EquipmentCommandIdCash property instead, so it
-        /// needs no offset here. Field focusId matches FF2 (0x90).
+        /// Command-bar controllers (KeyInput) — private fields read by the announce-on-change reader
+        /// (CommandBarPatches). Equip uses its public EquipmentCommandIdCash property for the NAME but
+        /// reads cursor+contents here for the position index. Field focusId matches FF2 (0x90).
         /// </summary>
         public static class CommandBar
         {
@@ -60,6 +60,12 @@ namespace FFI_ScreenReader.Utils
 
             /// <summary>Serial.FF1 AbilityCommandController.contentList (List&lt;AbilityCommandContentView&gt;)</summary>
             public const int MagicContentList = 0x40;
+
+            /// <summary>KeyInput.EquipmentCommandController.selectCursor (Cursor)</summary>
+            public const int EquipSelectCursor = 0x38;
+
+            /// <summary>KeyInput.EquipmentCommandController.contents (List&lt;EquipmentCommandView&gt;)</summary>
+            public const int EquipContentList = 0x30;
         }
 
         /// <summary>

@@ -24,6 +24,33 @@ namespace FFI_ScreenReader.Patches
         /// </summary>
         public static bool IsHandlingCursor { get; private set; } = false;
 
+        // ── On-demand detail (I key / right stick up) ──
+        // Cache the live job-list controller so the detail key can read the focused class description
+        // when Auto Detail is off. IsActive self-validates against the controller still being active,
+        // so it cannot leak after leaving job selection.
+        private static Component _lastController = null;
+
+        /// <summary>True while the job-selection screen is up (its controller is still active).</summary>
+        public static bool IsActive
+        {
+            get
+            {
+                try
+                {
+                    return _lastController != null && _lastController.gameObject != null
+                           && _lastController.gameObject.activeInHierarchy;
+                }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>Live description of the currently-focused class, for the on-demand detail key.</summary>
+        public static string GetCurrentDescription()
+        {
+            try { return _lastController == null ? null : GetDescriptionViaHierarchy(_lastController); }
+            catch { return null; }
+        }
+
         /// <summary>
         /// Applies job selection patches using manual Harmony patching.
         /// </summary>
@@ -116,9 +143,10 @@ namespace FFI_ScreenReader.Patches
                 {
                     return;
                 }
+                _lastController = controllerComponent;   // for the on-demand detail key
 
                 // Get job name immediately (this doesn't need delay)
-                string jobName = GetJobNameViaHierarchy(controllerComponent, currentIndex);
+                string jobName = GetJobNameViaHierarchy(controllerComponent, currentIndex, out int jobCount);
 
                 if (string.IsNullOrEmpty(jobName))
                 {
@@ -126,7 +154,7 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 // Use coroutine to wait one frame before reading description (UI needs to update)
-                CoroutineManager.StartManaged(AnnounceJobWithDelayedDescription(controllerComponent, jobName));
+                CoroutineManager.StartManaged(AnnounceJobWithDelayedDescription(controllerComponent, jobName, currentIndex, jobCount));
             }
             catch (Exception ex)
             {
@@ -137,32 +165,32 @@ namespace FFI_ScreenReader.Patches
         /// <summary>
         /// Coroutine that announces job name immediately, then waits a frame and announces description.
         /// </summary>
-        private static IEnumerator AnnounceJobWithDelayedDescription(Component controller, string jobName)
+        private static IEnumerator AnnounceJobWithDelayedDescription(Component controller, string jobName, int index, int count)
         {
             // Wait one frame for UI to update description text
             yield return null;
 
             try
             {
-                string description = GetDescriptionViaHierarchy(controller);
-
-                string announcement;
-                if (!string.IsNullOrEmpty(description))
+                // Append the description only when Auto Detail is on; otherwise the player reads it on
+                // demand with the I key / right stick up (GlobalHotkeyHandler → JobSelectionPatches).
+                string announcement = jobName;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
                 {
-                    announcement = $"{jobName}. {description}";
-                }
-                else
-                {
-                    announcement = jobName;
+                    string description = GetDescriptionViaHierarchy(controller);
+                    if (!string.IsNullOrEmpty(description))
+                        announcement = $"{jobName}. {description}";
                 }
 
+                // Position last — after any description.
+                announcement = MenuPosition.Format(announcement, index, count);
                 FFI_ScreenReaderMod.SpeakText(announcement);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in delayed job announcement: {ex.Message}");
-                // Still announce the job name at least
-                FFI_ScreenReaderMod.SpeakText(jobName);
+                // Still announce the job name (with position) at least
+                FFI_ScreenReaderMod.SpeakText(MenuPosition.Format(jobName, index, count));
             }
         }
 
@@ -170,8 +198,9 @@ namespace FFI_ScreenReader.Patches
         /// Gets the job name by traversing the Unity component hierarchy.
         /// Finds JobContentView components and extracts the JobNameText.
         /// </summary>
-        private static string GetJobNameViaHierarchy(Component listController, int index)
+        private static string GetJobNameViaHierarchy(Component listController, int index, out int jobCount)
         {
+            jobCount = -1;
             try
             {
                 // Find all JobContentView components (these contain the job name text)
@@ -212,6 +241,7 @@ namespace FFI_ScreenReader.Patches
                 // Return the text at the given index
                 if (index >= 0 && index < jobTexts.Count)
                 {
+                    jobCount = jobTexts.Count;
                     return jobTexts[index].text.Trim();
                 }
 
@@ -326,6 +356,7 @@ namespace FFI_ScreenReader.Patches
         {
             typesLogged = false;
             IsHandlingCursor = false;
+            _lastController = null;
         }
 
         /// <summary>

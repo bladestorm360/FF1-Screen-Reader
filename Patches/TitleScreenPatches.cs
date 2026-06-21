@@ -1,112 +1,44 @@
 using System;
+using System.Collections;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
+using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 
-using SplashController = Il2CppLast.UI.SplashController;
 using KeyInputTitleMenuCommandController = Il2CppLast.UI.KeyInput.TitleMenuCommandController;
 using TouchTitleMenuCommandController = Il2CppLast.UI.Touch.TitleMenuCommandController;
+using TitleWindowController = Il2CppLast.UI.KeyInput.TitleWindowController;
 
 namespace FFI_ScreenReader.Patches
 {
     /// <summary>
-    /// Patches for title screen "Press any button" and title menu activation.
-    /// Uses SplashController.InitializeTitle to capture text, SystemIndicator.Hide to speak it.
+    /// Title-screen accessibility: speaks the "Press any button" prompt whenever it appears, and clears
+    /// menu states when the main menu enables.
+    ///
+    /// The prompt is spoken from FFI_ScreenReaderMod.OnSceneLoaded when the "Title" Unity scene loads —
+    /// that scene IS the press-any-button screen (distinct from "TitleScreen" = the main menu), and it
+    /// loads on EVERY appearance (boot AND return-to-title). The text is the localized
+    /// MENU_TITLE_PRESS_TEXT constant (reading the rendered Text never vocalized in earlier attempts;
+    /// the constant is reliable). Prior method-hook triggers (SystemIndicator.Hide / InitShortcutCommand /
+    /// SetEnableStartObject) were boot-only or never fired on return — confirmed via the MelonLoader log.
     /// </summary>
     public static class TitleScreenPatches
     {
-        private static string pendingTitleText = null;
-        private static bool isTitleScreenTextPending = false;
+        // Set true when the title main menu enables (the press-any-button screen has been dismissed) —
+        // a hard stop for the prompt poll. Reset at the start of each poll (each "Title" scene load).
+        private static bool _titleMainMenuShown = false;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             try
             {
-                TryPatchSplashController(harmony);
-                TryPatchSystemIndicator(harmony);
                 TryPatchTitleMenuCommand(harmony);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Title] Error applying patches: {ex.Message}");
-            }
-        }
-
-        private static void TryPatchSplashController(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                Type splashControllerType = typeof(SplashController);
-                var initTitleMethod = AccessTools.Method(splashControllerType, "InitializeTitle");
-
-                if (initTitleMethod != null)
-                {
-                    var postfix = typeof(TitleScreenPatches).GetMethod(nameof(SplashController_InitializeTitle_Postfix),
-                        BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(initTitleMethod, postfix: new HarmonyMethod(postfix));
-                }
-                else
-                {
-                    MelonLogger.Warning("[Title] SplashController.InitializeTitle method not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Title] Error patching SplashController: {ex.Message}");
-            }
-        }
-
-        private static void TryPatchSystemIndicator(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                Type systemIndicatorType = null;
-                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    try
-                    {
-                        systemIndicatorType = asm.GetType("Il2CppLast.Systems.Indicator.SystemIndicator");
-                        if (systemIndicatorType != null)
-                            break;
-                    }
-                    catch { } // Assembly may throw on GetType
-                }
-
-                if (systemIndicatorType == null)
-                {
-                    MelonLogger.Warning("[Title] SystemIndicator type not found");
-                    return;
-                }
-
-                var showMethod = AccessTools.Method(systemIndicatorType, "Show");
-                if (showMethod != null)
-                {
-                    var postfix = typeof(TitleScreenPatches).GetMethod(nameof(SystemIndicator_Show_Postfix),
-                        BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(showMethod, postfix: new HarmonyMethod(postfix));
-                }
-                else
-                {
-                    MelonLogger.Warning("[Title] SystemIndicator.Show method not found");
-                }
-
-                var hideMethod = AccessTools.Method(systemIndicatorType, "Hide");
-                if (hideMethod != null)
-                {
-                    var postfix = typeof(TitleScreenPatches).GetMethod(nameof(SystemIndicator_Hide_Postfix),
-                        BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(hideMethod, postfix: new HarmonyMethod(postfix));
-                }
-                else
-                {
-                    MelonLogger.Warning("[Title] SystemIndicator.Hide method not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Title] Error patching SystemIndicator: {ex.Message}");
             }
         }
 
@@ -146,75 +78,82 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        #region Postfixes
-
-        public static void SplashController_InitializeTitle_Postfix(SplashController __instance)
+        /// <summary>
+        /// Started when the "Title" scene loads (the start of the multi-second title LOAD — too early to
+        /// speak). Polls until the press-prompt Text (TitleWindowView.startText) is actually on screen
+        /// (gameObject.activeInHierarchy), then speaks its REAL displayed text — which is empty during the
+        /// load and set only when the prompt renders. Reading at that moment fixes the timing AND the text
+        /// (the earlier live read failed because it read too early when the label was empty). Falls back to
+        /// the MENU_TITLE_PRESS_TEXT constant if the visible label is empty. Bounded one-shot (exits on
+        /// speak or timeout); fires on boot and return-to-title (both load the "Title" scene).
+        /// </summary>
+        public static IEnumerator WaitForPressPromptThenSpeak()
         {
-            try
-            {
-                if (__instance == null)
-                    return;
+            _titleMainMenuShown = false;   // fresh title visit
+            bool everFound = false;        // saw the TitleWindowController at least once
 
-                string pressText = null;
+            // Bounded entirely by the three exit conditions below (prompt read, main menu shown, or the
+            // title controller gone) — no arbitrary timeout. The press-any-button always resolves to one
+            // of these, so the poll lives only across the boot-load / return-to-title window.
+            while (true)
+            {
+                yield return new WaitForSeconds(0.15f);
 
                 try
                 {
-                    var uiMsgType = Type.GetType("Il2CppUiMessageConstants, Assembly-CSharp")
-                                 ?? Type.GetType("UiMessageConstants, Assembly-CSharp");
+                    // Stop 1: the user pressed past the prompt to the main menu (prompt dismissed).
+                    if (_titleMainMenuShown) yield break;
 
-                    if (uiMsgType != null)
+                    // Stop 2: the TitleWindowController exists ONLY during the title visit (destroyed when
+                    // gameplay starts). Re-find it each tick: keep waiting while it hasn't appeared yet
+                    // (still loading), but STOP once it's gone after having been found — this keeps the poll
+                    // out of the gameplay sequence entirely.
+                    var ctrl = UnityEngine.Object.FindObjectOfType<TitleWindowController>();
+                    if (ctrl == null)
                     {
-                        var field = uiMsgType.GetField("MENU_TITLE_PRESS_TEXT", BindingFlags.Public | BindingFlags.Static);
-                        if (field != null)
-                        {
-                            pressText = field.GetValue(null) as string;
-                        }
+                        if (everFound) yield break;   // left the title → stop polling
+                        continue;                      // not instantiated yet during the load
                     }
-                }
-                catch
-                {
-                    // Type lookup for press text may fail; fallback below
-                }
+                    everFound = true;
 
-                if (!string.IsNullOrWhiteSpace(pressText))
-                {
-                    pendingTitleText = TextUtils.StripIconMarkup(pressText.Trim());
-                }
-                else
-                {
-                    pendingTitleText = "Press any button";
-                }
+                    IntPtr viewPtr = IL2CppFieldReader.ReadPointerSafe(ctrl.Pointer, IL2CppOffsets.Popup.TitleViewKeyInput);
+                    if (viewPtr == IntPtr.Zero) continue;
+                    IntPtr textPtr = IL2CppFieldReader.ReadPointerSafe(viewPtr, IL2CppOffsets.Popup.TitleViewStartText);
+                    if (textPtr == IntPtr.Zero) continue;
 
-                isTitleScreenTextPending = true;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Title] Error in SplashController.InitializeTitle postfix: {ex.Message}");
-                pendingTitleText = "Press any button";
-                isTitleScreenTextPending = true;
+                    var startText = new UnityEngine.UI.Text(textPtr);
+                    if (startText.gameObject == null || !startText.gameObject.activeInHierarchy) continue;
+
+                    // The press prompt is on screen now — read its actual displayed text.
+                    string raw = startText.text;
+                    string text = !string.IsNullOrWhiteSpace(raw) ? TextUtils.StripIconMarkup(raw.Trim()) : GetPressText();
+                    MelonLogger.Msg($"[Title] press prompt shown, text='{raw}'");
+                    if (!string.IsNullOrWhiteSpace(text))
+                        FFI_ScreenReaderMod.SpeakText(text, interrupt: false);
+                    yield break;
+                }
+                catch { } // transient read failure — keep polling
             }
         }
 
-        public static void SystemIndicator_Show_Postfix(int mode)
-        {
-        }
-
-        public static void SystemIndicator_Hide_Postfix()
+        // Localized "Press any button" via the UiMessageConstants.MENU_TITLE_PRESS_TEXT static field.
+        // Falls back to the English literal.
+        private static string GetPressText()
         {
             try
             {
-                if (isTitleScreenTextPending && !string.IsNullOrWhiteSpace(pendingTitleText))
+                var uiMsgType = Type.GetType("Il2CppUiMessageConstants, Assembly-CSharp")
+                             ?? Type.GetType("UiMessageConstants, Assembly-CSharp");
+                if (uiMsgType != null)
                 {
-                    FFI_ScreenReaderMod.SpeakText(pendingTitleText, interrupt: false);
-
-                    pendingTitleText = null;
-                    isTitleScreenTextPending = false;
+                    var field = uiMsgType.GetField("MENU_TITLE_PRESS_TEXT", BindingFlags.Public | BindingFlags.Static);
+                    var pressText = field?.GetValue(null) as string;
+                    if (!string.IsNullOrWhiteSpace(pressText))
+                        return TextUtils.StripIconMarkup(pressText.Trim());
                 }
             }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Title] Error in SystemIndicator.Hide postfix: {ex.Message}");
-            }
+            catch { } // constant lookup is best-effort
+            return "Press any button";
         }
 
         public static void TitleMenuCommand_SetEnableMainMenu_Postfix(bool isEnable)
@@ -223,6 +162,7 @@ namespace FFI_ScreenReader.Patches
             {
                 if (isEnable)
                 {
+                    _titleMainMenuShown = true;   // press-any-button dismissed → stop the prompt poll
                     MenuStateRegistry.ResetAll();
                     BattleResultPatches.ClearAllBattleMenuFlags();
                 }
@@ -232,7 +172,5 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Title] Error in SetEnableMainMenu postfix: {ex.Message}");
             }
         }
-
-        #endregion
     }
 }

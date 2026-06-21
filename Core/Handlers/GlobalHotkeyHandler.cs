@@ -48,6 +48,16 @@ namespace FFI_ScreenReader.Core.Handlers
                     return;
                 }
 
+                // New-game class selection: read the focused class description on demand
+                if (JobSelectionPatches.IsActive)
+                {
+                    string desc = JobSelectionPatches.GetCurrentDescription();
+                    FFI_ScreenReaderMod.SpeakText(
+                        string.IsNullOrWhiteSpace(desc) ? ModTextTranslator.T("No description") : desc.Trim(),
+                        interrupt: true);
+                    return;
+                }
+
                 // Shop item details
                 if (ShopMenuTracker.ValidateState())
                 {

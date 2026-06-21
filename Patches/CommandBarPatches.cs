@@ -13,38 +13,36 @@ using AbilityWindowController = Il2CppSerial.FF1.UI.KeyInput.AbilityWindowContro
 using ItemWindowController = Il2CppLast.UI.KeyInput.ItemWindowController;
 using EquipmentWindowController = Il2CppLast.UI.KeyInput.EquipmentWindowController;
 using ItemCommandContentView = Il2CppLast.UI.KeyInput.ItemCommandContentView;
+using EquipmentCommandView = Il2CppLast.UI.KeyInput.EquipmentCommandView;
 using GameCursor = Il2CppLast.UI.Cursor;
 
 namespace FFI_ScreenReader.Patches
 {
     /// <summary>
-    /// Announces the INITIALLY-focused command when the item / equipment / magic command bar opens.
-    /// Each controller's per-frame <c>UpdateController</c> is patched but only reads once per open, then
-    /// disarms — so it polls harmlessly until the focused command's ID is set, then announces once.
-    /// The command identity is read from the controller's ENUM/data (never on-screen Text), so it is
-    /// immune to the pre-localization placeholder. Navigation keeps flowing through the generic cursor
-    /// reader; this fires only on open.
+    /// Announces the focused command in the item / equipment / magic command bar, on OPEN and on
+    /// NAVIGATION, with a "(n of N)" position. Each controller's per-frame <c>UpdateController</c> is
+    /// patched and announces whenever the focused index CHANGES (open = first focus; nav = each move),
+    /// reading the command identity from the ENUM/data (never on-screen Text) so it is immune to the
+    /// pre-localization placeholder. The reader is gated to the bar's COMMAND phase (Item/Equip state 1,
+    /// Magic state 4) and resets its last-index on leaving, so re-entry re-announces.
     ///
-    /// Item/equip arm on their window SetActive. Magic is different: the Use/Forget bar appears only
-    /// AFTER a character-select phase, so it self-validates the AbilityWindowController state machine
-    /// (read only while in the Command state) instead of arming on a state-transition that fires too
-    /// early. (The FIELD command bar was removed — MainMenuController.focusId is the SELECTED command,
-    /// not the focused one, so it announced the wrong thing on selection; field initial-focus is still
-    /// an open problem, tracked separately.)
+    /// The generic cursor reader is suppressed during command-bar phases (see IsCommandBarActive, called
+    /// from CursorNavigation_Postfix) so it cannot double-announce these moves.
     /// </summary>
     public static class CommandBarPatches
     {
         private static bool isPatched = false;
 
-        private static bool _itemArmed = false;
-        private static bool _equipArmed = false;
+        // Command-phase state-machine tags.
+        private const int STATE_ITEM_COMMAND = 1;   // ItemWindowController command-select
+        private const int STATE_EQUIP_COMMAND = 1;  // EquipmentWindowController command
+        private const int STATE_MAGIC_COMMAND = 4;  // AbilityWindowController command (Use/Forget bar)
 
-        // Armed when a command bar (re)opens; cleared on leave / a successful read.
-        public static void ArmItem() => _itemArmed = true;
-        public static void ArmEquip() => _equipArmed = true;
-        public static void ClearItem() => _itemArmed = false;
-        public static void ClearEquip() => _equipArmed = false;
-        public static void ClearAll() { _itemArmed = false; _equipArmed = false; _magicCmdOpenRead = false; }
+        // Last announced focused index per bar; -1 = nothing announced (re-announce on next change).
+        private const int NO_INDEX = -1;
+        private static int _lastItemIndex = NO_INDEX;
+        private static int _lastEquipIndex = NO_INDEX;
+        private static int _lastMagicIndex = NO_INDEX;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
@@ -53,13 +51,13 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                // Read-on-open: per-frame UpdateController announces the focused command once while armed.
+                // Per-frame UpdateController announces the focused command whenever its index changes.
                 TryPatchPostfix(harmony, typeof(ItemCommandController), "UpdateController", Type.EmptyTypes, nameof(Item_UpdateController_Postfix));
                 TryPatchPostfix(harmony, typeof(EquipmentCommandController), "UpdateController", Type.EmptyTypes, nameof(Equip_UpdateController_Postfix));
                 // Magic command bar's UpdateController takes a bool (isUseCommand).
                 TryPatchPostfix(harmony, typeof(AbilityCommandController), "UpdateController", new Type[] { typeof(bool) }, nameof(Magic_UpdateController_Postfix));
 
-                // Arm/clear triggers — item/equip on their window SetActive.
+                // Window SetActive(false) resets the last-index (belt-and-suspenders re-announce on reopen).
                 TryPatchPostfix(harmony, typeof(ItemWindowController), "SetActive", new Type[] { typeof(bool) }, nameof(Item_SetActive_Postfix));
                 TryPatchPostfix(harmony, typeof(EquipmentWindowController), "SetActive", new Type[] { typeof(bool) }, nameof(Equip_SetActive_Postfix));
 
@@ -88,22 +86,27 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // ── Arm/clear triggers ──
-        public static void Item_SetActive_Postfix(bool __0) { try { if (__0) ArmItem(); else ClearItem(); } catch { } }
-        public static void Equip_SetActive_Postfix(bool __0) { try { if (__0) ArmEquip(); else ClearEquip(); } catch { } }
+        // ── Reset on window close ──
+        public static void Item_SetActive_Postfix(bool __0) { try { if (!__0) _lastItemIndex = NO_INDEX; } catch { } }
+        public static void Equip_SetActive_Postfix(bool __0) { try { if (!__0) _lastEquipIndex = NO_INDEX; } catch { } }
 
-        // ── Read-on-open ──
-
-        // Item command bar: no cash field — selectCursor.Index → contentList[index].Data.Id.
+        // ── Item command bar (Use/Sort/Key Items) ──
         public static void Item_UpdateController_Postfix(object __instance)
         {
-            if (!_itemArmed)
-                return;
             try
             {
                 IntPtr p = (__instance as ItemCommandController)?.Pointer ?? IntPtr.Zero;
                 if (p == IntPtr.Zero)
                     return;
+
+                // Only while the item window is in its command-select phase; otherwise re-arm.
+                var win = UnityEngine.Object.FindObjectOfType<ItemWindowController>();
+                if (win == null || StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Item) != STATE_ITEM_COMMAND)
+                {
+                    _lastItemIndex = NO_INDEX;
+                    return;
+                }
+
                 IntPtr cursorPtr = Marshal.ReadIntPtr(p, IL2CppOffsets.CommandBar.ItemSelectCursor);
                 IntPtr listPtr = Marshal.ReadIntPtr(p, IL2CppOffsets.CommandBar.ItemContentList);
                 if (cursorPtr == IntPtr.Zero || listPtr == IntPtr.Zero)
@@ -112,47 +115,66 @@ namespace FFI_ScreenReader.Patches
                 var contents = new Il2CppSystem.Collections.Generic.List<ItemCommandContentView>(listPtr);
                 if (index < 0 || index >= contents.Count)
                     return;
+                if (index == _lastItemIndex)
+                    return;
                 var view = contents[index];
                 if (view == null)
                     return;
                 var data = view.Data;
                 if (data == null)
-                    return;
+                    return;   // focus not set yet — retry next frame (don't store index)
                 string name = CommandBarReader.GetItemCommandName(data.Id);
                 if (string.IsNullOrEmpty(name))
                     return;
-                _itemArmed = false;
-                CommandBarReader.Announce(name);
+                _lastItemIndex = index;
+                CommandBarReader.Announce(name, index, contents.Count);
             }
             catch { }
         }
 
-        // Equipment command bar: read the public EquipmentCommandIdCash property directly.
+        // ── Equipment command bar (Equip/Optimal/Remove All) ──
+        // Name from the focused-command cash (placeholder-proof, tracks the cursor); index/count from
+        // the controller's own cursor + contents list.
         public static void Equip_UpdateController_Postfix(object __instance)
         {
-            if (!_equipArmed)
-                return;
             try
             {
                 var ctrl = __instance as EquipmentCommandController;
                 if (ctrl == null)
                     return;
+                IntPtr p = ctrl.Pointer;
+                if (p == IntPtr.Zero)
+                    return;
+
+                var win = UnityEngine.Object.FindObjectOfType<EquipmentWindowController>();
+                if (win == null || StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Equip) != STATE_EQUIP_COMMAND)
+                {
+                    _lastEquipIndex = NO_INDEX;
+                    return;
+                }
+
+                IntPtr cursorPtr = Marshal.ReadIntPtr(p, IL2CppOffsets.CommandBar.EquipSelectCursor);
+                IntPtr listPtr = Marshal.ReadIntPtr(p, IL2CppOffsets.CommandBar.EquipContentList);
+                if (cursorPtr == IntPtr.Zero || listPtr == IntPtr.Zero)
+                    return;
+                int index = new GameCursor(cursorPtr).Index;
+                var contents = new Il2CppSystem.Collections.Generic.List<EquipmentCommandView>(listPtr);
+                int count = contents.Count;
+                if (index < 0 || index >= count)
+                    return;
+                if (index == _lastEquipIndex)
+                    return;
                 string name = CommandBarReader.GetEquipmentCommandName(ctrl.EquipmentCommandIdCash);
                 if (string.IsNullOrEmpty(name))
                     return;
-                _equipArmed = false;
-                CommandBarReader.Announce(name);
+                _lastEquipIndex = index;
+                CommandBarReader.Announce(name, index, count);
             }
             catch { }
         }
 
         // ── Magic command bar (Use/Forget) ──
-        // AbilityWindowController.State.Command (4) is the Use/Forget bar; earlier phases (character
-        // select, spell lists) are other states. We announce once per Command-state entry, reading the
-        // live state each frame (not a state-transition arm, which fires before the bar is ready).
-        private const int STATE_MAGIC_COMMAND = 4;
-        private static bool _magicCmdOpenRead = false;
-
+        // AbilityWindowController.State.Command (4) is the Use/Forget bar. Announce on focus change.
         public static void Magic_UpdateController_Postfix(object __instance)
         {
             try
@@ -162,22 +184,12 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 var win = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
-                if (win == null)
+                if (win == null || StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Magic) != STATE_MAGIC_COMMAND)
                 {
-                    _magicCmdOpenRead = false;
+                    _lastMagicIndex = NO_INDEX;   // not in the command bar — re-arm for next entry
                     return;
                 }
-                int state = StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Magic);
-                if (state != STATE_MAGIC_COMMAND)
-                {
-                    _magicCmdOpenRead = false;   // left the command bar — re-arm for next entry
-                    return;
-                }
-                if (_magicCmdOpenRead)
-                    return;                      // already announced this entry
 
-                // Read the FOCUSED command from the cursor (like the item bar) — CommandData is a cached
-                // property that's null/stale on open, so it never announced.
                 IntPtr p = ctrl.Pointer;
                 if (p == IntPtr.Zero)
                     return;
@@ -189,19 +201,44 @@ namespace FFI_ScreenReader.Patches
                 var contents = new Il2CppSystem.Collections.Generic.List<AbilityCommandContentView>(listPtr);
                 if (index < 0 || index >= contents.Count)
                     return;
+                if (index == _lastMagicIndex)
+                    return;
                 var view = contents[index];
                 if (view == null)
                     return;
                 var data = view.Data;
                 if (data == null)
-                    return;                      // focus not set yet — retry next frame
+                    return;   // focus not set yet — retry next frame
                 string name = CommandBarReader.GetAbilityCommandName(data.Id);
                 if (string.IsNullOrEmpty(name))
                     return;
-                _magicCmdOpenRead = true;
-                CommandBarReader.Announce(name);
+                _lastMagicIndex = index;
+                CommandBarReader.Announce(name, index, contents.Count);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// True iff a command bar is in its command-select phase (Item=1, Equip=1, Magic=4). The generic
+        /// cursor reader suppresses on this so it doesn't double the UpdateController announces. Called
+        /// only after the cheaper list-phase ShouldSuppress checks, so it isn't hit on heavy scrolling.
+        /// </summary>
+        public static bool IsCommandBarActive()
+        {
+            try
+            {
+                var item = UnityEngine.Object.FindObjectOfType<ItemWindowController>();
+                if (item != null && StateMachineHelper.ReadState(item.Pointer, IL2CppOffsets.MenuStateMachine.Item) == STATE_ITEM_COMMAND)
+                    return true;
+                var equip = UnityEngine.Object.FindObjectOfType<EquipmentWindowController>();
+                if (equip != null && StateMachineHelper.ReadState(equip.Pointer, IL2CppOffsets.MenuStateMachine.Equip) == STATE_EQUIP_COMMAND)
+                    return true;
+                var magic = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
+                if (magic != null && StateMachineHelper.ReadState(magic.Pointer, IL2CppOffsets.MenuStateMachine.Magic) == STATE_MAGIC_COMMAND)
+                    return true;
+            }
+            catch { }
+            return false;
         }
     }
 }

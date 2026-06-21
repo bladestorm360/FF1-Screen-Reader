@@ -461,6 +461,8 @@ namespace FFI_ScreenReader.Patches
 
                 commandName = TextUtils.StripIconMarkup(commandName);
 
+                commandName = MenuPosition.Format(commandName, index, contentList.Count);
+
                 // Command selection doesn't interrupt - queues after turn announcement
                 FFI_ScreenReaderMod.SpeakText(commandName, interrupt: false);
             }
@@ -524,6 +526,8 @@ namespace FFI_ScreenReader.Patches
                 string statusSuffix = BuildStatusSuffix(battleInfo?.Parameter);
                 if (!string.IsNullOrEmpty(statusSuffix))
                     announcement += statusSuffix;
+
+                announcement = MenuPosition.Format(announcement, index, playerList.Count);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
@@ -636,6 +640,8 @@ namespace FFI_ScreenReader.Patches
                 string statusSuffix = BuildStatusSuffix(battleInfo?.Parameter);
                 if (!string.IsNullOrEmpty(statusSuffix))
                     announcement += statusSuffix;
+
+                announcement = MenuPosition.Format(announcement, index, enemyList.Count);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

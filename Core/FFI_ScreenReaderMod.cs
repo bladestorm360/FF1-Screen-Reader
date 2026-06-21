@@ -69,8 +69,9 @@ namespace FFI_ScreenReader.Core
         private bool enableWallTones = false;
         private bool enableFootsteps = false;
         private bool enableAudioBeacons = false;
-        private bool enableAutoDetail = false;
+        private bool enableAutoDetail = true;
         private bool enableAnnounceOnBeaconRestart = false;
+        private bool enableMenuPositionAnnouncements = true;
 
         // Controller normalization (L3/R3 pass-through to game when not in mod mode)
         private bool enableStickClickNormalization = false;
@@ -101,6 +102,7 @@ namespace FFI_ScreenReader.Core
             enableAutoDetail = PreferencesManager.AutoDetailDefault;
             enableStickClickNormalization = PreferencesManager.StickClickNormalizationDefault;
             enableAnnounceOnBeaconRestart = PreferencesManager.AnnounceOnBeaconRestartDefault;
+            enableMenuPositionAnnouncements = PreferencesManager.MenuPositionAnnouncementsDefault;
 
             // Initialize Tolk for screen reader support
             tolk = new TolkWrapper();
@@ -326,6 +328,12 @@ namespace FFI_ScreenReader.Core
             {
                 LoggerInstance.Msg($"[ComponentCache] Scene loaded: {scene.name}");
 
+                // The "Title" scene loads at the START of the title load (too early to speak) on every
+                // entry — boot and return-to-title. Kick off a bounded wait that speaks the press prompt
+                // only once its Text is actually on screen (per the MelonLoader log analysis).
+                if (scene.name == "Title")
+                    CoroutineManager.StartManaged(TitleScreenPatches.WaitForPressPromptThenSpeak());
+
                 // Check if we're leaving a battle scene
                 bool wasInBattle = previousSceneName.Contains("Battle");
                 bool isInBattle = scene.name.Contains("Battle");
@@ -516,6 +524,13 @@ namespace FFI_ScreenReader.Core
             SaveAndAnnounce(T("Beacon destination announcement"), enableAnnounceOnBeaconRestart);
         }
 
+        internal void ToggleMenuPositionAnnouncements()
+        {
+            enableMenuPositionAnnouncements = !enableMenuPositionAnnouncements;
+            PreferencesManager.SaveMenuPositionAnnouncements(enableMenuPositionAnnouncements);
+            SaveAndAnnounce(T("Menu position announcements"), enableMenuPositionAnnouncements);
+        }
+
         internal void ToggleStickClickNormalization()
         {
             enableStickClickNormalization = !enableStickClickNormalization;
@@ -538,6 +553,7 @@ namespace FFI_ScreenReader.Core
         public static bool AutoDetailEnabled => instance?.enableAutoDetail ?? false;
         public static bool StickClickNormalizationEnabled => instance?.enableStickClickNormalization ?? false;
         public static bool AnnounceOnBeaconRestartEnabled => instance?.enableAnnounceOnBeaconRestart ?? false;
+        public static bool MenuPositionAnnouncementsEnabled => instance?.enableMenuPositionAnnouncements ?? true;
 
         /// <summary>
         /// Gets the currently selected entity for audio beacon tracking.
@@ -930,6 +946,11 @@ namespace FFI_ScreenReader.Core
                 if (BestiaryStateTracker.IsInBestiary) return;
                 if (MusicPlayerStateTracker.IsInMusicPlayer) return;
                 if (GalleryStateTracker.IsInGallery) return;
+
+                // Command bars (Item/Equip/Magic) — their UpdateController announces the focused command
+                // with index; suppress the generic reader so it doesn't double. Checked here (after the
+                // list-phase ShouldSuppress checks) so heavy list scrolling never pays the FindObjectOfType.
+                if (CommandBarPatches.IsCommandBarActive()) return;
 
                 // === DEFAULT: Read via MenuTextDiscovery ===
                 // Start coroutine to read after one frame (allows UI to update)

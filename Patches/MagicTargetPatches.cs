@@ -176,7 +176,7 @@ namespace FFI_ScreenReader.Patches
                 if (characterData == null)
                     return;
 
-                AnnounceTargetCharacter(characterData);
+                AnnounceTargetCharacter(characterData, index, contentList.Count);
             }
             catch (Exception ex)
             {
@@ -184,7 +184,7 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static void AnnounceTargetCharacter(OwnedCharacterData characterData)
+        private static void AnnounceTargetCharacter(OwnedCharacterData characterData, int index, int count)
         {
             try
             {
@@ -224,6 +224,7 @@ namespace FFI_ScreenReader.Patches
                     MelonLogger.Warning($"[Magic Target] Error getting character parameters: {paramEx.Message}");
                 }
 
+                announcement = MenuPosition.Format(announcement, index, count);
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)

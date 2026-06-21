@@ -5,6 +5,8 @@ using FFI_ScreenReader.Menus;
 using FFI_ScreenReader.Utils;
 
 using TitleWindowController = Il2CppLast.UI.KeyInput.TitleWindowController;
+using TitleMenuCommandController = Il2CppLast.UI.KeyInput.TitleMenuCommandController;
+using GameCursor = Il2CppLast.UI.Cursor;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -37,6 +39,33 @@ namespace FFI_ScreenReader.Patches
             {
                 MelonLogger.Warning($"[Title] Error in {source} postfix: {ex.Message}");
             }
+        }
+
+        // TitleMenuCommandController.activeContents (List<TitleCommandContentView>) — the visible commands.
+        private const int OFFSET_ACTIVE_CONTENTS = 0x28;
+
+        /// <summary>
+        /// Visible title-command count for the "(X of Y)" suffix, or -1 when <paramref name="cursor"/> is
+        /// not the title menu's cursor (so it's inert on every other menu — no false positives). The title
+        /// menu stores its commands in a C# list (activeContents), not a Content transform, so the generic
+        /// reader can't derive the count; this supplies it for both the on-entry and per-navigation reads
+        /// (both flow through MenuTextDiscovery.WaitAndReadCursor). Uses activeContents (visible) so disabled
+        /// commands (e.g. Continue with no save) are excluded, matching what the cursor navigates.
+        /// </summary>
+        internal static int TryGetActiveCommandCount(GameCursor cursor)
+        {
+            try
+            {
+                if (cursor == null) return -1;
+                var cmd = UnityEngine.Object.FindObjectOfType<TitleMenuCommandController>();
+                if (cmd == null || cmd.gameObject == null || !cmd.gameObject.activeInHierarchy) return -1;
+                var titleCursor = cmd.selectCursor;
+                if (titleCursor == null || titleCursor.Pointer != cursor.Pointer) return -1; // not the title cursor
+                IntPtr listPtr = IL2CppFieldReader.ReadPointer(cmd.Pointer, OFFSET_ACTIVE_CONTENTS);
+                if (listPtr == IntPtr.Zero) return -1;
+                return IL2CppFieldReader.ReadListSize(listPtr);
+            }
+            catch { return -1; } // best-effort; -1 → no suffix
         }
     }
 

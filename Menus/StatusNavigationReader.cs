@@ -112,7 +112,11 @@ namespace FFI_ScreenReader.Menus
             tracker.CurrentStatIndex = buffer.Index;
 
             if (!string.IsNullOrEmpty(value))
+            {
+                var (localIndex, groupCount) = buffer.CurrentGroupPosition();
+                value = FFI_ScreenReader.Utils.MenuPosition.Format(value, localIndex, groupCount);
                 FFI_ScreenReaderMod.SpeakText(value, true);
+            }
         }
 
         #region Character Info Readers

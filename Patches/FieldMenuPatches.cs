@@ -68,6 +68,28 @@ namespace FFI_ScreenReader.Patches
             try { var mm = MenuManager.Instance; return mm != null && mm.IsOpen; }
             catch { return false; } // MenuManager not constructed yet during early load
         }
+
+        /// <summary>
+        /// Visible field-command count for the "(X of Y)" suffix, or -1 when <paramref name="cursor"/> is
+        /// not the field menu's cursor (so it's inert on every other menu). The field menu stores its
+        /// commands in a C# list (CommandMenuController.contents), not a Content transform, so the generic
+        /// reader can't derive the count; this supplies it for navigation (which flows through
+        /// MenuTextDiscovery.WaitAndReadCursor). Mirrors TitleMenuReader.TryGetActiveCommandCount.
+        /// </summary>
+        internal static int TryGetFieldCommandCount(GameCursor cursor)
+        {
+            try
+            {
+                if (cursor == null) return -1;
+                var cmd = UnityEngine.Object.FindObjectOfType<Il2CppLast.UI.CommandMenuController>();
+                if (cmd == null || cmd.gameObject == null || !cmd.gameObject.activeInHierarchy) return -1;
+                var fieldCursor = cmd.selectCursor;
+                if (fieldCursor == null || fieldCursor.Pointer != cursor.Pointer) return -1; // not the field cursor
+                var contents = cmd.contents;
+                return contents != null ? contents.Count : -1;
+            }
+            catch { return -1; } // best-effort; -1 → no suffix
+        }
     }
 
     [HarmonyPatch(typeof(MainMenuController), "Show", new Type[] { typeof(bool) })]

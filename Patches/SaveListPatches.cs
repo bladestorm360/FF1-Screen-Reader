@@ -54,7 +54,11 @@ namespace FFI_ScreenReader.Patches
                         var cursor = new GameCursor(cursorPtr);
                         var t = cursor.transform;
                         if (t != null)
-                            announcement = SaveSlotReader.TryReadSaveSlot(t, cursor.Index);
+                        {
+                            announcement = SaveSlotReader.TryReadSaveSlot(t, cursor.Index, out int count);
+                            if (announcement != null)
+                                announcement = MenuPosition.Format(announcement, cursor.Index, count);
+                        }
                     }
                 }
             }
