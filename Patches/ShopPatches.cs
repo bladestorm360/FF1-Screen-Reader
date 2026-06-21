@@ -204,74 +204,87 @@ namespace FFI_ScreenReader.Patches
                 if (__instance == null)
                     return;
 
-                // Gate on the ShopController state machine — the game's own
-                // authoritative "which panel has focus" signal. States 2 and 3
-                // are SelectProduct (buy list) and SelectSellItem (sell list);
-                // any other value (command bar, confirm, equipment, magic) means
-                // this fire is a transition flicker or a preview refresh and
-                // should not announce an item.
+                // Gate on the ShopController state machine — the game's own authoritative "which panel has
+                // focus" signal. States 2/3 are SelectProduct (buy) and SelectSellItem (sell); any other
+                // value means a transition flicker / preview refresh, not a real item focus.
                 var shopController = ShopMenuTracker.GetCachedOrFindShopController();
                 if (shopController != null)
                 {
                     int state = ShopMenuTracker.GetCurrentState(shopController);
-                    if (state != 2 && state != 3) // SelectProduct, SelectSellItem
+                    if (state != 2 && state != 3)
                     {
                         _lastAnnouncedListIndex = -1;
                         return;
                     }
                 }
 
-                var mainList = FindActiveMainContentController();
-                if (mainList == null)
-                    return; // Not in the item list (command menu, magic slot grid, etc.)
-
-                // Reaching the item list means the magic spell slot grid (if previously active)
-                // has been backed out of.
-                if (ShopMenuTracker.IsInMagicSlotSelection)
-                {
-                    ShopMenuTracker.IsInMagicSlotSelection = false;
-                    ShopMagicPatches.ResetState();
-                }
-
-                FFI_ScreenReaderMod.ClearOtherMenuStates("Shop");
-                ShopMenuTracker.IsShopMenuActive = true;
-
-                IntPtr instancePtr = mainList.Pointer;
-                if (instancePtr == IntPtr.Zero)
-                    return;
-
-                IntPtr cursorPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainSelectCursor);
-                if (cursorPtr == IntPtr.Zero)
-                    return;
-
-                var cursor = new GameCursor(cursorPtr);
-                int index = cursor.Index;
-                if (index < 0)
-                    return;
-
-                // Scoped exception to the "no dedup" rule: SetDescription also fires
-                // on stats/description panel toggle for the same focused item, and no
-                // non-dedup signal covers unaffordable items. Resets at state-exit
-                // boundaries keep re-entries on the same cursor audible.
-                if (index == _lastAnnouncedListIndex)
-                    return;
-                _lastAnnouncedListIndex = index;
-
-                IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainProductContentList);
-                if (listPtr == IntPtr.Zero)
-                    return;
-
-                var list = new Il2CppSystem.Collections.Generic.List<ShopListItemContentController>(listPtr);
-                if (list == null || index >= list.Count)
-                    return;
-
-                var content = list[index];
-                AnnounceFocusedItem(content, index, list.Count);
+                AnnounceFocusedFromList();
             }
             catch (Exception ex)
             {
                 MelonLogger.Error($"[Shop] Error in SetDescription_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Reads the in-focus shop item (name + price, with the active-count "(n of N)" position) and
+        /// announces it. Honors the same-index dedup so a SetDescription refresh on the same item is silent.
+        /// </summary>
+        private static void AnnounceFocusedFromList()
+        {
+            var mainList = FindActiveMainContentController();
+            if (mainList == null)
+                return; // Not in the item list (command menu, magic slot grid, etc.)
+
+            // Reaching the item list means the magic spell slot grid (if previously active) was backed out.
+            if (ShopMenuTracker.IsInMagicSlotSelection)
+            {
+                ShopMenuTracker.IsInMagicSlotSelection = false;
+                ShopMagicPatches.ResetState();
+            }
+
+            FFI_ScreenReaderMod.ClearOtherMenuStates("Shop");
+            ShopMenuTracker.IsShopMenuActive = true;
+
+            IntPtr instancePtr = mainList.Pointer;
+            if (instancePtr == IntPtr.Zero)
+                return;
+
+            IntPtr cursorPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainSelectCursor);
+            if (cursorPtr == IntPtr.Zero)
+                return;
+
+            var cursor = new GameCursor(cursorPtr);
+            int index = cursor.Index;
+            if (index < 0)
+                return;
+
+            // Scoped exception to the "no dedup" rule: SetDescription also fires on stats/description panel
+            // toggle for the same focused item, and no non-dedup signal covers unaffordable items.
+            if (index == _lastAnnouncedListIndex)
+                return;
+            _lastAnnouncedListIndex = index;
+
+            IntPtr listPtr = IL2CppFieldReader.ReadPointer(instancePtr, IL2CppOffsets.Shop.ListMainProductContentList);
+            if (listPtr == IntPtr.Zero)
+                return;
+
+            var list = new Il2CppSystem.Collections.Generic.List<ShopListItemContentController>(listPtr);
+            if (list == null || index >= list.Count)
+                return;
+
+            var content = list[index];
+
+            // The 50-slot pool's unused entries carry OTHER product names, so count ACTIVE entries —
+            // confirmed correct on entry for both buy (active=5) and sell (active=61).
+            int activeCount = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                try { var c = list[i]; if (c != null && c.gameObject != null && c.gameObject.activeInHierarchy) activeCount++; }
+                catch { }
+            }
+
+            AnnounceFocusedItem(content, index, activeCount);
         }
 
         private static ShopListMainContentController _cachedMainList;
@@ -462,6 +475,14 @@ namespace FFI_ScreenReader.Patches
                     ShopMenuTracker.IsShopMenuActive = true;
                     return;
                 }
+
+                // Only announce when the command bar is the active panel (ShopController.State.SelectCommand
+                // == 1). On shop entry the state goes straight to SelectProduct(2) without settling here, so
+                // the prep-time cursor flicker is suppressed (no double "Buy"); when the user cancels back to
+                // the bar the state is SelectCommand(1) and it announces normally. No dedup.
+                var gateController = ShopMenuTracker.GetCachedOrFindShopController();
+                if (gateController != null && ShopMenuTracker.GetCurrentState(gateController) != 1)
+                    return;
 
                 FFI_ScreenReaderMod.ClearOtherMenuStates("Shop");
                 if (!ShopMenuTracker.IsShopMenuActive)
