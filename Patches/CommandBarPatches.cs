@@ -44,6 +44,35 @@ namespace FFI_ScreenReader.Patches
         private static int _lastEquipIndex = NO_INDEX;
         private static int _lastMagicIndex = NO_INDEX;
 
+        // Cached window controllers so the per-frame UpdateController postfixes (and IsCommandBarActive)
+        // don't FindObjectOfType every frame; re-found only when null/destroyed/INACTIVE. The active check
+        // is essential: FindObjectOfType returns only ACTIVE objects, so a cached-but-inactive window (after
+        // a back-out) must count as a miss — otherwise reading its stale state machine falsely reports a
+        // command bar. (`cache == null` short-circuits before `.gameObject` for a destroyed object; mirrors
+        // BattleCommandPatches.cachedTargetController.)
+        private static ItemWindowController _itemWin;
+        private static EquipmentWindowController _equipWin;
+        private static AbilityWindowController _magicWin;
+
+        private static ItemWindowController ItemWin()
+        {
+            if (_itemWin == null || _itemWin.gameObject == null || !_itemWin.gameObject.activeInHierarchy)
+                _itemWin = UnityEngine.Object.FindObjectOfType<ItemWindowController>();
+            return _itemWin;
+        }
+        private static EquipmentWindowController EquipWin()
+        {
+            if (_equipWin == null || _equipWin.gameObject == null || !_equipWin.gameObject.activeInHierarchy)
+                _equipWin = UnityEngine.Object.FindObjectOfType<EquipmentWindowController>();
+            return _equipWin;
+        }
+        private static AbilityWindowController MagicWin()
+        {
+            if (_magicWin == null || _magicWin.gameObject == null || !_magicWin.gameObject.activeInHierarchy)
+                _magicWin = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
+            return _magicWin;
+        }
+
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             if (isPatched)
@@ -60,6 +89,15 @@ namespace FFI_ScreenReader.Patches
                 // Window SetActive(false) resets the last-index (belt-and-suspenders re-announce on reopen).
                 TryPatchPostfix(harmony, typeof(ItemWindowController), "SetActive", new Type[] { typeof(bool) }, nameof(Item_SetActive_Postfix));
                 TryPatchPostfix(harmony, typeof(EquipmentWindowController), "SetActive", new Type[] { typeof(bool) }, nameof(Equip_SetActive_Postfix));
+
+                // Command-state ENTRY reset: while the player is in a deeper screen (spell list, char-select,
+                // item list) the bar's UpdateController doesn't run, so its index-dedup never resets and
+                // re-entry is swallowed. The command-state Init fires on every entry into the command bar
+                // (from char-select AND from a sub-list back-out), so reset the dedup there to guarantee a
+                // re-announce. Magic = AbilityWindowController.CommandInit, Item = ItemWindowController.CommandSelectInit.
+                TryPatchPostfix(harmony, typeof(AbilityWindowController), "CommandInit", Type.EmptyTypes, nameof(Magic_CommandInit_Postfix));
+                TryPatchPostfix(harmony, typeof(ItemWindowController), "CommandSelectInit", Type.EmptyTypes, nameof(Item_CommandSelectInit_Postfix));
+                TryPatchPostfix(harmony, typeof(EquipmentWindowController), "CommandInit", Type.EmptyTypes, nameof(Equip_CommandInit_Postfix));
 
                 isPatched = true;
                 MelonLogger.Msg("[CommandBar] Command-bar patches applied");
@@ -90,6 +128,23 @@ namespace FFI_ScreenReader.Patches
         public static void Item_SetActive_Postfix(bool __0) { try { if (!__0) _lastItemIndex = NO_INDEX; } catch { } }
         public static void Equip_SetActive_Postfix(bool __0) { try { if (!__0) _lastEquipIndex = NO_INDEX; } catch { } }
 
+        // ── Reset on command-bar (re)entry ── so the bar re-announces the focused command every time it
+        // regains focus (returning from a sub-list, or re-entering from char-select).
+        public static void Magic_CommandInit_Postfix()
+        {
+            _lastMagicIndex = NO_INDEX;
+        }
+
+        public static void Item_CommandSelectInit_Postfix()
+        {
+            _lastItemIndex = NO_INDEX;
+        }
+
+        public static void Equip_CommandInit_Postfix()
+        {
+            _lastEquipIndex = NO_INDEX;
+        }
+
         // ── Item command bar (Use/Sort/Key Items) ──
         public static void Item_UpdateController_Postfix(object __instance)
         {
@@ -100,7 +155,7 @@ namespace FFI_ScreenReader.Patches
                     return;
 
                 // Only while the item window is in its command-select phase; otherwise re-arm.
-                var win = UnityEngine.Object.FindObjectOfType<ItemWindowController>();
+                var win = ItemWin();
                 if (win == null || StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Item) != STATE_ITEM_COMMAND)
                 {
                     _lastItemIndex = NO_INDEX;
@@ -146,7 +201,7 @@ namespace FFI_ScreenReader.Patches
                 if (p == IntPtr.Zero)
                     return;
 
-                var win = UnityEngine.Object.FindObjectOfType<EquipmentWindowController>();
+                var win = EquipWin();
                 if (win == null || StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Equip) != STATE_EQUIP_COMMAND)
                 {
                     _lastEquipIndex = NO_INDEX;
@@ -183,7 +238,7 @@ namespace FFI_ScreenReader.Patches
                 if (ctrl == null || ctrl.gameObject == null || !ctrl.gameObject.activeInHierarchy)
                     return;
 
-                var win = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
+                var win = MagicWin();
                 if (win == null || StateMachineHelper.ReadState(win.Pointer, IL2CppOffsets.MenuStateMachine.Magic) != STATE_MAGIC_COMMAND)
                 {
                     _lastMagicIndex = NO_INDEX;   // not in the command bar — re-arm for next entry
@@ -227,13 +282,13 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
-                var item = UnityEngine.Object.FindObjectOfType<ItemWindowController>();
+                var item = ItemWin();
                 if (item != null && StateMachineHelper.ReadState(item.Pointer, IL2CppOffsets.MenuStateMachine.Item) == STATE_ITEM_COMMAND)
                     return true;
-                var equip = UnityEngine.Object.FindObjectOfType<EquipmentWindowController>();
+                var equip = EquipWin();
                 if (equip != null && StateMachineHelper.ReadState(equip.Pointer, IL2CppOffsets.MenuStateMachine.Equip) == STATE_EQUIP_COMMAND)
                     return true;
-                var magic = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
+                var magic = MagicWin();
                 if (magic != null && StateMachineHelper.ReadState(magic.Pointer, IL2CppOffsets.MenuStateMachine.Magic) == STATE_MAGIC_COMMAND)
                     return true;
             }

@@ -327,28 +327,12 @@ namespace FFI_ScreenReader.Patches
                     catch { } // Charge lookup may fail in battle
                 }
 
-                // Try to get description
-                try
-                {
-                    string mesIdDesc = ability.MesIdDescription;
-                    if (!string.IsNullOrEmpty(mesIdDesc))
-                    {
-                        var messageManager = MessageManager.Instance;
-                        if (messageManager != null)
-                        {
-                            string description = messageManager.GetMessage(mesIdDesc, false);
-                            if (!string.IsNullOrWhiteSpace(description))
-                            {
-                                description = TextUtils.StripIconMarkup(description);
-                                if (!string.IsNullOrWhiteSpace(description))
-                                {
-                                    announcement += ". " + description;
-                                }
-                            }
-                        }
-                    }
-                }
-                catch { } // Description not always available
+                // Resolve the description once and cache it for the on-demand I-key reader, then
+                // append it to the spoken focus line only when AutoDetail is enabled (matches field magic menu).
+                string description = TryGetAbilityDescription(ability);
+                LastFocusedDescription = description;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled && !string.IsNullOrWhiteSpace(description))
+                    announcement += ". " + description;
 
                 return announcement;
             }
@@ -357,6 +341,41 @@ namespace FFI_ScreenReader.Patches
                 MelonLogger.Warning($"[Battle Magic] Error formatting announcement: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>Stripped description for a spell, or null if none. Shared by focus announce + I-key.</summary>
+        private static string TryGetAbilityDescription(OwnedAbility ability)
+        {
+            try
+            {
+                string mesIdDesc = ability.MesIdDescription;
+                if (string.IsNullOrEmpty(mesIdDesc)) return null;
+                var messageManager = MessageManager.Instance;
+                if (messageManager == null) return null;
+                string description = messageManager.GetMessage(mesIdDesc, false);
+                if (string.IsNullOrWhiteSpace(description)) return null;
+                description = TextUtils.StripIconMarkup(description);
+                return string.IsNullOrWhiteSpace(description) ? null : description;
+            }
+            catch { return null; } // Description not always available
+        }
+
+        /// <summary>
+        /// Cached stripped description of the currently-focused battle spell, refreshed on every
+        /// cursor move regardless of the AutoDetail toggle. Read on demand by the I key / right-stick-up.
+        /// </summary>
+        public static string LastFocusedDescription { get; private set; }
+
+        /// <summary>
+        /// Speaks the focused battle spell's description on demand (I key / right-stick-up), so
+        /// players can still reach descriptions in battle when AutoDetail is turned off.
+        /// </summary>
+        public static void AnnounceCurrentDescription()
+        {
+            string desc = LastFocusedDescription;
+            FFI_ScreenReaderMod.SpeakText(
+                string.IsNullOrWhiteSpace(desc) ? T("No description") : desc.Trim(),
+                interrupt: true);
         }
 
         // Offset - use centralized offsets
@@ -471,6 +490,7 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             CurrentPlayer = null;
+            LastFocusedDescription = null;
         }
     }
 }

@@ -327,6 +327,25 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        /// <summary>
+        /// Reads the focused button label of a popup given its selectCursor + commandList offsets. Reusable
+        /// for any Cursor-driven button popup (e.g. SavePopup for save/load/quicksave). Returns the stripped
+        /// label, or null. Used to announce the initially-focused button right after a popup's body message.
+        /// </summary>
+        public static string ReadFocusedButton(IntPtr popupPtr, int selectCursorOffset, int commandListOffset)
+        {
+            try
+            {
+                if (popupPtr == IntPtr.Zero) return null;
+                IntPtr cursorPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, selectCursorOffset);
+                if (cursorPtr == IntPtr.Zero) return null;
+                int index = new GameCursor(cursorPtr).Index;
+                string btn = ReadButtonFromCommandList(popupPtr, commandListOffset, index);
+                return string.IsNullOrWhiteSpace(btn) ? null : TextUtils.StripIconMarkup(btn);
+            }
+            catch { return null; }
+        }
+
         private static string ReadButtonFromCommandList(IntPtr popupPtr, int cmdListOffset, int index)
         {
             try
@@ -735,6 +754,12 @@ namespace FFI_ScreenReader.Patches
                 lastGameOverSelectCursorIndex = -1;
                 lastGameOverLoadCursorIndex = -1;
                 _suppressNextCommonFocus = false;
+
+                // A Quit Game / Return to Title popup over the config menu closes WITHOUT changing config
+                // state, so SelectCommand doesn't re-fire — re-announce the focused config option. Gated on
+                // ConfigMenuState.IsActive so save/load/battle/dialogue popup closes don't trigger it.
+                if (ConfigMenuState.IsActive)
+                    ConfigController_SetActive_Patch.ReannounceFocusedConfigOption();
             }
             catch (Exception ex)
             {

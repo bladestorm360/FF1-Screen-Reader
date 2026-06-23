@@ -85,6 +85,20 @@ namespace FFI_ScreenReader.Core.Handlers
                     FFI_ScreenReader.Menus.ItemDescriptionAnnouncer.AnnounceCurrentDescription();
                     return;
                 }
+
+                // Battle magic spell description on demand (the only way to reach it when AutoDetail is off)
+                if (BattleMagicMenuState.IsActive)
+                {
+                    BattleMagicPatches.AnnounceCurrentDescription();
+                    return;
+                }
+
+                // Battle item description on demand (the only way to reach it when AutoDetail is off)
+                if (BattleItemMenuState.IsActive)
+                {
+                    BattleItemPatches.AnnounceCurrentDescription();
+                    return;
+                }
             }
             catch (Exception ex)
             {

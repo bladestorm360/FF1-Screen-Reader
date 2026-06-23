@@ -198,6 +198,109 @@ namespace FFI_ScreenReader.Patches
         /// so condition resolution has a single source of truth.
         /// </summary>
         public static string GetConditionName(Condition condition) => MagicMenuState.GetConditionName(condition);
+
+        /// <summary>
+        /// Announces an item-list row (name + count + AutoDetail description + "(X of Y)"). Shared by the
+        /// SelectContent nav patch and the on-(re)entry reader. Returns true iff it spoke.
+        /// </summary>
+        public static bool AnnounceItemListData(ItemListContentData itemData, int index, int count)
+        {
+            try
+            {
+                LastSelectedItem = itemData;
+
+                string itemName = itemData.Name;
+                if (string.IsNullOrEmpty(itemName)) return false;
+                itemName = TextUtils.StripIconMarkup(itemName);
+                if (string.IsNullOrEmpty(itemName)) return false;
+
+                string baseAnnouncement = itemName;
+                int c = itemData.Count;
+                if (c > 1) baseAnnouncement += $", {c}";
+
+                string announcement = baseAnnouncement;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                {
+                    string description = itemData.Description;
+                    if (!string.IsNullOrWhiteSpace(description))
+                    {
+                        description = TextUtils.StripIconMarkup(description);
+                        if (!string.IsNullOrWhiteSpace(description))
+                            announcement = baseAnnouncement + ": " + description;
+                    }
+                }
+
+                FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
+                IsItemMenuActive = true;
+
+                announcement = MenuPosition.Format(announcement, index, count);
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[ItemMenu] AnnounceItemListData error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Announces an item-use target character (name + HP + status + "(X of Y)"). Shared by the
+        /// SelectContent nav patch and the on-(re)entry reader. Returns true iff it spoke.
+        /// </summary>
+        public static bool AnnounceItemUseTarget(ItemTargetSelectContentController content, int index, int count)
+        {
+            try
+            {
+                var characterData = content.CurrentData;
+                if (characterData == null) return false;
+
+                string charName = characterData.Name;
+                if (string.IsNullOrWhiteSpace(charName)) return false;
+
+                string announcement = charName;
+                try
+                {
+                    var parameter = characterData.Parameter;
+                    if (parameter != null)
+                    {
+                        int currentHp = parameter.currentHP;
+                        int maxHp = parameter.ConfirmedMaxHp();
+                        announcement += $", HP {currentHp}/{maxHp}";
+
+                        var conditionList = parameter.CurrentConditionList;
+                        if (conditionList != null && conditionList.Count > 0)
+                        {
+                            var statusNames = new List<string>();
+                            foreach (var condition in conditionList)
+                            {
+                                string conditionName = GetConditionName(condition);
+                                if (!string.IsNullOrWhiteSpace(conditionName))
+                                    statusNames.Add(conditionName);
+                            }
+                            if (statusNames.Count > 0)
+                                announcement += ", " + string.Join(", ", statusNames);
+                        }
+                    }
+                }
+                catch (Exception paramEx)
+                {
+                    MelonLogger.Warning($"[Item Target] Error getting character parameters: {paramEx.Message}");
+                }
+
+                FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
+                IsItemMenuActive = true;
+
+                announcement = MenuPosition.Format(announcement, index, count);
+                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Item Target] AnnounceItemUseTarget error: {ex.Message}");
+                return false;
+            }
+        }
     }
 
     /// <summary>
@@ -242,9 +345,6 @@ namespace FFI_ScreenReader.Patches
                 if (targets == null)
                     return;
 
-                // NOTE: Don't set IsItemMenuActive here - wait until after validation
-                // Setting it early causes suppression during menu transitions
-
                 // Convert IEnumerable to List for indexed access
                 var targetList = new Il2CppSystem.Collections.Generic.List<ItemListContentData>(targets);
                 if (targetList == null || targetList.Count == 0)
@@ -257,48 +357,7 @@ namespace FFI_ScreenReader.Patches
                 if (itemData == null)
                     return;
 
-                // Store selected item for 'I' key lookup
-                ItemMenuState.LastSelectedItem = itemData;
-
-                string itemName = itemData.Name;
-                if (string.IsNullOrEmpty(itemName))
-                    return;
-
-                // Strip icon markup from name
-                itemName = TextUtils.StripIconMarkup(itemName);
-
-                if (string.IsNullOrEmpty(itemName))
-                    return;
-
-                // Base announcement: "Item Name" + count. Description moves to I key.
-                string baseAnnouncement = itemName;
-
-                int count = itemData.Count;
-                if (count > 1)
-                {
-                    baseAnnouncement += $", {count}";
-                }
-
-                // AutoDetail: append description on focus when enabled
-                string announcement = baseAnnouncement;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
-                {
-                    string description = itemData.Description;
-                    if (!string.IsNullOrWhiteSpace(description))
-                    {
-                        description = TextUtils.StripIconMarkup(description);
-                        if (!string.IsNullOrWhiteSpace(description))
-                            announcement = baseAnnouncement + ": " + description;
-                    }
-                }
-
-                // Set active state AFTER validation - menu is confirmed open and we have valid data
-                // Also clear other menu states to prevent conflicts
-                FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
-                ItemMenuState.IsItemMenuActive = true;
-
-                announcement = MenuPosition.Format(announcement, index, targetList.Count);
-                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                ItemMenuState.AnnounceItemListData(itemData, index, targetList.Count);
             }
             catch (Exception ex)
             {
@@ -329,9 +388,6 @@ namespace FFI_ScreenReader.Patches
                 if (targetCursor == null || targetContents == null)
                     return;
 
-                // NOTE: Don't set IsItemMenuActive here - wait until after validation
-                // Setting it early causes suppression during menu transitions
-
                 int index = targetCursor.Index;
 
                 // Convert to list for indexed access
@@ -346,69 +402,163 @@ namespace FFI_ScreenReader.Patches
                 if (content == null)
                     return;
 
-                // Get character data from the content controller
-                var characterData = content.CurrentData;
-                if (characterData == null)
-                    return;
-
-                // Build announcement: "Character Name, HP current/max, Status effects"
-                // Note: Row is intentionally NOT included for item targeting - only for status/equip menus
-                // Note: FF1 has no MP system, so MP is not announced
-                string charName = characterData.Name;
-                if (string.IsNullOrWhiteSpace(charName))
-                    return;
-
-                string announcement = charName;
-
-                // Add HP and status information
-                try
-                {
-                    var parameter = characterData.Parameter;
-                    if (parameter != null)
-                    {
-                        // Add HP
-                        int currentHp = parameter.currentHP;
-                        int maxHp = parameter.ConfirmedMaxHp();
-                        announcement += $", HP {currentHp}/{maxHp}";
-
-                        // Add status conditions
-                        var conditionList = parameter.CurrentConditionList;
-                        if (conditionList != null && conditionList.Count > 0)
-                        {
-                            var statusNames = new List<string>();
-                            foreach (var condition in conditionList)
-                            {
-                                string conditionName = ItemMenuState.GetConditionName(condition);
-                                if (!string.IsNullOrWhiteSpace(conditionName))
-                                {
-                                    statusNames.Add(conditionName);
-                                }
-                            }
-
-                            if (statusNames.Count > 0)
-                            {
-                                announcement += ", " + string.Join(", ", statusNames);
-                            }
-                        }
-                    }
-                }
-                catch (Exception paramEx)
-                {
-                    MelonLogger.Warning($"[Item Target] Error getting character parameters: {paramEx.Message}");
-                }
-
-                // Set active state AFTER validation - menu is confirmed open and we have valid data
-                // Also clear other menu states to prevent conflicts
-                FFI_ScreenReader.Core.FFI_ScreenReaderMod.ClearOtherMenuStates("Item");
-                ItemMenuState.IsItemMenuActive = true;
-
-                announcement = MenuPosition.Format(announcement, index, contentList.Count);
-                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
+                ItemMenuState.AnnounceItemUseTarget(content, index, contentList.Count);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"Error in ItemUseController.SelectContent patch: {ex.Message}");
             }
+        }
+    }
+
+    /// <summary>
+    /// Re-announce the focused row when the item LIST or the item-use TARGET (re)gains focus — on initial
+    /// entry AND on back-out from a deeper screen. The nav SelectContent patches only fire on cursor
+    /// movement, so they're silent on (re)entry. The list controllers' state-entry <c>*Init()</c> methods
+    /// fire on both, so they arm a one-shot that the per-frame <c>UpdateController</c> consumes once the
+    /// list is genuinely built (self-retry), reusing the same announce helpers as navigation.
+    /// </summary>
+    public static class FieldItemReannouncePatches
+    {
+        // ItemListController (KeyInput) offsets
+        private const int ITEM_LIST_SELECT_CURSOR = 0x60;
+        private const int ITEM_LIST_DATA_LIST = 0x78;     // IEnumerable<ItemListContentData>
+        // ItemUseController (KeyInput) offsets
+        private const int ITEM_USE_CONTENT_LIST = 0x40;   // List<ItemTargetSelectContentController>
+        private const int ITEM_USE_SELECT_CURSOR = 0x50;
+
+        private static bool _pendingItemListAnnounce;
+        private static int _itemListFrames;
+        private static bool _pendingItemTargetAnnounce;
+        private static int _itemTargetFrames;
+
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            // Item list: arm on each list state-entry, consume in the per-frame UpdateController.
+            Patch(harmony, typeof(KeyInputItemListController), "UseSelectInit", nameof(ItemList_Init_Postfix));
+            Patch(harmony, typeof(KeyInputItemListController), "ImportantSelectInit", nameof(ItemList_Init_Postfix));
+            Patch(harmony, typeof(KeyInputItemListController), "OrganizeSelectInit", nameof(ItemList_Init_Postfix));
+            Patch(harmony, typeof(KeyInputItemListController), "UpdateController", nameof(ItemList_Update_Postfix));
+
+            // Item-use target: arm on Single/All state-entry, consume in the per-frame UpdateController.
+            Patch(harmony, typeof(KeyInputItemUseController), "SingleInit", nameof(ItemTarget_Init_Postfix));
+            Patch(harmony, typeof(KeyInputItemUseController), "AllInit", nameof(ItemTarget_Init_Postfix));
+            Patch(harmony, typeof(KeyInputItemUseController), "UpdateController", nameof(ItemTarget_Update_Postfix));
+        }
+
+        private static void Patch(HarmonyLib.Harmony harmony, Type type, string method, string postfixName)
+        {
+            try
+            {
+                var target = AccessTools.Method(type, method);
+                if (target != null)
+                    harmony.Patch(target, postfix: new HarmonyMethod(AccessTools.Method(typeof(FieldItemReannouncePatches), postfixName)));
+                else
+                    MelonLogger.Warning($"[ItemMenu] {type.Name}.{method} not found");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[ItemMenu] Error patching {type.Name}.{method}: {ex.Message}");
+            }
+        }
+
+        public static void ItemList_Init_Postfix()
+        {
+            _pendingItemListAnnounce = true;
+            _itemListFrames = 0;
+        }
+
+        public static void ItemTarget_Init_Postfix()
+        {
+            _pendingItemTargetAnnounce = true;
+            _itemTargetFrames = 0;
+        }
+
+        public static void ItemList_Update_Postfix(object __instance)
+        {
+            try
+            {
+                if (!_pendingItemListAnnounce) return;
+                var controller = __instance as KeyInputItemListController;
+                if (controller == null || !controller.gameObject.activeInHierarchy) return;
+
+                _itemListFrames++;
+                bool spoke = TryAnnounceItemListInitial(controller);
+                if (spoke || _itemListFrames > 30)
+                    _pendingItemListAnnounce = false;
+            }
+            catch { }
+        }
+
+        public static void ItemTarget_Update_Postfix(object __instance)
+        {
+            try
+            {
+                if (!_pendingItemTargetAnnounce) return;
+                var controller = __instance as KeyInputItemUseController;
+                if (controller == null || !controller.gameObject.activeInHierarchy) return;
+
+                _itemTargetFrames++;
+                bool spoke = TryAnnounceItemTargetInitial(controller);
+                if (spoke || _itemTargetFrames > 30)
+                    _pendingItemTargetAnnounce = false;
+            }
+            catch { }
+        }
+
+        private static bool TryAnnounceItemListInitial(KeyInputItemListController controller)
+        {
+            try
+            {
+                IntPtr ptr = controller.Pointer;
+                if (ptr == IntPtr.Zero) return false;
+                var mm = Il2CppLast.UI.MenuManager.Instance;
+                if (mm == null || !mm.IsOpen) return false;
+
+                IntPtr dlPtr = IL2CppFieldReader.ReadPointer(ptr, ITEM_LIST_DATA_LIST);
+                if (dlPtr == IntPtr.Zero) return false;
+                var enumerable = new Il2CppSystem.Object(dlPtr)
+                    .TryCast<Il2CppSystem.Collections.Generic.IEnumerable<ItemListContentData>>();
+                if (enumerable == null) return false;
+                var list = new Il2CppSystem.Collections.Generic.List<ItemListContentData>(enumerable);
+                if (list.Count == 0) return false;
+
+                IntPtr curPtr = IL2CppFieldReader.ReadPointer(ptr, ITEM_LIST_SELECT_CURSOR);
+                if (curPtr == IntPtr.Zero) return false;
+                int index = new GameCursor(curPtr).Index;
+                if (index < 0 || index >= list.Count) return false;
+
+                var itemData = list[index];
+                if (itemData == null) return false;
+                return ItemMenuState.AnnounceItemListData(itemData, index, list.Count);
+            }
+            catch { return false; }
+        }
+
+        private static bool TryAnnounceItemTargetInitial(KeyInputItemUseController controller)
+        {
+            try
+            {
+                IntPtr ptr = controller.Pointer;
+                if (ptr == IntPtr.Zero) return false;
+                var mm = Il2CppLast.UI.MenuManager.Instance;
+                if (mm == null || !mm.IsOpen) return false;
+
+                IntPtr clPtr = IL2CppFieldReader.ReadPointer(ptr, ITEM_USE_CONTENT_LIST);
+                if (clPtr == IntPtr.Zero) return false;
+                var list = new Il2CppSystem.Collections.Generic.List<ItemTargetSelectContentController>(clPtr);
+                if (list.Count == 0) return false;
+
+                IntPtr curPtr = IL2CppFieldReader.ReadPointer(ptr, ITEM_USE_SELECT_CURSOR);
+                if (curPtr == IntPtr.Zero) return false;
+                int index = new GameCursor(curPtr).Index;
+                if (index < 0 || index >= list.Count) return false;
+
+                var content = list[index];
+                if (content == null) return false;
+                return ItemMenuState.AnnounceItemUseTarget(content, index, list.Count);
+            }
+            catch { return false; }
         }
     }
 

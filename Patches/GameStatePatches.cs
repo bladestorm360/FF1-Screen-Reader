@@ -66,6 +66,11 @@ namespace FFI_ScreenReader.Patches
                     if (BestiaryManualPatches.ConfigBestiaryStateHandler.WasInConfigBestiary)
                     {
                         BestiaryManualPatches.ConfigBestiaryStateHandler.HandleExit();
+                        // Returning from the bestiary lands back on the config menu (which resumes after the
+                        // bestiary's loading screen and does NOT re-fire SelectCommand). Arm the config
+                        // re-announce; ConfigController.UpdateController consumes it once config is ready —
+                        // it self-gates, so if the exit really went to the field it stays silent.
+                        ConfigController_SetActive_Patch.ReannounceFocusedConfigOption();
                     }
 
                 }
@@ -78,6 +83,7 @@ namespace FFI_ScreenReader.Patches
                 else if (BestiaryManualPatches.ConfigBestiaryStateHandler.WasInConfigBestiary)
                 {
                     BestiaryManualPatches.ConfigBestiaryStateHandler.HandleExit();
+                    ConfigController_SetActive_Patch.ReannounceFocusedConfigOption();
                 }
             }
             catch (Exception ex)

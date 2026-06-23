@@ -242,23 +242,12 @@ namespace FFI_ScreenReader.Patches
                 if (count > 1)
                     announcement += $", {count}";
 
-                // Try to get description
-                try
-                {
-                    string description = data.Description;
-                    if (!string.IsNullOrWhiteSpace(description))
-                    {
-                        description = TextUtils.StripIconMarkup(description);
-                        if (!string.IsNullOrWhiteSpace(description))
-                        {
-                            announcement += ": " + description;
-                        }
-                    }
-                }
-                catch
-                {
-                    // Description not available, just use name
-                }
+                // Resolve the description once and cache it for the on-demand I-key reader, then
+                // append it to the spoken focus line only when AutoDetail is enabled (matches field item menu).
+                string description = TryGetItemDescription(data);
+                LastFocusedDescription = description;
+                if (FFI_ScreenReaderMod.AutoDetailEnabled && !string.IsNullOrWhiteSpace(description))
+                    announcement += ": " + description;
 
                 return announcement;
             }
@@ -269,5 +258,35 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        /// <summary>Stripped description for an item, or null if none. Shared by focus announce + I-key.</summary>
+        private static string TryGetItemDescription(ItemListContentData data)
+        {
+            try
+            {
+                string description = data.Description;
+                if (string.IsNullOrWhiteSpace(description)) return null;
+                description = TextUtils.StripIconMarkup(description);
+                return string.IsNullOrWhiteSpace(description) ? null : description;
+            }
+            catch { return null; } // Description not always available
+        }
+
+        /// <summary>
+        /// Cached stripped description of the currently-focused battle item, refreshed on every
+        /// cursor move regardless of the AutoDetail toggle. Read on demand by the I key / right-stick-up.
+        /// </summary>
+        public static string LastFocusedDescription { get; private set; }
+
+        /// <summary>
+        /// Speaks the focused battle item's description on demand (I key / right-stick-up), so
+        /// players can still reach descriptions in battle when AutoDetail is turned off.
+        /// </summary>
+        public static void AnnounceCurrentDescription()
+        {
+            string desc = LastFocusedDescription;
+            FFI_ScreenReaderMod.SpeakText(
+                string.IsNullOrWhiteSpace(desc) ? ModTextTranslator.T("No description") : desc.Trim(),
+                interrupt: true);
+        }
     }
 }

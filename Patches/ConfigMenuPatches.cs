@@ -508,6 +508,41 @@ namespace FFI_ScreenReader.Patches
     [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigController), "SetActive", new Type[] { typeof(bool) })]
     public static class ConfigController_SetActive_Patch
     {
+        // One-shot: armed when the config menu regains focus from a context that does NOT re-fire
+        // SelectCommand — returning from the bestiary (a separate scene, set via GameStatePatches) or
+        // cancelling a Quit/Title popup (set via PopupClose). Consumed by the ConfigController.UpdateController
+        // postfix below once the focused config row is genuinely active again (covers the bestiary loading
+        // screen with no coroutine/poll). Cleared on config close so it can't leak into the next open.
+        internal static bool _pendingConfigReannounce;
+
+        // detailsController offset on KeyInput ConfigController (9123); typed-read avoids a FindObjectOfType
+        // ambiguity (the controller also holds a cheatSettingsController).
+        private const int OFFSET_DETAILS_CONTROLLER = 0x48;
+
+        /// <summary>Arms the focused-config-option re-announce; consumed by the UpdateController postfix.</summary>
+        internal static void ReannounceFocusedConfigOption() => _pendingConfigReannounce = true;
+
+        /// <summary>
+        /// Consume helper run from ConfigController.UpdateController: while armed, re-announce the focused
+        /// config option once it's genuinely active (self-gates via AnnounceSelectedConfigCommand's own
+        /// activeInHierarchy check), then clear. No coroutine — the game already calls UpdateController.
+        /// </summary>
+        internal static void TryConsumeReannounce(Il2CppLast.UI.KeyInput.ConfigController controller)
+        {
+            if (!_pendingConfigReannounce) return; // cheap gate; no work in steady state
+            try
+            {
+                if (controller == null) return;
+                IntPtr detailsPtr = IL2CppFieldReader.ReadPointer(controller.Pointer, OFFSET_DETAILS_CONTROLLER);
+                if (detailsPtr == IntPtr.Zero) return; // not ready yet — retry next frame
+                var details = new ConfigActualDetailsControllerBase_KeyInput(detailsPtr);
+                string spoke = ConfigActualDetails_SelectCommand_Patch.AnnounceSelectedConfigCommand(details);
+                if (!string.IsNullOrEmpty(spoke))
+                    _pendingConfigReannounce = false;
+            }
+            catch { } // best-effort; leave the flag set to retry next frame
+        }
+
         [HarmonyPostfix]
         public static void Postfix(bool isActive)
         {
@@ -525,10 +560,23 @@ namespace FFI_ScreenReader.Patches
             else
             {
                 ConfigMenuState.ResetState();
+                _pendingConfigReannounce = false; // never let a stale arm leak into the next config open
                 ConfigCommandController_SetFocus_Patch.ResetTracking();
                 ConfigCommandController_SetSliderValue_Patch.ResetTracking();
             }
         }
+    }
+
+    /// <summary>
+    /// Consumes the pending config re-announce (bestiary/popup return) on the config menu's own per-frame
+    /// UpdateController — event-driven, no poll. Early-returns on a bool when nothing is pending.
+    /// </summary>
+    [HarmonyPatch(typeof(Il2CppLast.UI.KeyInput.ConfigController), "UpdateController")]
+    public static class ConfigController_UpdateController_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Il2CppLast.UI.KeyInput.ConfigController __instance)
+            => ConfigController_SetActive_Patch.TryConsumeReannounce(__instance);
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
@@ -15,6 +16,7 @@ using OwnedCharacterData = Il2CppLast.Data.User.OwnedCharacterData;
 using BattlePlayerData = Il2Cpp.BattlePlayerData;
 using BattleEnemyData = Il2CppLast.Battle.BattleEnemyData;
 using MessageManager = Il2CppLast.Management.MessageManager;
+using GameCursor = Il2CppLast.UI.Cursor;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -25,6 +27,18 @@ namespace FFI_ScreenReader.Patches
     public static class BattleCommandPatches
     {
         private static int lastCharacterId = -1;
+
+        // Command-announce window. Opened by the SetCommandData postfix ("X's turn"); closed by the
+        // SetCommandData prefix AND by ShowWindow(false) (the actor's commit/teardown — where the
+        // spurious "Attack" bursts fire). SetCursor only announces while this is true.
+        private static bool commandTurnReady;
+
+        // Message id of the last command actually announced, for dedup. Keyed on the command IDENTITY,
+        // not the cursor index: the command menu has two pages (Normal: Attack/Magic/Item; Extra:
+        // Defend/Flee) and left/right switches page while the index stays the same — an index-based
+        // dedup would wrongly suppress those switches. The burst repeats the same command id. Reset
+        // each turn so the first command always announces.
+        private static string lastAnnouncedCmdMesId;
 
         // Cached reference to avoid FindObjectOfType on every call
         private static BattleTargetSelectController cachedTargetController = null;
@@ -80,12 +94,16 @@ namespace FFI_ScreenReader.Patches
 
                 if (method != null)
                 {
+                    var prefix = typeof(BattleCommandPatches).GetMethod(
+                        nameof(SetCommandData_Prefix),
+                        BindingFlags.Public | BindingFlags.Static
+                    );
                     var postfix = typeof(BattleCommandPatches).GetMethod(
                         nameof(SetCommandData_Postfix),
                         BindingFlags.Public | BindingFlags.Static
                     );
 
-                    harmony.Patch(method, postfix: new HarmonyMethod(postfix));
+                    harmony.Patch(method, prefix: new HarmonyMethod(prefix), postfix: new HarmonyMethod(postfix));
                 }
                 else
                 {
@@ -203,25 +221,41 @@ namespace FFI_ScreenReader.Patches
 
                 if (!patchedEnemy && !patchedPlayer)
                 {
-                    MelonLogger.Warning("[Battle Target] No SelectContent methods found, trying state machine methods...");
-
-                    // Fallback to state machine methods
-                    var enemysInitMethod = AccessTools.Method(controllerType, "EnemysInit");
-                    if (enemysInitMethod != null)
-                    {
-                        var postfix = typeof(BattleCommandPatches).GetMethod(
-                            nameof(EnemysInit_Postfix),
-                            BindingFlags.Public | BindingFlags.Static
-                        );
-                        harmony.Patch(enemysInitMethod, postfix: new HarmonyMethod(postfix));
-                    }
+                    MelonLogger.Warning("[Battle Target] No SelectContent methods found - cursor-move target announcements unavailable");
                 }
-                // Patch ShowWindow to track when target selection window is shown/hidden
+
+                // Patch ShowWindow: tracks show/hide and resets the per-session flags.
                 PatchShowWindow(harmony, controllerType);
+
+                // EnemysUpdate/PlayerUpdate: the state-machine update for each single-target state, which
+                // fires for EVERY single-target open (including plain Attack, which never calls ShowWindow
+                // or SetActiveCursor) and identifies the side directly. Reads the initial focus once.
+                PatchTargetMethod(harmony, controllerType, "EnemysUpdate", nameof(EnemysUpdate_Postfix));
+                PatchTargetMethod(harmony, controllerType, "PlayerUpdate", nameof(PlayerUpdate_Postfix));
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Command] Error patching target selection: {ex.Message}");
+            }
+        }
+
+        /// <summary>Patches a named method on the target controller with the given postfix (best-effort).</summary>
+        private static void PatchTargetMethod(HarmonyLib.Harmony harmony, Type controllerType, string methodName, string postfixName)
+        {
+            try
+            {
+                var method = AccessTools.Method(controllerType, methodName);
+                if (method == null)
+                {
+                    MelonLogger.Warning($"[Battle Target] {methodName} not found");
+                    return;
+                }
+                var postfix = typeof(BattleCommandPatches).GetMethod(postfixName, BindingFlags.Public | BindingFlags.Static);
+                harmony.Patch(method, postfix: new HarmonyMethod(postfix));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Target] Error patching {methodName}: {ex.Message}");
             }
         }
 
@@ -257,18 +291,30 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Prefix for ShowWindow - tracks when target selection window is shown/hidden.
-        /// When isShow=false, clears the target selection active state.
+        /// Prefix for ShowWindow - tracks show/hide and bounds a target session (re-arms the one-shot
+        /// initial-focus reader). The read itself is driven by EnemysUpdate/PlayerUpdate, which fire for
+        /// Attack too — ShowWindow does not.
         /// </summary>
         public static void ShowWindow_Prefix(object __instance, bool isShow)
         {
             try
             {
                 BattleTargetState.SetTargetSelectionActive(isShow);
+                MelonLogger.Msg($"[DIAG tgt] ShowWindow isShow={isShow}");
 
-                if (!isShow)
+                if (isShow)
                 {
-                    // Clear cached controller reference when hiding
+                    // Open = a new target session — re-arm the one-shot initial-focus reader.
+                    defaultTargetAnnounced = false;
+                    targetReadDiagLogged = false;
+                }
+                else
+                {
+                    // Hide = the actor committed / target torn down. Close the command-announce window
+                    // (suppresses the handoff "Attack" bursts). Do NOT re-arm the initial-focus reader on
+                    // close: re-arming there lets EnemysUpdate re-announce the target after the window
+                    // closed (the stray "Goblin A" re-read seen in the logs).
+                    commandTurnReady = false;
                     cachedTargetController = null;
                 }
             }
@@ -278,14 +324,146 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        // One-shot guard: the per-frame Update trigger reads the initial focus once per target session
+        // (re-armed by ShowWindow open/close and each SetCommandData). Set true after a successful read.
+        private static bool defaultTargetAnnounced;
+
+        // DIAG one-shot: logs the first ReadInitialTarget call per session (even on failure) so an Attack
+        // target reveals whether EnemysUpdate fires and what it reads. Reset with defaultTargetAnnounced.
+        private static bool targetReadDiagLogged;
+
+        /// <summary>Postfix for EnemysUpdate - announces the initially-focused enemy target on open.</summary>
+        public static void EnemysUpdate_Postfix(object __instance) => ReadInitialTarget(__instance, isEnemy: true);
+
+        /// <summary>Postfix for PlayerUpdate - announces the initially-focused ally target on open.</summary>
+        public static void PlayerUpdate_Postfix(object __instance) => ReadInitialTarget(__instance, isEnemy: false);
+
         /// <summary>
-        /// Postfix for SetCommandData - announces character turn.
+        /// Reads the focused target once when a single-target state opens. EnemysUpdate/PlayerUpdate run
+        /// every frame while in their state and identify the side directly, so this needs no state read and
+        /// self-retries (returns without arming the flag) until the cursor + list are ready. After the read
+        /// the per-frame call is a single bool check. All-target states use other Update methods, so they
+        /// never reach here.
+        /// </summary>
+        private static void ReadInitialTarget(object instance, bool isEnemy)
+        {
+            try
+            {
+                var controller = instance as BattleTargetSelectController;
+
+                // DIAG (once per session): log the first Update read regardless of outcome, so an Attack
+                // target shows whether EnemysUpdate fires + why it might be silent.
+                if (!targetReadDiagLogged)
+                {
+                    targetReadDiagLogged = true;
+                    try
+                    {
+                        bool dact = controller != null && controller.gameObject != null && controller.gameObject.activeInHierarchy;
+                        IntPtr dptr = controller != null ? controller.Pointer : IntPtr.Zero;
+                        int didx = -1, e38 = -1, e90 = -1, p30 = -1, p88 = -1;
+                        if (dptr != IntPtr.Zero)
+                        {
+                            IntPtr dc = IL2CppFieldReader.ReadPointer(dptr, IL2CppOffsets.BattleTarget.SelectCursor);
+                            if (dc != IntPtr.Zero) didx = new GameCursor(dc).Index;
+                            var a = ReadEnemyList(dptr, IL2CppOffsets.BattleTarget.EnemyDataList); e38 = a != null ? a.Count : -1;
+                            var b = ReadEnemyList(dptr, IL2CppOffsets.BattleTarget.TargetEnamyList); e90 = b != null ? b.Count : -1;
+                            var c = ReadPlayerList(dptr, IL2CppOffsets.BattleTarget.PlayerDataList); p30 = c != null ? c.Count : -1;
+                            var d = ReadPlayerList(dptr, IL2CppOffsets.BattleTarget.TargetPlayerList); p88 = d != null ? d.Count : -1;
+                        }
+                        MelonLogger.Msg($"[DIAG tgt] update kind={(isEnemy ? "enemy" : "player")} announced={defaultTargetAnnounced} active={dact} idx={didx} e38={e38} e90={e90} p30={p30} p88={p88}");
+                    }
+                    catch (Exception dex) { MelonLogger.Warning($"[DIAG tgt] update log error: {dex.Message}"); }
+                }
+
+                if (defaultTargetAnnounced) return;
+                if (controller == null || controller.gameObject == null)
+                    return;
+
+                // Attack's targeting path presents an INACTIVE controller (magic/item present an active
+                // one), so do NOT require activeInHierarchy — these Update methods only run while genuinely
+                // targeting, and the list/cursor validity below gates the announce. If THIS controller is
+                // inactive, prefer an active instance (in case it's a stale leftover) and fall back to it.
+                if (!controller.gameObject.activeInHierarchy)
+                {
+                    var active = UnityEngine.Object.FindObjectOfType<BattleTargetSelectController>();
+                    if (active != null && active.gameObject != null && active.gameObject.activeInHierarchy)
+                        controller = active;
+                }
+
+                IntPtr ptr = controller.Pointer;
+                if (ptr == IntPtr.Zero) return;
+
+                IntPtr cursorPtr = IL2CppFieldReader.ReadPointer(ptr, IL2CppOffsets.BattleTarget.SelectCursor);
+                if (cursorPtr == IntPtr.Zero) return;
+                int index = new GameCursor(cursorPtr).Index;
+                if (index < 0) return;
+
+                if (isEnemy)
+                {
+                    var list = ReadEnemyList(ptr, IL2CppOffsets.BattleTarget.EnemyDataList);   // 0x38
+                    if (list == null || list.Count == 0) list = ReadEnemyList(ptr, IL2CppOffsets.BattleTarget.TargetEnamyList); // 0x90
+                    if (list == null || index >= list.Count) return; // not ready — next Update frame retries
+                    defaultTargetAnnounced = true;
+                    MelonLogger.Msg($"[DIAG tgt] initial kind=enemy idx={index} n={list.Count}");
+                    AnnounceEnemyTarget(list, index);
+                }
+                else
+                {
+                    var list = ReadPlayerList(ptr, IL2CppOffsets.BattleTarget.PlayerDataList);  // 0x30
+                    if (list == null || list.Count == 0) list = ReadPlayerList(ptr, IL2CppOffsets.BattleTarget.TargetPlayerList); // 0x88
+                    if (list == null || index >= list.Count) return; // not ready — next Update frame retries
+                    defaultTargetAnnounced = true;
+                    MelonLogger.Msg($"[DIAG tgt] initial kind=player idx={index} n={list.Count}");
+                    AnnouncePlayerTarget(list, index);
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Target] Error reading initial target: {ex.Message}");
+            }
+        }
+
+        /// <summary>Reads a target-list field as List&lt;BattleEnemyData&gt; (null if absent / not a List).</summary>
+        private static Il2CppSystem.Collections.Generic.List<BattleEnemyData> ReadEnemyList(IntPtr ctrlPtr, int offset)
+        {
+            IntPtr p = IL2CppFieldReader.ReadPointer(ctrlPtr, offset);
+            return p != IntPtr.Zero ? new Il2CppSystem.Object(p).TryCast<Il2CppSystem.Collections.Generic.List<BattleEnemyData>>() : null;
+        }
+
+        /// <summary>Reads a target-list field as List&lt;BattlePlayerData&gt; (null if absent / not a List).</summary>
+        private static Il2CppSystem.Collections.Generic.List<BattlePlayerData> ReadPlayerList(IntPtr ctrlPtr, int offset)
+        {
+            IntPtr p = IL2CppFieldReader.ReadPointer(ctrlPtr, offset);
+            return p != IntPtr.Zero ? new Il2CppSystem.Object(p).TryCast<Il2CppSystem.Collections.Generic.List<BattlePlayerData>>() : null;
+        }
+
+        /// <summary>
+        /// Prefix for SetCommandData - closes the command-announce window before the body runs, so the
+        /// cursor resets it fires during the actor handoff are suppressed by SetCursor_Postfix.
+        /// </summary>
+        public static void SetCommandData_Prefix()
+        {
+            commandTurnReady = false;
+            lastAnnouncedCmdMesId = null;
+            MelonLogger.Msg("[DIAG cmd] SetCommandData ENTER");
+        }
+
+        /// <summary>
+        /// Postfix for SetCommandData - announces character turn and opens the command-announce window.
         /// </summary>
         public static void SetCommandData_Postfix(BattleCommandSelectController __instance, OwnedCharacterData data)
         {
             try
             {
                 if (data == null) return;
+
+                // Open the window before any early-return below: a same-character re-entry (e.g. after
+                // canceling target back to the command menu) is still that actor's input turn.
+                commandTurnReady = true;
+                // Re-arm the one-shot initial-target reader so this turn's target announces.
+                defaultTargetAnnounced = false;
+                targetReadDiagLogged = false;
+                MelonLogger.Msg("[DIAG cmd] SetCommandData EXIT");
 
                 int characterId = data.Id;
                 // Always track the current actor (used by AnnounceCharacterStatus / H key),
@@ -393,6 +571,16 @@ namespace FFI_ScreenReader.Patches
                 // speak "Attack" in that window every turn transition.
                 if (!__instance.gameObject.activeInHierarchy) return;
 
+                // Turn-window gate: only announce between a turn's "X's turn" (SetCommandData postfix)
+                // and the next SetCommandData prefix. The handoff resets fire before the next turn's
+                // postfix (commandTurnReady=false) and are suppressed; the real command + navigation
+                // happen while it is true. (State-machine gating was proven useless — bursts run in
+                // the same Normal state as real input.)
+                int commandState = StateMachineHelper.ReadState(__instance.Pointer, IL2CppOffsets.BattleCommand.StateMachine);
+                MelonLogger.Msg($"[DIAG cmd] idx={index} ready={commandTurnReady} last={lastAnnouncedCmdMesId} state={commandState}");
+                if (!commandTurnReady)
+                    return;
+
                 // Set battle command state active and clear other menu states
                 BattleCommandState.IsActive = true;
                 BattleCommandState.LastSelectedCommandIndex = index;
@@ -408,68 +596,75 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
-                // Try direct property access first (IL2CPP exposes private fields as properties)
-                Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController> contentList = null;
-                try
-                {
-                    contentList = __instance.contentList;
-                }
-#pragma warning disable CS0168
-                catch (Exception ex)
-#pragma warning restore CS0168
-                {
-                    // Fallback to reflection (contentList at offset 0x50 for KeyInput)
-                    try
-                    {
-                        var field = __instance.GetType().GetField("contentList",
-                            BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (field != null)
-                        {
-                            contentList = field.GetValue(__instance) as Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController>;
-                        }
-                    }
-                    catch (Exception ex2)
-                    {
-                        MelonLogger.Warning($"[Battle Command] Reflection also failed: {ex2.Message}");
-                    }
-                }
-
-                if (contentList == null || contentList.Count == 0)
-                {
-                    return;
-                }
-                if (index < 0 || index >= contentList.Count)
-                {
-                    return;
-                }
-
-                var contentController = contentList[index];
-                if (contentController == null) return;
-
-                // Get TargetCommand property
-                var targetCommand = contentController.TargetCommand;
-                if (targetCommand == null) return;
-
-                string mesIdName = targetCommand.MesIdName;
-                if (string.IsNullOrWhiteSpace(mesIdName)) return;
-
-                var messageManager = MessageManager.Instance;
-                if (messageManager == null) return;
-
-                string commandName = messageManager.GetMessage(mesIdName);
-                if (string.IsNullOrWhiteSpace(commandName)) return;
-
-                commandName = TextUtils.StripIconMarkup(commandName);
-
-                commandName = MenuPosition.Format(commandName, index, contentList.Count);
-
-                // Command selection doesn't interrupt - queues after turn announcement
-                FFI_ScreenReaderMod.SpeakText(commandName, interrupt: false);
+                AnnounceCommandAt(__instance, GetCommandContentList(__instance), index);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Command] Error in SetCursor_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>Gets the command controller's content list (typed property, reflection fallback).</summary>
+        private static Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController> GetCommandContentList(BattleCommandSelectController controller)
+        {
+            try { return controller.contentList; }
+            catch
+            {
+                try
+                {
+                    var field = controller.GetType().GetField("contentList", BindingFlags.NonPublic | BindingFlags.Instance);
+                    return field != null ? field.GetValue(controller) as Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController> : null;
+                }
+                catch { return null; }
+            }
+        }
+
+        /// <summary>
+        /// Announces the command at contentList[index] (name + active-slot "(X of Y)"), deduped by command
+        /// id via lastAnnouncedCmdMesId. Shared by SetCursor (navigation) and the focus reader (re-appear).
+        /// </summary>
+        private static void AnnounceCommandAt(BattleCommandSelectController controller,
+            Il2CppSystem.Collections.Generic.List<BattleCommandSelectContentController> contentList, int index)
+        {
+            if (contentList == null || contentList.Count == 0) return;
+            if (index < 0 || index >= contentList.Count) return;
+
+            var contentController = contentList[index];
+            if (contentController == null) return;
+            var targetCommand = contentController.TargetCommand;
+            if (targetCommand == null) return;
+            string mesIdName = targetCommand.MesIdName;
+            if (string.IsNullOrWhiteSpace(mesIdName)) return;
+
+            // Dedup on command identity (a page switch keeps the index but changes the id, so it announces).
+            if (mesIdName == lastAnnouncedCmdMesId) return;
+
+            var messageManager = MessageManager.Instance;
+            if (messageManager == null) return;
+            string commandName = messageManager.GetMessage(mesIdName);
+            if (string.IsNullOrWhiteSpace(commandName)) return;
+            commandName = TextUtils.StripIconMarkup(commandName);
+
+            // Count active commands on the current page for "(X of Y)" (contentList is a fixed slot list;
+            // count only populated AND active slots so a stale Extra-page leftover doesn't inflate it).
+            int visibleCount = 0;
+            for (int i = 0; i < contentList.Count; i++)
+            {
+                try
+                {
+                    var cc = contentList[i];
+                    if (cc == null) continue;
+                    if (cc.TargetCommand != null && cc.gameObject != null && cc.gameObject.activeInHierarchy)
+                        visibleCount++;
+                }
+                catch { }
+            }
+            if (visibleCount <= 0) visibleCount = contentList.Count;
+
+            commandName = MenuPosition.Format(commandName, index, visibleCount);
+            lastAnnouncedCmdMesId = mesIdName;
+            // Command selection doesn't interrupt - queues after turn announcement
+            FFI_ScreenReaderMod.SpeakText(commandName, interrupt: false);
         }
 
         /// <summary>
@@ -486,16 +681,31 @@ namespace FFI_ScreenReader.Patches
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var playerList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattlePlayerData>>();
-                if (playerList == null || playerList.Count == 0)
-                {
-                    return;
-                }
+                LogSelectContentFields("player", __instance, list.Pointer, index);
+                AnnouncePlayerTarget(playerList, index);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Target] Error in SelectContent_Player_Postfix: {ex.Message}");
+            }
+        }
 
-                if (index < 0 || index >= playerList.Count) return;
+        /// <summary>
+        /// Announces an ally target by list + index. Shared by the SelectContent cursor-move
+        /// postfix and the on-open initial-focus reader (PlayerInit).
+        /// </summary>
+        public static void AnnouncePlayerTarget(
+            Il2CppSystem.Collections.Generic.List<BattlePlayerData> playerList, int index)
+        {
+            if (playerList == null || playerList.Count == 0)
+                return;
 
-                var selectedPlayer = playerList[index];
-                if (selectedPlayer == null) return;
+            if (index < 0 || index >= playerList.Count) return;
 
+            var selectedPlayer = playerList[index];
+            if (selectedPlayer == null) return;
+
+            {
                 string name = T("Unknown");
                 int currentHp = 0, maxHp = 0;
 
@@ -531,10 +741,6 @@ namespace FFI_ScreenReader.Patches
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Target] Error in SelectContent_Player_Postfix: {ex.Message}");
-            }
         }
 
         /// <summary>
@@ -551,16 +757,31 @@ namespace FFI_ScreenReader.Patches
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var enemyList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattleEnemyData>>();
-                if (enemyList == null || enemyList.Count == 0)
-                {
-                    return;
-                }
+                LogSelectContentFields("enemy", __instance, list.Pointer, index);
+                AnnounceEnemyTarget(enemyList, index);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Target] Error in SelectContent_Enemy_Postfix: {ex.Message}");
+            }
+        }
 
-                if (index < 0 || index >= enemyList.Count) return;
+        /// <summary>
+        /// Announces an enemy target by list + index. Shared by the SelectContent cursor-move
+        /// postfix and the on-open initial-focus reader (EnemysInit).
+        /// </summary>
+        public static void AnnounceEnemyTarget(
+            Il2CppSystem.Collections.Generic.List<BattleEnemyData> enemyList, int index)
+        {
+            if (enemyList == null || enemyList.Count == 0)
+                return;
 
-                var selectedEnemy = enemyList[index];
-                if (selectedEnemy == null) return;
+            if (index < 0 || index >= enemyList.Count) return;
 
+            var selectedEnemy = enemyList[index];
+            if (selectedEnemy == null) return;
+
+            {
                 string name = T("Unknown");
                 int currentHp = 0, maxHp = 0;
 
@@ -645,10 +866,28 @@ namespace FFI_ScreenReader.Patches
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
-            catch (Exception ex)
+        }
+
+        /// <summary>
+        /// DIAG: logs the authoritative SelectContent list pointer alongside the controller's candidate
+        /// list fields (0x30/0x38/0x90) + the cursor index, so one cursor move reveals exactly which field
+        /// holds the List the game indexes and confirms selectCursor=0xC0.
+        /// </summary>
+        private static void LogSelectContentFields(string kind, object instance, IntPtr listPtr, int index)
+        {
+            try
             {
-                MelonLogger.Warning($"[Battle Target] Error in SelectContent_Enemy_Postfix: {ex.Message}");
+                var ctrl = instance as BattleTargetSelectController;
+                if (ctrl == null) return;
+                IntPtr c = ctrl.Pointer;
+                IntPtr cur = IL2CppFieldReader.ReadPointer(c, IL2CppOffsets.BattleTarget.SelectCursor);
+                int curIdx = cur != IntPtr.Zero ? new GameCursor(cur).Index : -1;
+                MelonLogger.Msg($"[DIAG sc] kind={kind} idx={index} listPtr={listPtr.ToInt64():X} "
+                    + $"f30={IL2CppFieldReader.ReadPointer(c, 0x30).ToInt64():X} "
+                    + $"f38={IL2CppFieldReader.ReadPointer(c, 0x38).ToInt64():X} "
+                    + $"f90={IL2CppFieldReader.ReadPointer(c, 0x90).ToInt64():X} cur={curIdx}");
             }
+            catch { }
         }
 
         /// <summary>
@@ -681,23 +920,11 @@ namespace FFI_ScreenReader.Patches
         public static void ResetState()
         {
             lastCharacterId = -1;
+            commandTurnReady = false;
+            lastAnnouncedCmdMesId = null;
+            defaultTargetAnnounced = false;
+            targetReadDiagLogged = false;
             BattleCommandState.CurrentActor = null;
-        }
-
-        /// <summary>
-        /// Postfix for EnemysInit - fallback for initial enemy target.
-        /// Only used if SelectContent patches fail.
-        /// </summary>
-        public static void EnemysInit_Postfix(BattleTargetSelectController __instance)
-        {
-            try
-            {
-                BattleTargetState.SetTargetSelectionActive(true);
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Target] Error in EnemysInit_Postfix: {ex.Message}");
-            }
         }
     }
 }

@@ -104,6 +104,9 @@ namespace FFI_ScreenReader.Utils
         /// </summary>
         public static class MagicMenu
         {
+            /// <summary>Cursor selectCursor (the focused spell index lives here)</summary>
+            public const int SelectCursor = 0x20;
+
             /// <summary>List&lt;BattleAbilityInfomationContentController&gt; contentList</summary>
             public const int ContentList = 0x30;
 
@@ -220,6 +223,44 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Battle target selection (KeyInput.BattleTargetSelectController) offsets.
+        /// Used to read the initially-focused target when the window opens (the game does not
+        /// call SelectContent for the default cursor placement).
+        /// </summary>
+        public static class BattleTarget
+        {
+            /// <summary>IEnumerable&lt;BattlePlayerData&gt; playerDataList (working list SelectContent indexes into)</summary>
+            public const int PlayerDataList = 0x30;
+
+            /// <summary>IEnumerable&lt;BattleEnemyData&gt; enemyDataList (working list SelectContent indexes into)</summary>
+            public const int EnemyDataList = 0x38;
+
+            /// <summary>IEnumerable&lt;BattlePlayerData&gt; TargetPlayerList backing field (fallback player list)</summary>
+            public const int TargetPlayerList = 0x88;
+
+            /// <summary>IEnumerable&lt;BattleEnemyData&gt; TargetEnamyList backing field (fallback enemy list)</summary>
+            public const int TargetEnamyList = 0x90;
+
+            /// <summary>Cursor selectCursor</summary>
+            public const int SelectCursor = 0xC0;
+
+            /// <summary>StateMachine&lt;State&gt; stateMachine (State: None=0, Players=1, PlayerAll=2, Enemys=3, EnemyAll=4, All=5)</summary>
+            public const int StateMachine = 0xC8;
+        }
+
+        /// <summary>
+        /// Battle command menu (KeyInput.BattleCommandSelectController) offsets.
+        /// </summary>
+        public static class BattleCommand
+        {
+            /// <summary>StateMachine&lt;State&gt; stateMachine (State: None=0, Normal=1, Extra=2, Manipulate=3)</summary>
+            public const int StateMachine = 0x48;
+
+            /// <summary>Cursor selectCursor</summary>
+            public const int SelectCursor = 0x68;
+        }
+
+        /// <summary>
         /// Battle unit data offsets for accessing parameters in battle.
         /// </summary>
         public static class BattleUnit
@@ -329,6 +370,9 @@ namespace FFI_ScreenReader.Utils
         {
             /// <summary>SavePopup.messageText</summary>
             public const int MessageText = 0x40;
+
+            /// <summary>SavePopup.selectCursor (focused Yes/No button)</summary>
+            public const int SelectCursor = 0x58;
 
             /// <summary>SavePopup.commandList</summary>
             public const int CommandList = 0x60;

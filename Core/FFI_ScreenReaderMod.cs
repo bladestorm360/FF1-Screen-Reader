@@ -178,6 +178,7 @@ namespace FFI_ScreenReader.Core
 
             // Main menu patches (Item, Equipment, Magic, Status)
             MagicMenuPatches.ApplyPatches(harmony);
+            FieldItemReannouncePatches.ApplyPatches(harmony);
             StatusMenuPatches.ApplyPatches(harmony);
             StatusDetailsPatches.ApplyPatches(harmony);
             CharacterSelectTransitionPatches.ApplyPatches(harmony);

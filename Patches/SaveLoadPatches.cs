@@ -341,7 +341,15 @@ namespace FFI_ScreenReader.Patches
                 {
                     // Strip Unity rich text tags (like <color=#ff4040>...</color>)
                     message = StripRichTextTags(message);
-                    FFI_ScreenReaderMod.SpeakText(message);
+
+                    // Append the initially-focused button (Yes/No) so it's announced right after the body —
+                    // the popup otherwise only speaks the button on navigation. Same SavePopup layout for
+                    // save / load / quicksave (all route here), so one read covers them.
+                    string button = PopupPatches.ReadFocusedButton(
+                        popupPtr, IL2CppOffsets.SaveLoad.SelectCursor, IL2CppOffsets.SaveLoad.CommandList);
+
+                    string announcement = string.IsNullOrWhiteSpace(button) ? message : $"{message} {button}";
+                    FFI_ScreenReaderMod.SpeakText(announcement);
                 }
                 else
                 {

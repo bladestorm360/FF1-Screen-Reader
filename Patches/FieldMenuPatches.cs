@@ -28,19 +28,27 @@ namespace FFI_ScreenReader.Patches
     /// </summary>
     internal static class FieldMenuReader
     {
+        // Bumped on every AnnounceFocus call; the delayed read aborts if a newer call superseded it. On
+        // open both Show and InitNone fire AnnounceFocus within a frame or two — the latch collapses them
+        // to a single announce (the later one wins) while still re-announcing on every sub-menu back-out.
+        private static int _gen;
+
         internal static void AnnounceFocus(MainMenuController inst)
         {
             if (inst == null) return;
-            try { CoroutineManager.StartManaged(DelayedAnnounce(inst)); }
+            int gen = ++_gen;
+            try { CoroutineManager.StartManaged(DelayedAnnounce(inst, gen)); }
             catch (Exception ex) { MelonLogger.Warning($"[Field] Error scheduling focus read: {ex.Message}"); }
         }
 
         // yield is OUTSIDE the try (yield-in-try-with-catch is illegal); the gate + cursor fetch
         // run in the try storing into a local, then the read is kicked off after it — the same
         // shape as SaveListPatches.DelayedReadSlot.
-        private static IEnumerator DelayedAnnounce(MainMenuController inst)
+        private static IEnumerator DelayedAnnounce(MainMenuController inst, int gen)
         {
             yield return null; // let the cursor settle AND MenuManager.IsOpen flip true
+
+            if (gen != _gen) yield break; // a newer AnnounceFocus superseded this one — collapse the double
 
             GameCursor cursor = null;
             try
@@ -97,5 +105,25 @@ namespace FFI_ScreenReader.Patches
     {
         [HarmonyPostfix]
         public static void Postfix(MainMenuController __instance) => FieldMenuReader.AnnounceFocus(__instance);
+    }
+
+    /// <summary>
+    /// Re-announce the focused field command when the menu returns to the command-select (None) state from
+    /// any sub-menu OR the quicksave popup. MainMenuController's state machine is keyed on MenuCommandId;
+    /// every sub-menu (Item/Magic/Equipment/Status/Config/Sort/Words) and the Interruption (quicksave) state
+    /// transitions back to None on cancel, firing InitNone. The generation latch in AnnounceFocus collapses
+    /// the Show+InitNone pair on initial open so it announces once.
+    /// </summary>
+    [HarmonyPatch]
+    public static class MainMenuController_InitNone_FieldReturn_Patch
+    {
+        static System.Reflection.MethodBase TargetMethod()
+            => AccessTools.Method(typeof(MainMenuController), "InitNone");
+
+        [HarmonyPostfix]
+        public static void Postfix(MainMenuController __instance)
+        {
+            FieldMenuReader.AnnounceFocus(__instance);
+        }
     }
 }
