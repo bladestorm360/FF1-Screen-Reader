@@ -109,6 +109,7 @@ namespace FFI_ScreenReader.Patches
 
                 announcement = MenuPosition.Format(announcement, index, count);
 
+                BattleCommandPatches.NotifyCommandSubmenuActive(); // restore command window + arm back-out re-announce
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)

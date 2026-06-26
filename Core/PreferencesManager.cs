@@ -32,6 +32,9 @@ namespace FFI_ScreenReader.Core
         // Enemy HP display mode (0=Numbers, 1=Percentage, 2=Hidden)
         private static MelonPreferences_Entry<int> prefEnemyHPDisplay;
 
+        // Multi-hit damage display (0=Total only, 1=With hit count "14x1552 damage")
+        private static MelonPreferences_Entry<int> prefDamageDisplay;
+
         /// <summary>
         /// Initialize all preferences. Call once during OnInitializeMelon.
         /// </summary>
@@ -56,6 +59,7 @@ namespace FFI_ScreenReader.Core
             prefBeaconVolume = prefsCategory.CreateEntry<int>("BeaconVolume", 50, "Beacon Volume", "Volume for audio beacon pings (0-100)");
 
             prefEnemyHPDisplay = prefsCategory.CreateEntry<int>("EnemyHPDisplay", 0, "Enemy HP Display", "0=Numbers, 1=Percentage, 2=Hidden");
+            prefDamageDisplay = prefsCategory.CreateEntry<int>("DamageDisplay", 0, "Multi-hit Damage", "0=Total only, 1=With hit count (e.g. 14x1552 damage)");
         }
 
         #region Toggle Getters (saved preference values)
@@ -80,6 +84,7 @@ namespace FFI_ScreenReader.Core
         public static int WallToneVolume => prefWallToneVolume?.Value ?? 50;
         public static int BeaconVolume => prefBeaconVolume?.Value ?? 50;
         public static int EnemyHPDisplay => prefEnemyHPDisplay?.Value ?? 0;
+        public static int DamageDisplay => prefDamageDisplay?.Value ?? 0;
 
         #endregion
 
@@ -99,6 +104,7 @@ namespace FFI_ScreenReader.Core
         public static void SetWallToneVolume(int value) => SetIntPreference(prefWallToneVolume, value, 0, 100);
         public static void SetBeaconVolume(int value) => SetIntPreference(prefBeaconVolume, value, 0, 100);
         public static void SetEnemyHPDisplay(int value) => SetIntPreference(prefEnemyHPDisplay, value, 0, 2);
+        public static void SetDamageDisplay(int value) => SetIntPreference(prefDamageDisplay, value, 0, 1);
 
         #endregion
 

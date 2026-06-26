@@ -230,6 +230,11 @@ namespace FFI_ScreenReader.Core
                     () => PreferencesManager.EnemyHPDisplay,
                     PreferencesManager.SetEnemyHPDisplay,
                     () => T("Controls how enemy HP appears in battle: numeric value, percentage of max, or hidden.")),
+                new EnumItem(T("Multi-hit Damage"),
+                    new[] { T("Total only"), T("With hit count") },
+                    () => PreferencesManager.DamageDisplay,
+                    PreferencesManager.SetDamageDisplay,
+                    () => T("On multi-hit physical attacks, optionally prepend the number of hits, e.g. '14x1552 damage'.")),
 
                 // Announcements section
                 new SectionHeader(T("Announcements")),

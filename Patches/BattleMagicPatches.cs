@@ -28,6 +28,15 @@ namespace FFI_ScreenReader.Patches
         // Cache the current player for charge lookup
         public static BattlePlayerData CurrentPlayer { get; set; } = null;
 
+        // Last spoken spell line, for collapsing a same-string settle re-fire (backup to the gen latch).
+        private static string _lastSpellAnnouncement;
+
+        // Generation latch for the one-frame-deferred read: bumped on every SetCursor so a newer cursor
+        // event supersedes a pending deferred announce. This collapses the stale->fresh entry double (the
+        // first read after a character handoff reads the previous character's dataList) to just the fresh
+        // read, and rapid navigation to its final position.
+        private static int _magicReadGen;
+
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             try
@@ -79,29 +88,73 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Postfix for SetCursor - announces spell name, charges, and description.
-        /// SetCursor(Cursor targetCursor, bool isForce, WithinRangeType type)
-        /// Using positional parameters: __0 = cursor
+        /// Postfix for SetCursor - schedules a one-frame-deferred read of the focused spell. The read is
+        /// deferred because on a character handoff the controller's dataList is briefly STALE (still the
+        /// previous character's spells); it is repopulated for the current character by the next frame. The
+        /// generation latch collapses the resulting stale->fresh entry double (and rapid navigation) to the
+        /// latest read. SetCursor(Cursor targetCursor, bool isForce, WithinRangeType type); __0 = cursor.
         /// </summary>
         public static void SetCursor_Postfix(object __instance, object __0)
         {
             try
             {
-                if (__instance == null || __0 == null)
-                    return;
-
-                // Get cursor and its index
                 var cursor = __0 as GameCursor;
-                if (cursor == null)
-                    return;
-
                 var controller = __instance as BattleFrequencyAbilityInfomationController;
-                if (controller == null)
+                if (cursor == null || controller == null)
                     return;
 
-                // Only announce if the magic menu controller is actually visible
-                // This prevents "Empty" announcements during target selection
-                if (!controller.gameObject.activeInHierarchy)
+                // Drop stale cross-menu callbacks at schedule time, while the context is still correct —
+                // the deferred announce must not escape into the item/target menus (see InMagicContext).
+                if (!InMagicContext(controller))
+                    return;
+
+                int gen = ++_magicReadGen;
+                int index = cursor.Index;
+                CoroutineManager.StartManaged(DeferredMagicAnnounce(controller, index, gen));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Magic] Error in SetCursor patch: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// True only when the magic spell list is the genuine active focus: its controller is shown AND no
+        /// other battle sub-menu owns the context. This does NOT depend on BattleCommandState.IsActive
+        /// (entering the item list clears that flag, which is exactly how a deferred spell used to leak into
+        /// the item/target menus). Checked at both schedule time and after the one-frame defer.
+        /// </summary>
+        private static bool InMagicContext(BattleFrequencyAbilityInfomationController c)
+        {
+            return c != null && c.gameObject != null && c.gameObject.activeInHierarchy
+                && !BattleItemMenuState.IsActive
+                && !BattleTargetState.IsTargetSelectionActive
+                && !(BattleCommandState.IsActive && BattleCommandState.LastSelectedCommandIndex != 1);
+        }
+
+        /// <summary>
+        /// Waits one frame so the controller's dataList settles to the current character (the first
+        /// SetCursor after a handoff reads the previous character's stale list), then announces the focused
+        /// spell — unless a newer cursor event superseded this read.
+        /// </summary>
+        private static System.Collections.IEnumerator DeferredMagicAnnounce(
+            BattleFrequencyAbilityInfomationController controller, int index, int gen)
+        {
+            yield return null; // let the stale previous-character dataList settle to the current one
+
+            if (gen != _magicReadGen) yield break; // a newer SetCursor superseded this read
+            AnnounceMagicFocus(controller, index);
+        }
+
+        /// <summary>Reads + announces the focused spell (the original SetCursor body), run one frame later.</summary>
+        private static void AnnounceMagicFocus(BattleFrequencyAbilityInfomationController controller, int index)
+        {
+            try
+            {
+                // Re-validate after the one-frame defer: the player may have left the magic list (item or
+                // target became active). Checked BEFORE ClearOtherMenuStates below, which would clear the
+                // item flag and mask the guard. This is what stops a deferred spell leaking into item/target.
+                if (!InMagicContext(controller))
                     return;
 
                 // Refresh selected player from controller — avoids stale slot counts
@@ -117,18 +170,13 @@ namespace FFI_ScreenReader.Patches
                 }
                 catch { CurrentPlayer = null; }
 
-                // If command menu is active but user didn't select "Magic" (index 1),
-                // this is a stale callback from exiting the magic menu - ignore it
-                if (BattleCommandState.IsActive && BattleCommandState.LastSelectedCommandIndex != 1)
-                    return;
+                // Capture BEFORE we set IsActive below: true here means the magic list was already the
+                // active focus (a settle re-fire). A fresh entry / target back-out / re-entry has
+                // IsActive=false (cleared by target/command) and always speaks.
+                bool wasMagicActive = BattleMagicMenuState.IsActive;
 
-                int index = cursor.Index;
-
-                // NOTE: Do NOT set IsActive here - wait until AFTER validation succeeds
-
-                // Try to get ability data - use the cursor index with dataList
+                // Try to get ability data - use the cursor index with dataList (now repopulated)
                 string announcement = TryGetAbilityAnnouncement(controller, index, out int count);
-
                 if (string.IsNullOrEmpty(announcement))
                     return;
 
@@ -140,11 +188,17 @@ namespace FFI_ScreenReader.Patches
                 // Append "(X of Y)" position AFTER the full announcement (incl. description)
                 announcement = MenuPosition.Format(announcement, index, count);
 
+                // Backup against a same-string settle re-fire (the gen latch handles the stale/fresh double).
+                if (wasMagicActive && announcement == _lastSpellAnnouncement)
+                    return;
+                _lastSpellAnnouncement = announcement;
+
+                BattleCommandPatches.NotifyCommandSubmenuActive(); // restore command window + arm back-out re-announce
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[Battle Magic] Error in SetCursor patch: {ex.Message}");
+                MelonLogger.Warning($"[Battle Magic] Error in deferred magic announce: {ex.Message}");
             }
         }
 
@@ -491,6 +545,7 @@ namespace FFI_ScreenReader.Patches
         {
             CurrentPlayer = null;
             LastFocusedDescription = null;
+            _lastSpellAnnouncement = null;
         }
     }
 }

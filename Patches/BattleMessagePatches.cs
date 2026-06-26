@@ -47,11 +47,64 @@ namespace FFI_ScreenReader.Patches
                 // Patch BattleCommandMessageController.SetMessage for system messages like "The party was defeated"
                 PatchBattleCommandMessage(harmony);
 
+                // Capture the multi-hit "×N" multiplier for the damage announce (Multi-hit Damage setting).
+                PatchHitCount(harmony);
+
             }
             catch (Exception ex)
             {
                 MelonLogger.Error($"[Battle Message] Error applying patches: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Postfix on Last.UI.DamageViewUIManager.CreateHitCount(int hitCountValue, ...) to capture the
+        /// on-screen "×N" multi-hit multiplier so the damage announce can prepend it (e.g. "14x1552 damage").
+        /// </summary>
+        private static void PatchHitCount(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                var type = FindType("Il2CppLast.UI.DamageViewUIManager");
+                if (type == null)
+                {
+                    MelonLogger.Warning("[Battle Message] DamageViewUIManager type not found");
+                    return;
+                }
+
+                MethodInfo method = null;
+                foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (m.Name == "CreateHitCount")
+                    {
+                        var ps = m.GetParameters();
+                        if (ps.Length >= 1 && ps[0].ParameterType == typeof(int)) { method = m; break; }
+                    }
+                }
+                if (method == null)
+                {
+                    MelonLogger.Warning("[Battle Message] CreateHitCount(int,...) not found");
+                    return;
+                }
+
+                var postfix = typeof(BattleMessagePatches).GetMethod(
+                    nameof(CreateHitCount_Postfix), BindingFlags.Public | BindingFlags.Static);
+                harmony.Patch(method, postfix: new HarmonyMethod(postfix));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Message] Error patching CreateHitCount: {ex.Message}");
+            }
+        }
+
+        // Multi-hit multiplier captured from DamageViewUIManager.CreateHitCount, which fires just before
+        // the matching CreateDamageView. Consumed (and reset to 1) by CreateDamageView_Postfix.
+        private static int _pendingHitCount = 1;
+
+        /// <summary>Captures the hit-count multiplier (__0 = hitCountValue) for the next damage view.</summary>
+        public static void CreateHitCount_Postfix(int __0)
+        {
+            _pendingHitCount = __0;
         }
 
         /// <summary>
@@ -168,22 +221,11 @@ namespace FFI_ScreenReader.Patches
                 // Get action name
                 string actionName = GetActionName(actData);
 
-                string announcement;
-                if (string.IsNullOrEmpty(actionName))
-                {
-                    // Fallback: just announce actor
-                    announcement = actorName;
-                }
-                else if (actionName.ToLower() == "attack" || actionName.ToLower() == "fight")
-                {
-                    // For basic attacks: "Actor attacks"
-                    announcement = $"{actorName} attacks";
-                }
-                else
-                {
-                    // For spells/items: "Actor: Spell/Item"
-                    announcement = $"{actorName}: {actionName}";
-                }
+                // Consistent "Actor: Action" for EVERY action (basic attack included), matching the
+                // command-menu wording: "Gordan: Attack", "Talerous: Defend", "Emma: Cure", "X: {item}".
+                string announcement = string.IsNullOrEmpty(actionName)
+                    ? actorName                       // fallback: actor only when the action name is unknown
+                    : $"{actorName}: {actionName}";
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: false);
             }
@@ -212,6 +254,11 @@ namespace FFI_ScreenReader.Patches
                 if (data == null) return;
 
                 string targetName = GetUnitName(data);
+
+                // Consume the multi-hit count captured by CreateHitCount (it fires just before this view).
+                // Reset to 1 so a later damage with no fresh hit count defaults to single.
+                int hitCount = _pendingHitCount;
+                _pendingHitCount = 1;
 
                 string message;
                 if (hitTypeValue == HITTYPE_MISS)
@@ -244,8 +291,11 @@ namespace FFI_ScreenReader.Patches
                 }
                 else
                 {
-                    // HP DAMAGE
-                    message = $"{targetName}: {value} damage";
+                    // HP DAMAGE — optionally prepend the multi-hit "{N}x" multiplier (kept terse; the
+                    // " damage" suffix stays so damage/recovery/drain remain distinguishable).
+                    message = (PreferencesManager.DamageDisplay == 1 && hitCount > 1)
+                        ? $"{targetName}: {hitCount}x{value} damage"
+                        : $"{targetName}: {value} damage";
                 }
 
                 // Damage/healing doesn't interrupt - queues after action announcement

@@ -2,44 +2,28 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using MelonLoader;
-using FFI_ScreenReader.Core;
-using FFI_ScreenReader.Utils;
-using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // FF1 Battle types
 using BattleController = Il2CppLast.Battle.BattleController;
-using BattlePopPlug = Il2CppLast.Battle.BattlePopPlug;
-using BattlePlugManager = Il2CppLast.Battle.BattlePlugManager;
 
 namespace FFI_ScreenReader.Patches
 {
     /// <summary>
-    /// Battle start patches for announcing battle conditions.
-    /// Handles: "Preemptive Attack!", "Back Attack!", "Ambush!", etc.
+    /// Battle-start lifecycle hook.
+    /// The battle-start condition itself ("Preemptive strike!", "Back attack!", etc.) is the game's own
+    /// on-screen message and is already spoken by BattleMessagePatches.SetMessage_Postfix. We do NOT
+    /// synthesize a second announcement here — doing so produced a duplicate at battle start ("Preemptive
+    /// strike!" from the game message + "Preemptive attack!" from the synthetic announce). This patch now
+    /// exists solely to mark the in-battle lifecycle (which enables state clearing on battle end).
     /// </summary>
     public static class BattleStartPatches
     {
-        // PreeMptiveState enum values (from dump.cs)
-        private const int STATE_NON = -1;
-        private const int STATE_NORMAL = 0;
-        private const int STATE_PREEMPTIVE = 1;
-        private const int STATE_BACK_ATTACK = 2;
-        private const int STATE_ENEMY_PREEMPTIVE = 3;
-        private const int STATE_ENEMY_SIDE_ATTACK = 4;
-        private const int STATE_SIDE_ATTACK = 5;
-
-        private static bool announcedBattleStart = false;
-
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             try
             {
-                // Patch StartPreeMptiveMes for battle condition announcements
+                // Patch StartPreeMptiveMes purely as the battle-start lifecycle hook.
                 PatchStartPreeMptiveMes(harmony);
-
-                // Patch ExitPreeMptive to reset state
-                PatchExitPreeMptive(harmony);
-
             }
             catch (Exception ex)
             {
@@ -48,7 +32,7 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Patch StartPreeMptiveMes to announce battle start condition.
+        /// Patch StartPreeMptiveMes to mark battle start (lifecycle only).
         /// </summary>
         private static void PatchStartPreeMptiveMes(HarmonyLib.Harmony harmony)
         {
@@ -79,15 +63,7 @@ namespace FFI_ScreenReader.Patches
                 }
                 else
                 {
-                    // Debug: dump state methods
-                    MelonLogger.Warning("[Battle Start] StartPreeMptiveMes method not found, dumping Start* methods:");
-                    var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-                    foreach (var m in methods)
-                    {
-                        if (m.Name.StartsWith("Start") || m.Name.Contains("PreeMptive"))
-                        {
-                        }
-                    }
+                    MelonLogger.Warning("[Battle Start] StartPreeMptiveMes method not found");
                 }
             }
             catch (Exception ex)
@@ -97,49 +73,11 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Patch ExitPreeMptive to reset announcement state.
+        /// Postfix for StartPreeMptiveMes - marks the in-battle lifecycle. The condition message itself is
+        /// spoken by BattleMessagePatches.SetMessage_Postfix (the game's own battle message), so this no
+        /// longer announces anything (that produced a duplicate at battle start).
         /// </summary>
-        private static void PatchExitPreeMptive(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                var controllerType = typeof(BattleController);
-
-                // Use AccessTools for better IL2CPP compatibility
-                var method = AccessTools.Method(controllerType, "ExitPreeMptive");
-
-                if (method == null)
-                {
-                    method = controllerType.GetMethod(
-                        "ExitPreeMptive",
-                        BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public
-                    );
-                }
-
-                if (method != null)
-                {
-                    var prefix = typeof(BattleStartPatches).GetMethod(
-                        nameof(ExitPreeMptive_Prefix),
-                        BindingFlags.Public | BindingFlags.Static
-                    );
-
-                    harmony.Patch(method, prefix: new HarmonyMethod(prefix));
-                }
-                else
-                {
-                    MelonLogger.Warning("[Battle Start] ExitPreeMptive method not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Start] Error patching ExitPreeMptive: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Postfix for StartPreeMptiveMes - announces battle start condition.
-        /// </summary>
-        public static void StartPreeMptiveMes_Postfix(BattleController __instance)
+        public static void StartPreeMptiveMes_Postfix()
         {
             try
             {
@@ -148,18 +86,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Reset battle result state for this new battle
                 BattleResultPatches.ResetState();
-
-                if (announcedBattleStart) return;
-                announcedBattleStart = true;
-
-                // Get the preemptive state
-                int state = GetPreeMptiveState(__instance);
-
-                // Get announcement based on state
-                string announcement = GetBattleStartAnnouncement(state);
-                if (string.IsNullOrEmpty(announcement)) return;
-
-                FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
             catch (Exception ex)
             {
@@ -168,81 +94,11 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Prefix for ExitPreeMptive - resets announcement state.
-        /// </summary>
-        public static void ExitPreeMptive_Prefix()
-        {
-            // Reset for next battle
-            announcedBattleStart = false;
-        }
-
-        /// <summary>
-        /// Get the preemptive state from BattlePlugManager (singleton).
-        /// Uses direct IL2CPP access instead of .NET reflection.
-        /// </summary>
-        private static int GetPreeMptiveState(BattleController controller)
-        {
-            try
-            {
-                // BattlePopPlug is stored in BattlePlugManager singleton, not BattleController
-                var plugManager = BattlePlugManager.Instance();
-                if (plugManager == null)
-                {
-                    MelonLogger.Warning("[Battle Start] BattlePlugManager.Instance() is null");
-                    return STATE_NORMAL;
-                }
-
-                // Direct IL2CPP property access (not .NET reflection)
-                var battlePopPlug = plugManager.BattlePopPlug;
-                if (battlePopPlug == null)
-                {
-                    MelonLogger.Warning("[Battle Start] BattlePopPlug is null");
-                    return STATE_NORMAL;
-                }
-
-                // Direct method call on IL2CPP type
-                var result = battlePopPlug.GetResult();
-                return (int)result;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Battle Start] Error getting PreeMptiveState: {ex.Message}");
-            }
-
-            return STATE_NORMAL;
-        }
-
-        /// <summary>
-        /// Get announcement text for battle start condition.
-        /// </summary>
-        private static string GetBattleStartAnnouncement(int state)
-        {
-            switch (state)
-            {
-                case STATE_PREEMPTIVE:
-                    return T("Preemptive attack!");
-                case STATE_BACK_ATTACK:
-                    return T("Back attack!");
-                case STATE_ENEMY_PREEMPTIVE:
-                    return T("Ambush!");
-                case STATE_ENEMY_SIDE_ATTACK:
-                    return T("Enemy side attack!");
-                case STATE_SIDE_ATTACK:
-                    return T("Side attack!");
-                case STATE_NORMAL:
-                case STATE_NON:
-                default:
-                    return null; // No announcement for normal battles
-            }
-        }
-
-        /// <summary>
         /// Reset state (call at battle end).
         /// </summary>
         public static void ResetState()
         {
-            announcedBattleStart = false;
-            // Also reset battle result state for next battle
+            // Reset battle result state for next battle
             BattleResultPatches.ResetState();
         }
     }

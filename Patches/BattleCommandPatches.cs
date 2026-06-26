@@ -43,6 +43,24 @@ namespace FFI_ScreenReader.Patches
         // Cached reference to avoid FindObjectOfType on every call
         private static BattleTargetSelectController cachedTargetController = null;
 
+        // Command back-out re-announce one-shot (the battle analogue of the field menus' back-out
+        // behavior). Armed when the player leaves the command menu for a sub-context: entering targeting
+        // (AnnounceEnemyTarget/AnnouncePlayerTarget) and the magic/item LIST announce
+        // (NotifyCommandSubmenuActive). When set, SetCursor_Postfix does NOT announce inline; it schedules
+        // DeferredCommandReannounce, which waits one frame and announces ONLY if no commit signal appeared
+        // (the focused mesId equals the last announced one, so the dedup would otherwise swallow it; we
+        // clear it on a confirmed cancel). A commit's burst is byte-identical to a cancel return at the
+        // SetCursor instant, so the commit/cancel split is made one frame later from observed state.
+        private static bool commandReannouncePending;
+
+        // Generation latch for the deferred re-announce: bumped on EVERY SetCursor so any later cursor
+        // event (incl. the second teardown burst on a commit) supersedes a pending deferred announce.
+        private static int reannounceGen;
+
+        // Turn-handoff counter: bumped in SetCommandData_Prefix. A change between scheduling and firing the
+        // deferred re-announce means a new turn started (a commit) — the definitive commit signal.
+        private static int setCommandDataSeq;
+
         /// <summary>
         /// Apply battle command patches.
         /// </summary>
@@ -232,6 +250,12 @@ namespace FFI_ScreenReader.Patches
                 // or SetActiveCursor) and identifies the side directly. Reads the initial focus once.
                 PatchTargetMethod(harmony, controllerType, "EnemysUpdate", nameof(EnemysUpdate_Postfix));
                 PatchTargetMethod(harmony, controllerType, "PlayerUpdate", nameof(PlayerUpdate_Postfix));
+
+                // Target STATE-entry hooks: re-arm the one-shot initial-target reader on every target entry
+                // so RE-ENTERING a target (e.g. selecting Attack again same turn) re-announces the focus.
+                // ShowWindow(true)/SetCommandData no longer carry that for in-turn re-entry.
+                PatchTargetMethod(harmony, controllerType, "EnemysInit", nameof(EnemysInit_Postfix));
+                PatchTargetMethod(harmony, controllerType, "PlayerInit", nameof(PlayerInit_Postfix));
             }
             catch (Exception ex)
             {
@@ -300,13 +324,11 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 BattleTargetState.SetTargetSelectionActive(isShow);
-                MelonLogger.Msg($"[DIAG tgt] ShowWindow isShow={isShow}");
 
                 if (isShow)
                 {
                     // Open = a new target session — re-arm the one-shot initial-focus reader.
                     defaultTargetAnnounced = false;
-                    targetReadDiagLogged = false;
                 }
                 else
                 {
@@ -328,15 +350,23 @@ namespace FFI_ScreenReader.Patches
         // (re-armed by ShowWindow open/close and each SetCommandData). Set true after a successful read.
         private static bool defaultTargetAnnounced;
 
-        // DIAG one-shot: logs the first ReadInitialTarget call per session (even on failure) so an Attack
-        // target reveals whether EnemysUpdate fires and what it reads. Reset with defaultTargetAnnounced.
-        private static bool targetReadDiagLogged;
-
         /// <summary>Postfix for EnemysUpdate - announces the initially-focused enemy target on open.</summary>
         public static void EnemysUpdate_Postfix(object __instance) => ReadInitialTarget(__instance, isEnemy: true);
 
         /// <summary>Postfix for PlayerUpdate - announces the initially-focused ally target on open.</summary>
         public static void PlayerUpdate_Postfix(object __instance) => ReadInitialTarget(__instance, isEnemy: false);
+
+        /// <summary>Postfix for EnemysInit - re-arm the one-shot so re-entering enemy targeting re-reads.</summary>
+        public static void EnemysInit_Postfix()
+        {
+            defaultTargetAnnounced = false;
+        }
+
+        /// <summary>Postfix for PlayerInit - re-arm the one-shot so re-entering ally targeting re-reads.</summary>
+        public static void PlayerInit_Postfix()
+        {
+            defaultTargetAnnounced = false;
+        }
 
         /// <summary>
         /// Reads the focused target once when a single-target state opens. EnemysUpdate/PlayerUpdate run
@@ -350,30 +380,6 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 var controller = instance as BattleTargetSelectController;
-
-                // DIAG (once per session): log the first Update read regardless of outcome, so an Attack
-                // target shows whether EnemysUpdate fires + why it might be silent.
-                if (!targetReadDiagLogged)
-                {
-                    targetReadDiagLogged = true;
-                    try
-                    {
-                        bool dact = controller != null && controller.gameObject != null && controller.gameObject.activeInHierarchy;
-                        IntPtr dptr = controller != null ? controller.Pointer : IntPtr.Zero;
-                        int didx = -1, e38 = -1, e90 = -1, p30 = -1, p88 = -1;
-                        if (dptr != IntPtr.Zero)
-                        {
-                            IntPtr dc = IL2CppFieldReader.ReadPointer(dptr, IL2CppOffsets.BattleTarget.SelectCursor);
-                            if (dc != IntPtr.Zero) didx = new GameCursor(dc).Index;
-                            var a = ReadEnemyList(dptr, IL2CppOffsets.BattleTarget.EnemyDataList); e38 = a != null ? a.Count : -1;
-                            var b = ReadEnemyList(dptr, IL2CppOffsets.BattleTarget.TargetEnamyList); e90 = b != null ? b.Count : -1;
-                            var c = ReadPlayerList(dptr, IL2CppOffsets.BattleTarget.PlayerDataList); p30 = c != null ? c.Count : -1;
-                            var d = ReadPlayerList(dptr, IL2CppOffsets.BattleTarget.TargetPlayerList); p88 = d != null ? d.Count : -1;
-                        }
-                        MelonLogger.Msg($"[DIAG tgt] update kind={(isEnemy ? "enemy" : "player")} announced={defaultTargetAnnounced} active={dact} idx={didx} e38={e38} e90={e90} p30={p30} p88={p88}");
-                    }
-                    catch (Exception dex) { MelonLogger.Warning($"[DIAG tgt] update log error: {dex.Message}"); }
-                }
 
                 if (defaultTargetAnnounced) return;
                 if (controller == null || controller.gameObject == null)
@@ -404,7 +410,6 @@ namespace FFI_ScreenReader.Patches
                     if (list == null || list.Count == 0) list = ReadEnemyList(ptr, IL2CppOffsets.BattleTarget.TargetEnamyList); // 0x90
                     if (list == null || index >= list.Count) return; // not ready — next Update frame retries
                     defaultTargetAnnounced = true;
-                    MelonLogger.Msg($"[DIAG tgt] initial kind=enemy idx={index} n={list.Count}");
                     AnnounceEnemyTarget(list, index);
                 }
                 else
@@ -413,7 +418,6 @@ namespace FFI_ScreenReader.Patches
                     if (list == null || list.Count == 0) list = ReadPlayerList(ptr, IL2CppOffsets.BattleTarget.TargetPlayerList); // 0x88
                     if (list == null || index >= list.Count) return; // not ready — next Update frame retries
                     defaultTargetAnnounced = true;
-                    MelonLogger.Msg($"[DIAG tgt] initial kind=player idx={index} n={list.Count}");
                     AnnouncePlayerTarget(list, index);
                 }
             }
@@ -445,7 +449,8 @@ namespace FFI_ScreenReader.Patches
         {
             commandTurnReady = false;
             lastAnnouncedCmdMesId = null;
-            MelonLogger.Msg("[DIAG cmd] SetCommandData ENTER");
+            commandReannouncePending = false; // new turn — never carry a back-out arm across the handoff
+            setCommandDataSeq++;              // turn handoff = the definitive commit signal for the deferred re-announce
         }
 
         /// <summary>
@@ -462,8 +467,6 @@ namespace FFI_ScreenReader.Patches
                 commandTurnReady = true;
                 // Re-arm the one-shot initial-target reader so this turn's target announces.
                 defaultTargetAnnounced = false;
-                targetReadDiagLogged = false;
-                MelonLogger.Msg("[DIAG cmd] SetCommandData EXIT");
 
                 int characterId = data.Id;
                 // Always track the current actor (used by AnnounceCharacterStatus / H key),
@@ -558,6 +561,22 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
+        /// Called when the magic/item LIST (a command sub-menu) gains/holds focus — i.e. the player is in
+        /// their input phase under the command menu. Does two things:
+        ///  (1) re-opens the command-announce window (commandTurnReady=true) — an item/magic-target cancel's
+        ///      ShowWindow(false) closes it, and the list re-announcing on that cancel-back is the signal to
+        ///      restore it so the eventual list->command back-out speaks; and
+        ///  (2) arms the command back-out re-announce (clears the dedup once on the next command refocus).
+        /// Commit-safe: the list NEVER announces during a commit (the action executes instead), so neither
+        /// is applied on a commit; on commit ShowWindow(false) keeps commandTurnReady=False at the burst.
+        /// </summary>
+        public static void NotifyCommandSubmenuActive()
+        {
+            commandTurnReady = true;
+            commandReannouncePending = true;
+        }
+
+        /// <summary>
         /// Postfix for SetCursor - announces selected command.
         /// </summary>
         public static void SetCursor_Postfix(BattleCommandSelectController __instance, int index)
@@ -565,6 +584,10 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 if (__instance == null) return;
+
+                // Bump the generation on every cursor event so any later SetCursor (incl. the second
+                // teardown burst on a commit) supersedes a pending deferred back-out re-announce.
+                int myGen = ++reannounceGen;
 
                 // The cursor resets to index 0 (Attack) one frame before the command
                 // menu's gameObject goes inactive at end-of-turn. Without this guard we
@@ -576,8 +599,6 @@ namespace FFI_ScreenReader.Patches
                 // postfix (commandTurnReady=false) and are suppressed; the real command + navigation
                 // happen while it is true. (State-machine gating was proven useless — bursts run in
                 // the same Normal state as real input.)
-                int commandState = StateMachineHelper.ReadState(__instance.Pointer, IL2CppOffsets.BattleCommand.StateMachine);
-                MelonLogger.Msg($"[DIAG cmd] idx={index} ready={commandTurnReady} last={lastAnnouncedCmdMesId} state={commandState}");
                 if (!commandTurnReady)
                     return;
 
@@ -596,12 +617,50 @@ namespace FFI_ScreenReader.Patches
                     return;
                 }
 
+                // Back-out re-announce: if we just left the command menu for a sub-context (target / magic
+                // list / item list), the focused command equals the last announced one and would be
+                // swallowed by the dedup. A genuine cancel-return and a commit teardown burst are
+                // byte-identical here, so DON'T announce inline — defer one frame and announce only if no
+                // commit signal (ShowWindow→ready=false / SetCommandData handoff) appeared. Navigation
+                // (pending not set) announces immediately as usual.
+                if (commandReannouncePending)
+                {
+                    commandReannouncePending = false;
+                    CoroutineManager.StartManaged(DeferredCommandReannounce(__instance, index, myGen, setCommandDataSeq));
+                    return;
+                }
+
                 AnnounceCommandAt(__instance, GetCommandContentList(__instance), index);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Command] Error in SetCursor_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// One-frame-deferred command back-out re-announce. A genuine cancel-return and a commit teardown
+        /// burst look identical at the SetCursor instant, so we wait a single frame (the minimal,
+        /// frame-rate-independent unit — not a tuned delay) and then announce ONLY if no commit signal
+        /// appeared. On a commit the burst's ShowWindow(false) flips commandTurnReady=false in the same
+        /// frame (and a turn handoff bumps setCommandDataSeq), so the announce aborts; on a cancel neither
+        /// fires, so it speaks. The gen check supersedes a stale pending announce if any later cursor event
+        /// happened (e.g. navigation or the second teardown burst).
+        /// </summary>
+        private static System.Collections.IEnumerator DeferredCommandReannounce(
+            BattleCommandSelectController controller, int index, int gen, int seq)
+        {
+            yield return null; // let this frame's game callbacks (ShowWindow / SetCommandData) land
+
+            if (gen != reannounceGen) yield break;          // a newer cursor event superseded this one
+            if (!commandTurnReady) yield break;             // a commit's ShowWindow(false) closed the window
+            if (seq != setCommandDataSeq) yield break;      // a turn handoff started — definitely a commit
+            if (controller == null || controller.gameObject == null
+                || !controller.gameObject.activeInHierarchy) yield break;
+
+            // Confirmed a genuine cancel-return: clear the dedup once so the focused command speaks again.
+            lastAnnouncedCmdMesId = null;
+            AnnounceCommandAt(controller, GetCommandContentList(controller), index);
         }
 
         /// <summary>Gets the command controller's content list (typed property, reflection fallback).</summary>
@@ -681,7 +740,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var playerList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattlePlayerData>>();
-                LogSelectContentFields("player", __instance, list.Pointer, index);
                 AnnouncePlayerTarget(playerList, index);
             }
             catch (Exception ex)
@@ -739,6 +797,10 @@ namespace FFI_ScreenReader.Patches
 
                 announcement = MenuPosition.Format(announcement, index, playerList.Count);
 
+                // Entering targeting = left the command menu; arm the command back-out re-announce. Safe on
+                // commit: SetCursor_Postfix's targetActive check (true while the target controller is still
+                // active on commit) returns before the consume; only a cancel (target torn down) reaches it.
+                commandReannouncePending = true;
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
         }
@@ -757,7 +819,6 @@ namespace FFI_ScreenReader.Patches
 
                 // Use TryCast to convert IL2CPP IEnumerable to List
                 var enemyList = list.TryCast<Il2CppSystem.Collections.Generic.List<BattleEnemyData>>();
-                LogSelectContentFields("enemy", __instance, list.Pointer, index);
                 AnnounceEnemyTarget(enemyList, index);
             }
             catch (Exception ex)
@@ -864,30 +925,11 @@ namespace FFI_ScreenReader.Patches
 
                 announcement = MenuPosition.Format(announcement, index, enemyList.Count);
 
+                // Entering targeting = left the command menu; arm the command back-out re-announce (see
+                // AnnouncePlayerTarget for the commit-safety rationale via the targetActive check).
+                commandReannouncePending = true;
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
-        }
-
-        /// <summary>
-        /// DIAG: logs the authoritative SelectContent list pointer alongside the controller's candidate
-        /// list fields (0x30/0x38/0x90) + the cursor index, so one cursor move reveals exactly which field
-        /// holds the List the game indexes and confirms selectCursor=0xC0.
-        /// </summary>
-        private static void LogSelectContentFields(string kind, object instance, IntPtr listPtr, int index)
-        {
-            try
-            {
-                var ctrl = instance as BattleTargetSelectController;
-                if (ctrl == null) return;
-                IntPtr c = ctrl.Pointer;
-                IntPtr cur = IL2CppFieldReader.ReadPointer(c, IL2CppOffsets.BattleTarget.SelectCursor);
-                int curIdx = cur != IntPtr.Zero ? new GameCursor(cur).Index : -1;
-                MelonLogger.Msg($"[DIAG sc] kind={kind} idx={index} listPtr={listPtr.ToInt64():X} "
-                    + $"f30={IL2CppFieldReader.ReadPointer(c, 0x30).ToInt64():X} "
-                    + $"f38={IL2CppFieldReader.ReadPointer(c, 0x38).ToInt64():X} "
-                    + $"f90={IL2CppFieldReader.ReadPointer(c, 0x90).ToInt64():X} cur={curIdx}");
-            }
-            catch { }
         }
 
         /// <summary>
@@ -922,8 +964,8 @@ namespace FFI_ScreenReader.Patches
             lastCharacterId = -1;
             commandTurnReady = false;
             lastAnnouncedCmdMesId = null;
+            commandReannouncePending = false;
             defaultTargetAnnounced = false;
-            targetReadDiagLogged = false;
             BattleCommandState.CurrentActor = null;
         }
     }
