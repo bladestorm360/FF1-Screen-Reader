@@ -31,9 +31,10 @@ namespace FFI_ScreenReader.Utils
             WallSouth,
             WallEast,
             WallWest,
+            Counter,
         }
 
-        private const int StreamCount = 7;
+        private const int StreamCount = 8;
 
         private static uint device;
         private static readonly IntPtr[] streams = new IntPtr[StreamCount];

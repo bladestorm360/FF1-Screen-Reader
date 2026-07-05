@@ -15,6 +15,7 @@ namespace FFI_ScreenReader.Utils
 
         private static byte[] wallBumpWav;
         private static byte[] footstepWav;
+        private static byte[] expCounterWav;
 
         // Sustain wall tones (one per direction, for looping). Generated at REFERENCE
         // amplitude (BASE_VOLUME × direction multiplier, pan baked in). User volume and
@@ -31,6 +32,9 @@ namespace FFI_ScreenReader.Utils
         // directions across the ~100ms audio loop ticks.
         private static int currentWallDirectionsMask = 0;
         private static int lastWallToneVolume = 50;
+
+        // EXP counter loop state.
+        private static bool expCounterActive = false;
 
         /// <summary>
         /// Cardinal direction enum for wall tones.
@@ -73,6 +77,14 @@ namespace FFI_ScreenReader.Utils
             wallToneSouthSustain = ToneGenerator.GenerateStereoTone(SoundConstants.WallToneFrequencies.SOUTH, sustain, bv * SoundConstants.WallToneVolumeMultipliers.SOUTH, SoundConstants.WallTonePan.SOUTH, sustain: true);
             wallToneEastSustain  = ToneGenerator.GenerateStereoTone(SoundConstants.WallToneFrequencies.EAST,  sustain, bv * SoundConstants.WallToneVolumeMultipliers.EAST,  SoundConstants.WallTonePan.EAST,  sustain: true);
             wallToneWestSustain  = ToneGenerator.GenerateStereoTone(SoundConstants.WallToneFrequencies.WEST,  sustain, bv * SoundConstants.WallToneVolumeMultipliers.WEST,  SoundConstants.WallTonePan.WEST,  sustain: true);
+
+            // EXP counter beep: short tone + silence for a rapid ticking effect (volume baked in).
+            expCounterWav = ToneGenerator.GenerateLandingPing(
+                SoundConstants.ExpCounter.FREQUENCY,
+                SoundConstants.ExpCounter.BEEP_MS + SoundConstants.ExpCounter.SILENCE_MS,
+                SoundConstants.ExpCounter.BEEP_MS,
+                SoundConstants.ExpCounter.VOLUME,
+                0.5f); // center pan
         }
 
         /// <summary>
@@ -83,6 +95,7 @@ namespace FFI_ScreenReader.Utils
             AudioEngine.Shutdown();
             currentWallDirectionsMask = 0;
             lastWallToneVolume = 50;
+            expCounterActive = false;
         }
 
         #region Public Playback Methods
@@ -208,6 +221,52 @@ namespace FFI_ScreenReader.Utils
             {
                 MelonLogger.Error($"[SoundPlayer] Error playing beacon: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Starts the EXP counter beep loop on the Counter stream (rapid ticking during the
+        /// EXP bar animation on the battle results screen). Volume is baked into the buffer and
+        /// scaled by the per-stream gain. The loop is kept fed by TopUpExpCounter, called from
+        /// the monitor coroutine each tick; StopExpCounter clears it.
+        /// </summary>
+        public static void PlayExpCounter()
+        {
+            if (!AudioEngine.IsInitialized || expCounterWav == null) return;
+            int len = expCounterWav.Length - SoundConstants.WAV_HEADER_SIZE;
+            if (len <= 0) return;
+
+            int volume = FFI_ScreenReader.Core.PreferencesManager.ExpCounterVolume;
+            AudioEngine.SetGain(AudioEngine.Stream.Counter, volume / 50.0f);
+
+            // Prime ~2 loops ahead so the queue can't drain before the next top-up tick.
+            AudioEngine.Clear(AudioEngine.Stream.Counter);
+            AudioEngine.Submit(AudioEngine.Stream.Counter, expCounterWav, SoundConstants.WAV_HEADER_SIZE, len);
+            AudioEngine.Submit(AudioEngine.Stream.Counter, expCounterWav, SoundConstants.WAV_HEADER_SIZE, len);
+            expCounterActive = true;
+        }
+
+        /// <summary>
+        /// Tops up the EXP counter stream so the loop stays seamless. Called each ~100ms tick
+        /// by the monitor coroutine while the counter is playing.
+        /// </summary>
+        public static void TopUpExpCounter()
+        {
+            if (!AudioEngine.IsInitialized || !expCounterActive || expCounterWav == null) return;
+            int len = expCounterWav.Length - SoundConstants.WAV_HEADER_SIZE;
+            if (len <= 0) return;
+
+            // Keep ~2 buffers queued (≈2 ticks) so back-to-back loops stay seamless.
+            if (AudioEngine.QueuedBytes(AudioEngine.Stream.Counter) < len * 2)
+                AudioEngine.Submit(AudioEngine.Stream.Counter, expCounterWav, SoundConstants.WAV_HEADER_SIZE, len);
+        }
+
+        /// <summary>
+        /// Stops the EXP counter beep loop (clears the Counter stream).
+        /// </summary>
+        public static void StopExpCounter()
+        {
+            expCounterActive = false;
+            AudioEngine.Clear(AudioEngine.Stream.Counter);
         }
 
         #endregion

@@ -219,7 +219,7 @@ namespace FFI_ScreenReader.Patches
                 if (c > 1) baseAnnouncement += $", {c}";
 
                 string announcement = baseAnnouncement;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                if (PreferencesManager.AutoDetailEnabled)
                 {
                     string description = itemData.Description;
                     if (!string.IsNullOrWhiteSpace(description))

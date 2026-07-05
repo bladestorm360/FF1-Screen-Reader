@@ -93,5 +93,17 @@ namespace FFI_ScreenReader.Utils
         {
             public const int SUSTAIN_DURATION_MS = 200;
         }
+
+        /// <summary>
+        /// EXP counter beep parameters (battle results rolling EXP animation).
+        /// A short high beep followed by silence; hardware-looped it becomes a rapid tick.
+        /// </summary>
+        public static class ExpCounter
+        {
+            public const int FREQUENCY = 2000;
+            public const int BEEP_MS = 50;
+            public const int SILENCE_MS = 50;
+            public const float VOLUME = 0.15f;
+        }
     }
 }

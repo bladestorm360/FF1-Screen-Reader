@@ -487,7 +487,7 @@ namespace FFI_ScreenReader.Patches
 
                 // AutoDetail: append description on focus when enabled
                 string announcement = baseAnnouncement;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                if (PreferencesManager.AutoDetailEnabled)
                 {
                     try
                     {

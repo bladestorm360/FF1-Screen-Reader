@@ -283,7 +283,7 @@ namespace FFI_ScreenReader.Core
 
             // When Stick Click Normalization is ON, R3/L3 fall through to the game (encounter
             // toggle / auto-dash). Mod functions move to MOD_MODE. When OFF, mod handles them.
-            if (!FFI_ScreenReaderMod.StickClickNormalizationEnabled)
+            if (!PreferencesManager.StickClickNormalizationEnabled)
             {
                 // R3 → toggle pathfinding filter
                 if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK))
@@ -337,7 +337,7 @@ namespace FFI_ScreenReader.Core
                         WaypointHandler.PathfindToCurrentWaypoint();
                         break;
                     case NavigationTargetTracker.Kind.Entity:
-                        if (FFI_ScreenReaderMod.AudioBeaconsEnabled) mod.RestartEntityBeacon();
+                        if (PreferencesManager.AudioBeaconsEnabled) mod.RestartEntityBeacon();
                         else mod.AnnounceCurrentEntity();
                         break;
                     default:
@@ -426,7 +426,7 @@ namespace FFI_ScreenReader.Core
 
                 // When Stick Click Normalization is on, the stick-click mod functions move
                 // here so the player can still reach them via mod button + R3/L3.
-                if (FFI_ScreenReaderMod.StickClickNormalizationEnabled)
+                if (PreferencesManager.StickClickNormalizationEnabled)
                 {
                     if (GamepadManager.IsButtonPressed(SDL3.SDL_GAMEPAD_BUTTON_RIGHT_STICK))
                     { mod.TogglePathfindingFilter(); State = ControllerState.Normal; return; }

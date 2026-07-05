@@ -219,8 +219,7 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 if (!Core.ControllerRouter.IsFieldActive) return;
-                if (FFI_ScreenReaderMod.Instance == null
-                    || !FFI_ScreenReaderMod.Instance.IsFootstepsEnabled()) return;
+                if (!PreferencesManager.FootstepsEnabled) return;
                 if (!Utils.MoveStateHelper.IsOnFoot()) return;
 
                 var player = FFI_ScreenReaderMod.GetFieldPlayer();

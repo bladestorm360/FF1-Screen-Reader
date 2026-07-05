@@ -385,7 +385,7 @@ namespace FFI_ScreenReader.Patches
                 // append it to the spoken focus line only when AutoDetail is enabled (matches field magic menu).
                 string description = TryGetAbilityDescription(ability);
                 LastFocusedDescription = description;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled && !string.IsNullOrWhiteSpace(description))
+                if (PreferencesManager.AutoDetailEnabled && !string.IsNullOrWhiteSpace(description))
                     announcement += ". " + description;
 
                 return announcement;

@@ -401,7 +401,7 @@ namespace FFI_ScreenReader.Field
                 filteredEntities = filteredEntities.OrderBy(e => Vector3.Distance(e.Position, playerPos.Value)).ToList();
             }
 
-            if (FFI_ScreenReaderMod.MapExitFilterEnabled)
+            if (PreferencesManager.MapExitFilterEnabled)
             {
                 filteredEntities = DeduplicateMapExits(filteredEntities);
             }

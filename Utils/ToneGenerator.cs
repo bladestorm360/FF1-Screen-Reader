@@ -129,6 +129,68 @@ namespace FFI_ScreenReader.Utils
         }
 
         /// <summary>
+        /// Generates a 16-bit stereo WAV containing a short ping followed by silence.
+        /// When hardware-looped, the silence gap creates a pulsing / ticking effect.
+        /// Uses cycle-aligned ping duration for clean sound at the loop boundary.
+        /// </summary>
+        public static byte[] GenerateLandingPing(int frequency, int totalDurationMs, int pingDurationMs, float volume, float pan)
+        {
+            int sampleRate = SoundConstants.SAMPLE_RATE;
+            int totalSamples = (sampleRate * totalDurationMs) / 1000;
+            int pingSamples = (sampleRate * pingDurationMs) / 1000;
+
+            double samplesPerCycle = (double)sampleRate / frequency;
+            int numCycles = (int)Math.Round(pingSamples / samplesPerCycle);
+            if (numCycles < 1) numCycles = 1;
+            pingSamples = (int)Math.Round(numCycles * samplesPerCycle);
+
+            if (totalSamples <= pingSamples)
+                totalSamples = pingSamples + (sampleRate * 50) / 1000;
+
+            int dataSize = totalSamples * 4;
+
+            double panAngle = pan * Math.PI / 2;
+            float leftVol = volume * (float)Math.Cos(panAngle);
+            float rightVol = volume * (float)Math.Sin(panAngle);
+
+            using (var ms = new MemoryStream())
+            using (var writer = new BinaryWriter(ms))
+            {
+                WriteWavHeader(writer, 2, dataSize);
+
+                int attackSamples = pingSamples / 8;
+                int decaySamples = pingSamples / 4;
+                int decayStart = pingSamples - decaySamples;
+
+                for (int i = 0; i < totalSamples; i++)
+                {
+                    if (i < pingSamples)
+                    {
+                        double t = (double)i / sampleRate;
+                        double envelope = 1.0;
+
+                        if (i < attackSamples)
+                            envelope = (double)i / attackSamples;
+                        else if (i >= decayStart)
+                            envelope = (double)(pingSamples - i) / decaySamples;
+
+                        double sineValue = Math.Sin(2 * Math.PI * frequency * t) * envelope;
+
+                        writer.Write((short)(sineValue * leftVol * 32767));
+                        writer.Write((short)(sineValue * rightVol * 32767));
+                    }
+                    else
+                    {
+                        writer.Write((short)0);
+                        writer.Write((short)0);
+                    }
+                }
+
+                return ms.ToArray();
+            }
+        }
+
+        /// <summary>
         /// Converts a mono 16-bit WAV to stereo by duplicating each sample to both channels.
         /// </summary>
         public static byte[] MonoToStereo(byte[] monoWav)

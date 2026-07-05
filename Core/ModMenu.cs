@@ -159,21 +159,21 @@ namespace FFI_ScreenReader.Core
                 // Audio Feedback section
                 new SectionHeader(T("Audio Feedback")),
                 new ToggleItem(T("Wall Tones"),
-                    () => FFI_ScreenReaderMod.WallTonesEnabled,
+                    () => PreferencesManager.WallTonesEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleWallTones(),
-                    () => FFI_ScreenReaderMod.WallTonesEnabled
+                    () => PreferencesManager.WallTonesEnabled
                         ? T("On. Directional tones play as you approach walls.")
                         : T("Off. No directional wall feedback.")),
                 new ToggleItem(T("Footsteps"),
-                    () => FFI_ScreenReaderMod.FootstepsEnabled,
+                    () => PreferencesManager.FootstepsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleFootsteps(),
-                    () => FFI_ScreenReaderMod.FootstepsEnabled
+                    () => PreferencesManager.FootstepsEnabled
                         ? T("On. A click plays for each tile of player movement.")
                         : T("Off. No per-tile movement sound.")),
                 new ToggleItem(T("Beacon Navigation"),
-                    () => FFI_ScreenReaderMod.AudioBeaconsEnabled,
+                    () => PreferencesManager.AudioBeaconsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleAudioBeacons(),
-                    () => FFI_ScreenReaderMod.AudioBeaconsEnabled
+                    () => PreferencesManager.AudioBeaconsEnabled
                         ? T("On. Audio beacon is the primary navigation aid; turn-by-turn pathfinding is disabled.")
                         : T("Off. Turn-by-turn pathfinding is used for navigation.")),
 
@@ -199,27 +199,27 @@ namespace FFI_ScreenReader.Core
                 // Navigation Filters section
                 new SectionHeader(T("Navigation Filters")),
                 new ToggleItem(T("Pathfinding Filter"),
-                    () => FFI_ScreenReaderMod.PathfindingFilterEnabled,
+                    () => PreferencesManager.PathfindingFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.TogglePathfindingFilter(),
-                    () => FFI_ScreenReaderMod.PathfindingFilterEnabled
+                    () => PreferencesManager.PathfindingFilterEnabled
                         ? T("On. Entity cycling shows only entities reachable via pathfinding.")
                         : T("Off. All entities appear when cycling, including unreachable ones.")),
                 new ToggleItem(T("Map Exit Filter"),
-                    () => FFI_ScreenReaderMod.MapExitFilterEnabled,
+                    () => PreferencesManager.MapExitFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleMapExitFilter(),
-                    () => FFI_ScreenReaderMod.MapExitFilterEnabled
+                    () => PreferencesManager.MapExitFilterEnabled
                         ? T("On. Multiple exits leading to the same destination collapse to the closest one.")
                         : T("Off. All map exits appear in navigation.")),
                 new ToggleItem(T("Layer Transition Filter"),
-                    () => FFI_ScreenReaderMod.ToLayerFilterEnabled,
+                    () => PreferencesManager.ToLayerFilterEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleToLayerFilter(),
-                    () => FFI_ScreenReaderMod.ToLayerFilterEnabled
+                    () => PreferencesManager.ToLayerFilterEnabled
                         ? T("On. Layer transition entities are hidden from navigation.")
                         : T("Off. Layer transition entities appear in navigation.")),
                 new ToggleItem(T("Stick Click Normalization"),
-                    () => FFI_ScreenReaderMod.StickClickNormalizationEnabled,
+                    () => PreferencesManager.StickClickNormalizationEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleStickClickNormalization(),
-                    () => FFI_ScreenReaderMod.StickClickNormalizationEnabled
+                    () => PreferencesManager.StickClickNormalizationEnabled
                         ? T("On. L3 and R3 pass through to the game (auto-dash and encounter toggle). Mod functions move to mod mode.")
                         : T("Off. L3 toggles beacon navigation; R3 toggles pathfinding filter; game cannot see them.")),
 
@@ -236,24 +236,37 @@ namespace FFI_ScreenReader.Core
                     PreferencesManager.SetDamageDisplay,
                     () => T("On multi-hit physical attacks, optionally prepend the number of hits, e.g. '14x1552 damage'.")),
 
+                // Battle Results section
+                new SectionHeader(T("Battle Results")),
+                new ToggleItem(T("EXP Counter Sound"),
+                    () => PreferencesManager.ExpCounterEnabled,
+                    () => FFI_ScreenReaderMod.Instance?.ToggleExpCounter(),
+                    () => PreferencesManager.ExpCounterEnabled
+                        ? T("On. A rapid tick plays while the EXP bar fills on the battle results screen.")
+                        : T("Off. The EXP bar fills silently on the battle results screen.")),
+                new VolumeItem(T("EXP Counter Volume"),
+                    () => PreferencesManager.ExpCounterVolume,
+                    PreferencesManager.SetExpCounterVolume,
+                    () => T("Volume of the EXP counter tick, zero to one hundred percent.")),
+
                 // Announcements section
                 new SectionHeader(T("Announcements")),
                 new ToggleItem(T("Auto Detail"),
-                    () => FFI_ScreenReaderMod.AutoDetailEnabled,
+                    () => PreferencesManager.AutoDetailEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleAutoDetail(),
-                    () => FFI_ScreenReaderMod.AutoDetailEnabled
+                    () => PreferencesManager.AutoDetailEnabled
                         ? T("On. Descriptions and stats announce automatically on focus for items, magic, equipment, and shops.")
                         : T("Off. Use the I key to read descriptions on demand.")),
                 new ToggleItem(T("Beacon Destination Announcement"),
-                    () => FFI_ScreenReaderMod.AnnounceOnBeaconRestartEnabled,
+                    () => PreferencesManager.AnnounceOnBeaconRestartEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleAnnounceOnBeaconRestart(),
-                    () => FFI_ScreenReaderMod.AnnounceOnBeaconRestartEnabled
+                    () => PreferencesManager.AnnounceOnBeaconRestartEnabled
                         ? T("On. Restarting the beacon also re-speaks the current destination.")
                         : T("Off. Restarting the beacon only re-pings, without speaking.")),
                 new ToggleItem(T("Menu Position Announcements"),
-                    () => FFI_ScreenReaderMod.MenuPositionAnnouncementsEnabled,
+                    () => PreferencesManager.MenuPositionAnnouncementsEnabled,
                     () => FFI_ScreenReaderMod.Instance?.ToggleMenuPositionAnnouncements(),
-                    () => FFI_ScreenReaderMod.MenuPositionAnnouncementsEnabled
+                    () => PreferencesManager.MenuPositionAnnouncementsEnabled
                         ? T("On. List entries announce their position, for example, 3 of 12.")
                         : T("Off. List entries do not announce position.")),
 

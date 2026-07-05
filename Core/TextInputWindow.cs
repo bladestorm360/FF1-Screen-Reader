@@ -10,8 +10,10 @@ using static FFI_ScreenReader.Utils.ModTextTranslator;
 namespace FFI_ScreenReader.Core
 {
     /// <summary>
-    /// Modal text input dialog using Unity Input.GetKeyDown.
-    /// Game input suppressed via ControllerRouter.SuppressGameInput + InputSystemManager patches.
+    /// Modal text input dialog (virtual — no window focus stealing).
+    /// Game input is suppressed via ControllerRouter.SuppressGameInput + InputPassthroughPatches
+    /// while IsOpen. Keys are read through GamepadManager (SDL3 + GetAsyncKeyState).
+    /// Used for waypoint naming and other text input scenarios.
     /// </summary>
     internal static class TextInputWindow
     {
@@ -98,9 +100,8 @@ namespace FFI_ScreenReader.Core
         }
 
         /// <summary>
-        /// Handles keyboard input via Unity Input.GetKeyDown.
-        /// Game input suppressed via InputSystemManager patches when IsOpen.
-        /// Returns true if input was consumed (dialog is open).
+        /// Handles keyboard input for the text input dialog. Reads keys via GamepadManager;
+        /// game input is suppressed while IsOpen. Returns true if input was consumed (dialog open).
         /// </summary>
         public static bool HandleInput()
         {

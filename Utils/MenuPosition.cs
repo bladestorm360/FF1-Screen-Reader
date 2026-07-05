@@ -18,7 +18,7 @@ namespace FFI_ScreenReader.Utils
         /// <param name="count">Logical total count of the list.</param>
         public static string Format(string text, int index, int count)
         {
-            if (!FFI_ScreenReaderMod.MenuPositionAnnouncementsEnabled) return text;
+            if (!PreferencesManager.MenuPositionAnnouncementsEnabled) return text;
             if (string.IsNullOrEmpty(text)) return text;
             if (count <= 1) return text;                  // skip the pointless "1 of 1" / empty / unknown
             if (index < 0 || index >= count) return text; // never emit "0 of 5" / "6 of 5"

@@ -175,7 +175,7 @@ namespace FFI_ScreenReader.Patches
                 // Append the description only when Auto Detail is on; otherwise the player reads it on
                 // demand with the I key / right stick up (GlobalHotkeyHandler → JobSelectionPatches).
                 string announcement = jobName;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                if (PreferencesManager.AutoDetailEnabled)
                 {
                     string description = GetDescriptionViaHierarchy(controller);
                     if (!string.IsNullOrEmpty(description))

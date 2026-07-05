@@ -15,7 +15,6 @@ namespace FFI_ScreenReader.Core
     /// </summary>
     public class AudioLoopManager
     {
-        private readonly FFI_ScreenReaderMod mod;
         private readonly EntityScanner entityScanner;
         private readonly WaypointNavigator waypointNavigator;
 
@@ -58,9 +57,8 @@ namespace FFI_ScreenReader.Core
         private static readonly Vector3 DirEast = new Vector3(16, 0, 0);
         private static readonly Vector3 DirWest = new Vector3(-16, 0, 0);
 
-        internal AudioLoopManager(FFI_ScreenReaderMod mod, EntityScanner scanner, WaypointNavigator waypointNavigator)
+        internal AudioLoopManager(EntityScanner scanner, WaypointNavigator waypointNavigator)
         {
-            this.mod = mod;
             this.entityScanner = scanner;
             this.waypointNavigator = waypointNavigator;
         }
@@ -70,7 +68,6 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public void StartWallToneLoop()
         {
-            if (!mod.IsWallTonesEnabled()) return;
             if (wallToneCoroutine != null) return;
             wallToneCoroutine = WallToneLoop();
             CoroutineManager.StartManaged(wallToneCoroutine);
@@ -95,7 +92,6 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public void StartBeaconLoop()
         {
-            if (!mod.IsAudioBeaconsEnabled()) return;
             if (beaconCoroutine != null) return;
             beaconCoroutine = BeaconLoop();
             CoroutineManager.StartManaged(beaconCoroutine);
@@ -150,8 +146,8 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public void StartIfEnabled()
         {
-            if (mod.IsWallTonesEnabled()) StartWallToneLoop();
-            if (mod.IsAudioBeaconsEnabled()) StartBeaconLoop();
+            if (PreferencesManager.WallTonesEnabled) StartWallToneLoop();
+            if (PreferencesManager.AudioBeaconsEnabled) StartBeaconLoop();
         }
 
         /// <summary>
@@ -162,7 +158,7 @@ namespace FFI_ScreenReader.Core
         {
             float nextCheckTime = Time.time + 0.3f;  // Delay first check by 300ms for scene stability
 
-            while (mod.IsWallTonesEnabled())
+            while (PreferencesManager.WallTonesEnabled)
             {
                 if (Time.time < nextCheckTime)
                 {
@@ -200,10 +196,12 @@ namespace FFI_ScreenReader.Core
                         continue;
                     }
 
-                    // Silence when any menu or battle is active, or while a mod dialog is open.
+                    // Silence when any menu or battle is active, while a mod dialog is open,
+                    // or while an NPC message box is displaying dialogue.
                     // SuppressGameInput covers mod menu / TextInputWindow / ConfirmationDialog —
                     // their A* work would stutter keyboard polling in TextInputWindow.
-                    if (!ControllerRouter.IsFieldActive || ControllerRouter.SuppressGameInput)
+                    if (!ControllerRouter.IsFieldActive || ControllerRouter.SuppressGameInput
+                        || MessageWindowPatches.IsInDialogue)
                     {
                         if (SoundPlayer.IsWallTonePlaying())
                             SoundPlayer.StopWallTone();
@@ -267,7 +265,7 @@ namespace FFI_ScreenReader.Core
         {
             nextBeaconTime = Time.time + 0.3f;  // Delay first beacon by 300ms for scene stability
 
-            while (mod.IsAudioBeaconsEnabled())
+            while (PreferencesManager.AudioBeaconsEnabled)
             {
                 if (Time.time < nextBeaconTime)
                 {
@@ -282,10 +280,12 @@ namespace FFI_ScreenReader.Core
                     continue;
                 }
 
-                // Silence when any menu or battle is active, or while a mod dialog is open.
+                // Silence when any menu or battle is active, while a mod dialog is open,
+                // or while an NPC message box is displaying dialogue.
                 // The A* tick is expensive — running it during TextInputWindow typing
                 // stutters the GetAsyncKeyState poll enough to drop characters.
-                if (!ControllerRouter.IsFieldActive || ControllerRouter.SuppressGameInput)
+                if (!ControllerRouter.IsFieldActive || ControllerRouter.SuppressGameInput
+                    || MessageWindowPatches.IsInDialogue)
                 {
                     nextBeaconTime = Time.time + 0.1f;
                     continue;

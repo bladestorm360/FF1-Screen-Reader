@@ -22,12 +22,14 @@ namespace FFI_ScreenReader.Core
         private static MelonPreferences_Entry<bool> prefStickClickNormalization;
         private static MelonPreferences_Entry<bool> prefAnnounceOnBeaconRestart;
         private static MelonPreferences_Entry<bool> prefMenuPositionAnnouncements;
+        private static MelonPreferences_Entry<bool> prefExpCounter;
 
         // Volume preferences (0-100, default 50)
         private static MelonPreferences_Entry<int> prefWallBumpVolume;
         private static MelonPreferences_Entry<int> prefFootstepVolume;
         private static MelonPreferences_Entry<int> prefWallToneVolume;
         private static MelonPreferences_Entry<int> prefBeaconVolume;
+        private static MelonPreferences_Entry<int> prefExpCounterVolume;
 
         // Enemy HP display mode (0=Numbers, 1=Percentage, 2=Hidden)
         private static MelonPreferences_Entry<int> prefEnemyHPDisplay;
@@ -52,28 +54,31 @@ namespace FFI_ScreenReader.Core
             prefStickClickNormalization = prefsCategory.CreateEntry<bool>("StickClickNormalization", false, "Stick Click Normalization", "Pass L3/R3 through to game (auto-dash / encounter toggle); mod functions require mod mode");
             prefAnnounceOnBeaconRestart = prefsCategory.CreateEntry<bool>("AnnounceOnBeaconRestart", false, "Announce Destination on Beacon Restart", "Re-speak the current destination when the beacon is restarted");
             prefMenuPositionAnnouncements = prefsCategory.CreateEntry<bool>("MenuPositionAnnouncements", true, "Menu Position Announcements", "Append the cursor's position in a list when navigating menus, e.g. (3 of 12)");
+            prefExpCounter = prefsCategory.CreateEntry<bool>("ExpCounter", true, "EXP Counter Sound", "Play a rapid ticking tone while the EXP bar animates on battle results");
 
             prefWallBumpVolume = prefsCategory.CreateEntry<int>("WallBumpVolume", 50, "Wall Bump Volume", "Volume for wall bump sounds (0-100)");
             prefFootstepVolume = prefsCategory.CreateEntry<int>("FootstepVolume", 50, "Footstep Volume", "Volume for footstep sounds (0-100)");
             prefWallToneVolume = prefsCategory.CreateEntry<int>("WallToneVolume", 50, "Wall Tone Volume", "Volume for wall proximity tones (0-100)");
             prefBeaconVolume = prefsCategory.CreateEntry<int>("BeaconVolume", 50, "Beacon Volume", "Volume for audio beacon pings (0-100)");
+            prefExpCounterVolume = prefsCategory.CreateEntry<int>("ExpCounterVolume", 50, "EXP Counter Volume", "Volume for EXP counter tick (0-100)");
 
             prefEnemyHPDisplay = prefsCategory.CreateEntry<int>("EnemyHPDisplay", 0, "Enemy HP Display", "0=Numbers, 1=Percentage, 2=Hidden");
             prefDamageDisplay = prefsCategory.CreateEntry<int>("DamageDisplay", 0, "Multi-hit Damage", "0=Total only, 1=With hit count (e.g. 14x1552 damage)");
         }
 
-        #region Toggle Getters (saved preference values)
+        #region Toggle Getters (single source of truth — read directly by menu, loops, gameplay)
 
-        public static bool PathfindingFilterDefault => prefPathfindingFilter?.Value ?? false;
-        public static bool MapExitFilterDefault => prefMapExitFilter?.Value ?? false;
-        public static bool ToLayerFilterDefault => prefToLayerFilter?.Value ?? false;
-        public static bool WallTonesDefault => prefWallTones?.Value ?? false;
-        public static bool FootstepsDefault => prefFootsteps?.Value ?? false;
-        public static bool AudioBeaconsDefault => prefAudioBeacons?.Value ?? false;
-        public static bool AutoDetailDefault => prefAutoDetail?.Value ?? true;
-        public static bool StickClickNormalizationDefault => prefStickClickNormalization?.Value ?? false;
-        public static bool AnnounceOnBeaconRestartDefault => prefAnnounceOnBeaconRestart?.Value ?? false;
-        public static bool MenuPositionAnnouncementsDefault => prefMenuPositionAnnouncements?.Value ?? true;
+        public static bool PathfindingFilterEnabled => prefPathfindingFilter?.Value ?? false;
+        public static bool MapExitFilterEnabled => prefMapExitFilter?.Value ?? false;
+        public static bool ToLayerFilterEnabled => prefToLayerFilter?.Value ?? false;
+        public static bool WallTonesEnabled => prefWallTones?.Value ?? false;
+        public static bool FootstepsEnabled => prefFootsteps?.Value ?? false;
+        public static bool AudioBeaconsEnabled => prefAudioBeacons?.Value ?? false;
+        public static bool AutoDetailEnabled => prefAutoDetail?.Value ?? true;
+        public static bool StickClickNormalizationEnabled => prefStickClickNormalization?.Value ?? false;
+        public static bool AnnounceOnBeaconRestartEnabled => prefAnnounceOnBeaconRestart?.Value ?? false;
+        public static bool MenuPositionAnnouncementsEnabled => prefMenuPositionAnnouncements?.Value ?? true;
+        public static bool ExpCounterEnabled => prefExpCounter?.Value ?? true;
 
         #endregion
 
@@ -83,6 +88,7 @@ namespace FFI_ScreenReader.Core
         public static int FootstepVolume => prefFootstepVolume?.Value ?? 50;
         public static int WallToneVolume => prefWallToneVolume?.Value ?? 50;
         public static int BeaconVolume => prefBeaconVolume?.Value ?? 50;
+        public static int ExpCounterVolume => prefExpCounterVolume?.Value ?? 50;
         public static int EnemyHPDisplay => prefEnemyHPDisplay?.Value ?? 0;
         public static int DamageDisplay => prefDamageDisplay?.Value ?? 0;
 
@@ -103,6 +109,7 @@ namespace FFI_ScreenReader.Core
         public static void SetFootstepVolume(int value) => SetIntPreference(prefFootstepVolume, value, 0, 100);
         public static void SetWallToneVolume(int value) => SetIntPreference(prefWallToneVolume, value, 0, 100);
         public static void SetBeaconVolume(int value) => SetIntPreference(prefBeaconVolume, value, 0, 100);
+        public static void SetExpCounterVolume(int value) => SetIntPreference(prefExpCounterVolume, value, 0, 100);
         public static void SetEnemyHPDisplay(int value) => SetIntPreference(prefEnemyHPDisplay, value, 0, 2);
         public static void SetDamageDisplay(int value) => SetIntPreference(prefDamageDisplay, value, 0, 1);
 
@@ -158,6 +165,11 @@ namespace FFI_ScreenReader.Core
         public static void SaveMenuPositionAnnouncements(bool value)
         {
             if (prefMenuPositionAnnouncements != null) { prefMenuPositionAnnouncements.Value = value; prefsCategory?.SaveToFile(false); }
+        }
+
+        public static void SaveExpCounter(bool value)
+        {
+            if (prefExpCounter != null) { prefExpCounter.Value = value; prefsCategory?.SaveToFile(false); }
         }
 
         #endregion

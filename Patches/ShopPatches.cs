@@ -371,7 +371,7 @@ namespace FFI_ScreenReader.Patches
             string baseAnnouncement = string.IsNullOrEmpty(price) ? itemName : $"{itemName}, {price}";
 
             string announcement = baseAnnouncement;
-            if (FFI_ScreenReaderMod.AutoDetailEnabled)
+            if (PreferencesManager.AutoDetailEnabled)
             {
                 string detail = null;
                 try { detail = ShopMenuTracker.GetDescriptionFromUI(); } catch { }

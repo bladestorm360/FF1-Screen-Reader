@@ -1,8 +1,11 @@
 using System;
 using System.Reflection;
+using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using HarmonyLib;
 using MelonLoader;
+using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
@@ -27,13 +30,29 @@ namespace FFI_ScreenReader.Patches
         private static bool announcedItems = false;
         private static HashSet<string> announcedLevelUps = new HashSet<string>();
 
+        // True only while the EXP counter tone is actually playing.
+        private static bool expCounterPlaying = false;
+        private static bool monitorLoggedOnce = false;
+
+        /// <summary>
+        /// Stops the EXP counter tone if it is currently playing. Safe to call from any
+        /// phase-init postfix or from ResetState; the flag ensures it only fires once.
+        /// </summary>
+        private static void StopExpCounterIfPlaying()
+        {
+            if (!expCounterPlaying) return;
+            expCounterPlaying = false;
+            SoundPlayer.StopExpCounter();
+            MelonLogger.Msg("[Battle Result] EXP counter stopped");
+        }
+
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
             try
             {
                 var controllerType = typeof(ResultMenuController);
 
-                // Patch ShowPointsInit for gil and XP announcements
+                // Patch ShowPointsInit for gil and XP announcements (also starts the EXP counter tone)
                 PatchMethod(harmony, controllerType, "ShowPointsInit", nameof(ShowPointsInit_Postfix));
 
                 // Patch ShowGetItemsInit for item drop announcements
@@ -41,6 +60,12 @@ namespace FFI_ScreenReader.Patches
 
                 // Patch ShowStatusUpInit for level up announcements
                 PatchMethod(harmony, controllerType, "ShowStatusUpInit", nameof(ShowStatusUpInit_Postfix));
+
+                // Additional post-points phases — each is a safety net that stops the EXP
+                // counter tone if the animation monitor has not already stopped it.
+                PatchMethod(harmony, controllerType, "ShowGetAbilitysInit", nameof(ShowGetAbilitysInit_Postfix));
+                PatchMethod(harmony, controllerType, "ShowLevelUpAbilitysInit", nameof(ShowLevelUpAbilitysInit_Postfix));
+                PatchMethod(harmony, controllerType, "EndWaitInit", nameof(EndWaitInit_Postfix));
 
             }
             catch (Exception ex)
@@ -146,7 +171,9 @@ namespace FFI_ScreenReader.Patches
                     MelonLogger.Warning($"[Battle Result] Error reading gil: {ex.Message}");
                 }
 
-                // Per-character XP announcements
+                // Per-character XP announcements. Accumulate the party total so we only
+                // start the EXP counter tone when EXP was actually gained.
+                int totalExp = 0;
                 try
                 {
                     var characterList = resultData.CharacterList;
@@ -169,6 +196,7 @@ namespace FFI_ScreenReader.Patches
                                 int charExp = charResult.GetExp;
                                 if (charExp > 0)
                                 {
+                                    totalExp += charExp;
                                     string expAnnouncement = string.Format(T("{0} gained {1} XP"), charName, charExp.ToString("N0"));
                                     FFI_ScreenReaderMod.SpeakText(expAnnouncement, interrupt: false);
                                 }
@@ -178,10 +206,107 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
                 catch { } // Result data may be partially available
+
+                // Start the EXP counter tone if enabled and any EXP was gained. The tone tracks
+                // the rolling EXP-bar animation; a monitor coroutine stops it when the tally
+                // finishes, and the later phase-init safety nets stop it otherwise.
+                if (PreferencesManager.ExpCounterEnabled && totalExp > 0)
+                {
+                    SoundPlayer.PlayExpCounter();
+                    expCounterPlaying = true;
+                    monitorLoggedOnce = false;
+                    CoroutineManager.StartUntracked(MonitorExpCounterAnimation(__instance.Pointer));
+                }
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Result] Error in ShowPointsInit_Postfix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Polls the unsafe pointer chain from ResultMenuController (KeyInput) to detect when the
+        /// EXP counting animation finishes, then stops the counter tone. The FF1 KeyInput result
+        /// object graph has the same field offsets as FF5:
+        ///   instance -> +0x20 (pointController) -> +0x30 (characterListConteroller)
+        ///     -> +0x20 (contentList, List._size at +0x18)
+        ///     -> +0x30 (perormanceEndCount)
+        /// Animation done when perormanceEndCount >= contentList.Count (with Count > 0).
+        /// If the chain can't be read, the coroutine bails and the phase-init safety nets stop
+        /// the tone instead, so it can never get stuck playing.
+        /// </summary>
+        private static IEnumerator MonitorExpCounterAnimation(IntPtr instancePtr)
+        {
+            var wait = new WaitForSeconds(0.1f);
+
+            if (instancePtr == IntPtr.Zero)
+            {
+                MelonLogger.Warning("[Battle Result] MonitorExp: instancePtr is null");
+                yield break;
+            }
+
+            IntPtr pointControllerPtr = Marshal.ReadIntPtr(instancePtr, 0x20);
+            if (pointControllerPtr == IntPtr.Zero)
+            {
+                MelonLogger.Warning("[Battle Result] MonitorExp: pointController is null");
+                yield break;
+            }
+
+            IntPtr charListCtrlPtr = Marshal.ReadIntPtr(pointControllerPtr, 0x30);
+            if (charListCtrlPtr == IntPtr.Zero)
+            {
+                MelonLogger.Warning("[Battle Result] MonitorExp: characterListController is null");
+                yield break;
+            }
+
+            IntPtr contentListPtr = Marshal.ReadIntPtr(charListCtrlPtr, 0x20);
+            if (contentListPtr == IntPtr.Zero)
+            {
+                MelonLogger.Warning("[Battle Result] MonitorExp: contentList is null");
+                yield break;
+            }
+
+            // contentList.Count (List._size) at contentListPtr + 0x18
+            int contentCount = Marshal.ReadInt32(contentListPtr, 0x18);
+            if (contentCount <= 0)
+            {
+                MelonLogger.Warning($"[Battle Result] MonitorExp: contentCount={contentCount}, aborting (safety nets will stop the tone)");
+                yield break;
+            }
+
+            MelonLogger.Msg($"[Battle Result] MonitorExp: chain OK. contentCount={contentCount}");
+
+            // Poll until the animation finishes or the counter was already stopped by a safety net.
+            while (expCounterPlaying)
+            {
+                yield return wait;
+
+                // Keep the Counter stream fed so the loop never drains between ticks.
+                SoundPlayer.TopUpExpCounter();
+
+                int endCount;
+                try
+                {
+                    endCount = Marshal.ReadInt32(charListCtrlPtr, 0x30);
+                }
+                catch
+                {
+                    // Pointer became invalid -- bail out; safety nets will handle the stop.
+                    yield break;
+                }
+
+                if (!monitorLoggedOnce)
+                {
+                    MelonLogger.Msg($"[Battle Result] MonitorExp: first poll endCount={endCount}/{contentCount}");
+                    monitorLoggedOnce = true;
+                }
+
+                if (endCount >= contentCount)
+                {
+                    MelonLogger.Msg($"[Battle Result] MonitorExp: animation done (endCount={endCount} >= contentCount={contentCount})");
+                    StopExpCounterIfPlaying();
+                    yield break;
+                }
             }
         }
 
@@ -247,6 +372,9 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
+                // Safety net: the EXP tally is finished by the time this phase begins.
+                StopExpCounterIfPlaying();
+
                 if (announcedItems) return;
                 announcedItems = true;
 
@@ -296,6 +424,9 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
+                // Safety net: the EXP tally is finished by the time this phase begins.
+                StopExpCounterIfPlaying();
+
                 BattleResultData resultData = GetTargetData(__instance);
                 if (resultData == null) return;
 
@@ -358,6 +489,31 @@ namespace FFI_ScreenReader.Patches
             {
                 MelonLogger.Warning($"[Battle Result] Error in ShowStatusUpInit_Postfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Postfix for ShowGetAbilitysInit — safety net that stops the EXP counter tone.
+        /// </summary>
+        public static void ShowGetAbilitysInit_Postfix()
+        {
+            StopExpCounterIfPlaying();
+        }
+
+        /// <summary>
+        /// Postfix for ShowLevelUpAbilitysInit — safety net that stops the EXP counter tone.
+        /// </summary>
+        public static void ShowLevelUpAbilitysInit_Postfix()
+        {
+            StopExpCounterIfPlaying();
+        }
+
+        /// <summary>
+        /// Postfix for EndWaitInit — the terminal results phase. Final safety net that
+        /// guarantees the EXP counter tone is stopped before the results screen closes.
+        /// </summary>
+        public static void EndWaitInit_Postfix()
+        {
+            StopExpCounterIfPlaying();
         }
 
         /// <summary>
@@ -491,6 +647,8 @@ namespace FFI_ScreenReader.Patches
             announcedPoints = false;
             announcedItems = false;
             announcedLevelUps.Clear();
+            // Hard stop any tone left over from a previous, abnormally-ended result screen.
+            StopExpCounterIfPlaying();
         }
     }
 }

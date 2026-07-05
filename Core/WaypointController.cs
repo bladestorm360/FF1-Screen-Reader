@@ -94,10 +94,10 @@ namespace FFI_ScreenReader.Core
             NavigationTargetTracker.MarkWaypoint();
 
             // Beacon mode: just restart the beacon to re-ping toward this waypoint.
-            if (FFI_ScreenReaderMod.AudioBeaconsEnabled)
+            if (PreferencesManager.AudioBeaconsEnabled)
             {
                 FFI_ScreenReaderMod.Instance?.RestartBeacon();
-                if (FFI_ScreenReaderMod.AnnounceOnBeaconRestartEnabled)
+                if (PreferencesManager.AnnounceOnBeaconRestartEnabled)
                     FFI_ScreenReaderMod.SpeakText(waypointNavigator.FormatCurrentWaypoint());
                 return;
             }

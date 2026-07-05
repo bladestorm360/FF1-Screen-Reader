@@ -56,25 +56,9 @@ namespace FFI_ScreenReader.Core
         /// </summary>
         public static FFI_ScreenReaderMod Instance => instance;
 
-        // Pathfinding filter toggle
-        private bool filterByPathfinding = false;
-
-        // Map exit filter toggle
-        private bool filterMapExits = false;
-
-        // ToLayer (layer transition) filter toggle
-        private bool filterToLayer = false;
-
-        // Audio feedback toggles
-        private bool enableWallTones = false;
-        private bool enableFootsteps = false;
-        private bool enableAudioBeacons = false;
-        private bool enableAutoDetail = true;
-        private bool enableAnnounceOnBeaconRestart = false;
-        private bool enableMenuPositionAnnouncements = true;
-
-        // Controller normalization (L3/R3 pass-through to game when not in mod mode)
-        private bool enableStickClickNormalization = false;
+        // Toggle/filter state is single-sourced in PreferencesManager (read *Enabled directly);
+        // this class no longer mirrors it. Filter values are pushed to the EntityScanner on
+        // toggle and at init.
 
         public override void OnInitializeMelon()
         {
@@ -92,18 +76,6 @@ namespace FFI_ScreenReader.Core
             // Initialize preferences
             PreferencesManager.Initialize();
 
-            // Load saved preferences
-            filterByPathfinding = PreferencesManager.PathfindingFilterDefault;
-            filterMapExits = PreferencesManager.MapExitFilterDefault;
-            filterToLayer = PreferencesManager.ToLayerFilterDefault;
-            enableWallTones = PreferencesManager.WallTonesDefault;
-            enableFootsteps = PreferencesManager.FootstepsDefault;
-            enableAudioBeacons = PreferencesManager.AudioBeaconsDefault;
-            enableAutoDetail = PreferencesManager.AutoDetailDefault;
-            enableStickClickNormalization = PreferencesManager.StickClickNormalizationDefault;
-            enableAnnounceOnBeaconRestart = PreferencesManager.AnnounceOnBeaconRestartDefault;
-            enableMenuPositionAnnouncements = PreferencesManager.MenuPositionAnnouncementsDefault;
-
             // Initialize Tolk for screen reader support
             tolk = new TolkWrapper();
             tolk.Load();
@@ -119,8 +91,8 @@ namespace FFI_ScreenReader.Core
 
             // Initialize entity scanner for field navigation
             entityScanner = new EntityScanner();
-            entityScanner.FilterByPathfinding = filterByPathfinding;
-            entityScanner.FilterToLayer = filterToLayer;
+            entityScanner.FilterByPathfinding = PreferencesManager.PathfindingFilterEnabled;
+            entityScanner.FilterToLayer = PreferencesManager.ToLayerFilterEnabled;
 
             // Initialize managers (order matters: entityNav before categories)
             entityNav = new EntityNavigationManager(entityScanner, () => categories?.CurrentCategory ?? EntityCategory.All);
@@ -132,7 +104,7 @@ namespace FFI_ScreenReader.Core
             waypointController = new WaypointController(entityNav, waypointManager, waypointNavigator);
             Handlers.WaypointHandler.Initialize(waypointController);
 
-            audioLoopManager = new AudioLoopManager(this, entityScanner, waypointNavigator);
+            audioLoopManager = new AudioLoopManager(entityScanner, waypointNavigator);
 
             // Initialize input manager
             inputManager = new InputManager(this);
@@ -452,51 +424,51 @@ namespace FFI_ScreenReader.Core
 
         internal void TogglePathfindingFilter()
         {
-            filterByPathfinding = !filterByPathfinding;
+            bool newVal = !PreferencesManager.PathfindingFilterEnabled;
+            PreferencesManager.SavePathfindingFilter(newVal);
             if (entityScanner != null)
-                entityScanner.FilterByPathfinding = filterByPathfinding;
-            PreferencesManager.SavePathfindingFilter(filterByPathfinding);
-            SaveAndAnnounce(T("Pathfinding filter"), filterByPathfinding);
+                entityScanner.FilterByPathfinding = newVal;
+            SaveAndAnnounce(T("Pathfinding filter"), newVal);
         }
 
         internal void ToggleMapExitFilter()
         {
-            filterMapExits = !filterMapExits;
-            PreferencesManager.SaveMapExitFilter(filterMapExits);
+            bool newVal = !PreferencesManager.MapExitFilterEnabled;
+            PreferencesManager.SaveMapExitFilter(newVal);
             entityScanner?.ReapplyFilter();
-            SaveAndAnnounce(T("Map exit filter"), filterMapExits);
+            SaveAndAnnounce(T("Map exit filter"), newVal);
         }
 
         internal void ToggleToLayerFilter()
         {
-            filterToLayer = !filterToLayer;
+            bool newVal = !PreferencesManager.ToLayerFilterEnabled;
+            PreferencesManager.SaveToLayerFilter(newVal);
             if (entityScanner != null)
-                entityScanner.FilterToLayer = filterToLayer;
-            PreferencesManager.SaveToLayerFilter(filterToLayer);
-            SaveAndAnnounce(T("Layer transition filter"), filterToLayer);
+                entityScanner.FilterToLayer = newVal;
+            SaveAndAnnounce(T("Layer transition filter"), newVal);
         }
 
         internal void ToggleWallTones()
         {
-            enableWallTones = !enableWallTones;
-            if (enableWallTones) audioLoopManager?.StartWallToneLoop(); else audioLoopManager?.StopWallToneLoop();
-            PreferencesManager.SaveWallTones(enableWallTones);
-            SaveAndAnnounce(T("Wall tones"), enableWallTones);
+            bool newVal = !PreferencesManager.WallTonesEnabled;
+            PreferencesManager.SaveWallTones(newVal);
+            if (newVal) audioLoopManager?.StartWallToneLoop(); else audioLoopManager?.StopWallToneLoop();
+            SaveAndAnnounce(T("Wall tones"), newVal);
         }
 
         internal void ToggleFootsteps()
         {
-            enableFootsteps = !enableFootsteps;
-            PreferencesManager.SaveFootsteps(enableFootsteps);
-            SaveAndAnnounce(T("Footsteps"), enableFootsteps);
+            bool newVal = !PreferencesManager.FootstepsEnabled;
+            PreferencesManager.SaveFootsteps(newVal);
+            SaveAndAnnounce(T("Footsteps"), newVal);
         }
 
         internal void ToggleAudioBeacons()
         {
-            enableAudioBeacons = !enableAudioBeacons;
-            if (enableAudioBeacons) audioLoopManager?.StartBeaconLoop(); else audioLoopManager?.StopBeaconLoop();
-            PreferencesManager.SaveAudioBeacons(enableAudioBeacons);
-            SaveAndAnnounce(T("Beacon navigation"), enableAudioBeacons);
+            bool newVal = !PreferencesManager.AudioBeaconsEnabled;
+            PreferencesManager.SaveAudioBeacons(newVal);
+            if (newVal) audioLoopManager?.StartBeaconLoop(); else audioLoopManager?.StopBeaconLoop();
+            SaveAndAnnounce(T("Beacon navigation"), newVal);
         }
 
         internal void RestartBeacon() => audioLoopManager?.RestartBeacon();
@@ -508,53 +480,45 @@ namespace FFI_ScreenReader.Core
         internal void RestartEntityBeacon()
         {
             RestartBeacon();
-            if (enableAnnounceOnBeaconRestart) AnnounceEntityOnly();
+            if (PreferencesManager.AnnounceOnBeaconRestartEnabled) AnnounceEntityOnly();
         }
 
         internal void ToggleAutoDetail()
         {
-            enableAutoDetail = !enableAutoDetail;
-            PreferencesManager.SaveAutoDetail(enableAutoDetail);
-            SaveAndAnnounce(T("Auto detail"), enableAutoDetail);
+            bool newVal = !PreferencesManager.AutoDetailEnabled;
+            PreferencesManager.SaveAutoDetail(newVal);
+            SaveAndAnnounce(T("Auto detail"), newVal);
         }
 
         internal void ToggleAnnounceOnBeaconRestart()
         {
-            enableAnnounceOnBeaconRestart = !enableAnnounceOnBeaconRestart;
-            PreferencesManager.SaveAnnounceOnBeaconRestart(enableAnnounceOnBeaconRestart);
-            SaveAndAnnounce(T("Beacon destination announcement"), enableAnnounceOnBeaconRestart);
+            bool newVal = !PreferencesManager.AnnounceOnBeaconRestartEnabled;
+            PreferencesManager.SaveAnnounceOnBeaconRestart(newVal);
+            SaveAndAnnounce(T("Beacon destination announcement"), newVal);
         }
 
         internal void ToggleMenuPositionAnnouncements()
         {
-            enableMenuPositionAnnouncements = !enableMenuPositionAnnouncements;
-            PreferencesManager.SaveMenuPositionAnnouncements(enableMenuPositionAnnouncements);
-            SaveAndAnnounce(T("Menu position announcements"), enableMenuPositionAnnouncements);
+            bool newVal = !PreferencesManager.MenuPositionAnnouncementsEnabled;
+            PreferencesManager.SaveMenuPositionAnnouncements(newVal);
+            SaveAndAnnounce(T("Menu position announcements"), newVal);
+        }
+
+        internal void ToggleExpCounter()
+        {
+            bool newVal = !PreferencesManager.ExpCounterEnabled;
+            PreferencesManager.SaveExpCounter(newVal);
+            // If turned off mid-tally, stop any tone that is currently playing.
+            if (!newVal) SoundPlayer.StopExpCounter();
+            SaveAndAnnounce(T("EXP counter sound"), newVal);
         }
 
         internal void ToggleStickClickNormalization()
         {
-            enableStickClickNormalization = !enableStickClickNormalization;
-            PreferencesManager.SaveStickClickNormalization(enableStickClickNormalization);
-            SaveAndAnnounce(T("Stick click normalization"), enableStickClickNormalization);
+            bool newVal = !PreferencesManager.StickClickNormalizationEnabled;
+            PreferencesManager.SaveStickClickNormalization(newVal);
+            SaveAndAnnounce(T("Stick click normalization"), newVal);
         }
-
-        // Accessors for audio feedback state (used by AudioLoopManager and MovementSoundPatches)
-        internal bool IsWallTonesEnabled() => enableWallTones;
-        internal bool IsFootstepsEnabled() => enableFootsteps;
-        internal bool IsAudioBeaconsEnabled() => enableAudioBeacons;
-
-        // Public static accessors for filter/toggle settings (used by ModMenu)
-        public static bool PathfindingFilterEnabled => instance?.filterByPathfinding ?? false;
-        public static bool MapExitFilterEnabled => instance?.filterMapExits ?? false;
-        public static bool ToLayerFilterEnabled => instance?.filterToLayer ?? false;
-        public static bool WallTonesEnabled => instance?.enableWallTones ?? false;
-        public static bool FootstepsEnabled => instance?.enableFootsteps ?? false;
-        public static bool AudioBeaconsEnabled => instance?.enableAudioBeacons ?? false;
-        public static bool AutoDetailEnabled => instance?.enableAutoDetail ?? false;
-        public static bool StickClickNormalizationEnabled => instance?.enableStickClickNormalization ?? false;
-        public static bool AnnounceOnBeaconRestartEnabled => instance?.enableAnnounceOnBeaconRestart ?? false;
-        public static bool MenuPositionAnnouncementsEnabled => instance?.enableMenuPositionAnnouncements ?? true;
 
         /// <summary>
         /// Gets the currently selected entity for audio beacon tracking.

@@ -271,7 +271,7 @@ namespace FFI_ScreenReader.Patches
                 announcement = TextUtils.StripIconMarkup(announcement);
 
                 // AutoDetail: append stats/description for the equipped item
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                if (PreferencesManager.AutoDetailEnabled)
                 {
                     string detail = null;
                     try { detail = EquipDetailsAnnouncer.GetDescriptionFromUI(); } catch { }
@@ -427,7 +427,7 @@ namespace FFI_ScreenReader.Patches
                 // AutoDetail appends the same detail the I key reads.
                 string baseAnnouncement = itemName;
                 string announcement = baseAnnouncement;
-                if (FFI_ScreenReaderMod.AutoDetailEnabled)
+                if (PreferencesManager.AutoDetailEnabled)
                 {
                     string detail = null;
                     try { detail = EquipDetailsAnnouncer.GetDescriptionFromUI(); } catch { }
