@@ -100,11 +100,15 @@ namespace FFI_ScreenReader.Patches
         // Multi-hit multiplier captured from DamageViewUIManager.CreateHitCount, which fires just before
         // the matching CreateDamageView. Consumed (and reset to 1) by CreateDamageView_Postfix.
         private static int _pendingHitCount = 1;
+        // Frame on which the hit count was captured. Used to reject a stale count (e.g. from an
+        // evaded/unconsumed hit) so it can't leak into the next unrelated attack's announcement.
+        private static int _pendingHitCountFrame = -1;
 
         /// <summary>Captures the hit-count multiplier (__0 = hitCountValue) for the next damage view.</summary>
         public static void CreateHitCount_Postfix(int __0)
         {
             _pendingHitCount = __0;
+            _pendingHitCountFrame = UnityEngine.Time.frameCount;
         }
 
         /// <summary>
@@ -256,8 +260,10 @@ namespace FFI_ScreenReader.Patches
                 string targetName = GetUnitName(data);
 
                 // Consume the multi-hit count captured by CreateHitCount (it fires just before this view).
+                // Only honor it when captured on this frame (or the previous one) — an evaded or
+                // otherwise unconsumed hit count must not leak into the next unrelated attack.
                 // Reset to 1 so a later damage with no fresh hit count defaults to single.
-                int hitCount = _pendingHitCount;
+                int hitCount = (UnityEngine.Time.frameCount - _pendingHitCountFrame <= 1) ? _pendingHitCount : 1;
                 _pendingHitCount = 1;
 
                 string message;

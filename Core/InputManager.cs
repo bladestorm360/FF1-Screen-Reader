@@ -337,7 +337,9 @@ namespace FFI_ScreenReader.Core
 
             if (GamepadManager.IsKeyCodePressed(KeyCode.F5))
             {
-                if (ControllerRouter.IsFieldActive)
+                // Enemy HP Display is a battle feature, so gate on in-battle (not IsFieldActive,
+                // which is false during battle). FF1 is job-less but still shows enemy HP in battle.
+                if (BattleStateHelper.IsInBattle)
                 {
                     int current = PreferencesManager.EnemyHPDisplay;
                     int next = (current + 1) % 3;
