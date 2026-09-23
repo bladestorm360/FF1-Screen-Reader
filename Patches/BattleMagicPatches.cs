@@ -361,7 +361,7 @@ namespace FFI_ScreenReader.Patches
                         spellLevel = abilityData.AbilityLv;
                         if (spellLevel > 0 && spellLevel <= 8)
                         {
-                            announcement += $" Lv{spellLevel}";
+                            announcement += " " + string.Format(T("Lv{0}"), spellLevel);
                         }
                     }
                 }
@@ -375,7 +375,7 @@ namespace FFI_ScreenReader.Patches
                         var charges = GetChargesForLevel(spellLevel);
                         if (charges.max > 0)
                         {
-                            announcement += $": MP: {charges.current}/{charges.max}";
+                            announcement += ": " + string.Format(T("MP: {0}/{1}"), charges.current, charges.max);
                         }
                     }
                     catch { } // Charge lookup may fail in battle

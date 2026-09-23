@@ -6,6 +6,7 @@ using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using Il2CppLast.Management;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // Type aliases for IL2CPP types
 using KeyInputItemListController = Il2CppLast.UI.KeyInput.ItemListController;
@@ -146,7 +147,7 @@ namespace FFI_ScreenReader.Patches
                     {
                         if (corps.CharacterId == characterId)
                         {
-                            string row = corps.Id == CorpsId.Front ? "Front Row" : "Back Row";
+                            string row = corps.Id == CorpsId.Front ? T("Front Row") : T("Back Row");
                             return row;
                         }
                     }
@@ -167,11 +168,11 @@ namespace FFI_ScreenReader.Patches
             switch (commandId)
             {
                 case ItemCommandId.Use:
-                    return GetLocalizedCommand("$menu_item_use") ?? "Use";
+                    return GetLocalizedCommand("$menu_item_use") ?? T("Use");
                 case ItemCommandId.Organize:
-                    return GetLocalizedCommand("$menu_item_organize") ?? "Sort";
+                    return GetLocalizedCommand("$menu_item_organize") ?? T("Sort");
                 case ItemCommandId.Important:
-                    return GetLocalizedCommand("$menu_item_important") ?? "Key Items";
+                    return GetLocalizedCommand("$menu_item_important") ?? T("Key Items");
                 default:
                     return null;
             }
@@ -266,7 +267,7 @@ namespace FFI_ScreenReader.Patches
                     {
                         int currentHp = parameter.currentHP;
                         int maxHp = parameter.ConfirmedMaxHp();
-                        announcement += $", HP {currentHp}/{maxHp}";
+                        announcement += ", " + string.Format(T("HP {0}/{1}"), currentHp, maxHp);
 
                         var conditionList = parameter.CurrentConditionList;
                         if (conditionList != null && conditionList.Count > 0)

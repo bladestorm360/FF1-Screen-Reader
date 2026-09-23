@@ -4,6 +4,7 @@ using MelonLoader;
 using Il2CppLast.Data.User;
 using Il2CppSerial.FF1.UI.KeyInput;
 using FFI_ScreenReader.Core;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Menus
 {
@@ -51,8 +52,8 @@ namespace FFI_ScreenReader.Menus
                     var param = currentCharacterData.Parameter;
                     if (param != null)
                     {
-                        parts.Add($"Level {param.ConfirmedLevel()}");
-                        parts.Add($"HP: {param.currentHP} / {param.ConfirmedMaxHp()}");
+                        parts.Add(string.Format(T("Level {0}"), param.ConfirmedLevel()));
+                        parts.Add(string.Format(T("HP: {0} / {1}"), param.currentHP, param.ConfirmedMaxHp()));
                     }
                 }
                 catch (Exception ex)

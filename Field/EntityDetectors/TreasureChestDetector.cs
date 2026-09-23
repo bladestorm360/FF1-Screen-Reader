@@ -1,4 +1,5 @@
 using FieldTresureBox = Il2CppLast.Entity.Field.FieldTresureBox;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
@@ -31,7 +32,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
         {
             bool isOpened = EntityDetectionHelpers.CheckIfTreasureOpened(context.FieldEntity);
             string contents = EntityDetectionHelpers.GetTreasureContents(context.PropertyObject);
-            string name = !string.IsNullOrEmpty(contents) ? contents : "Treasure Chest";
+            string name = !string.IsNullOrEmpty(contents) ? contents : T("Treasure Chest");
             return new TreasureChestEntity(context.FieldEntity, context.Position, name, isOpened);
         }
     }

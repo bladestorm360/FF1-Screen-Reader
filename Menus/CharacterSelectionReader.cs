@@ -3,6 +3,7 @@ using MelonLoader;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using static FFI_ScreenReader.Utils.TextUtils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 using MenuManager = Il2CppLast.UI.MenuManager;
 
 namespace FFI_ScreenReader.Menus
@@ -273,11 +274,11 @@ namespace FFI_ScreenReader.Menus
                 {
                     if (!string.IsNullOrEmpty(announcement))
                     {
-                        announcement += ", Level " + level;
+                        announcement += ", " + string.Format(T("Level {0}"), level);
                     }
                     else
                     {
-                        announcement = "Level " + level;
+                        announcement = string.Format(T("Level {0}"), level);
                     }
                 }
 
@@ -286,11 +287,11 @@ namespace FFI_ScreenReader.Menus
                 {
                     if (!string.IsNullOrEmpty(maxHP))
                     {
-                        announcement += $", HP {currentHP}/{maxHP}";
+                        announcement += ", " + string.Format(T("HP {0}/{1}"), currentHP, maxHP);
                     }
                     else
                     {
-                        announcement += $", HP {currentHP}";
+                        announcement += ", " + string.Format(T("HP {0}"), currentHP);
                     }
                 }
 
@@ -299,11 +300,11 @@ namespace FFI_ScreenReader.Menus
                 {
                     if (!string.IsNullOrEmpty(maxMP))
                     {
-                        announcement += $", MP {currentMP}/{maxMP}";
+                        announcement += ", " + string.Format(T("MP {0}/{1}"), currentMP, maxMP);
                     }
                     else
                     {
-                        announcement += $", MP {currentMP}";
+                        announcement += ", " + string.Format(T("MP {0}"), currentMP);
                     }
                 }
 

@@ -475,13 +475,13 @@ namespace FFI_ScreenReader.Patches
 
                 if (spellLevel > 0)
                 {
-                    baseAnnouncement += $" LV{spellLevel}";
+                    baseAnnouncement += " " + string.Format(T("LV{0}"), spellLevel);
 
                     if (MagicMenuState.CurrentCharacter != null)
                     {
                         var (current, max) = MagicMenuState.GetChargesForLevel(MagicMenuState.CurrentCharacter, spellLevel);
                         if (max > 0)
-                            baseAnnouncement += $": MP: {current}/{max}";
+                            baseAnnouncement += ": " + string.Format(T("MP: {0}/{1}"), current, max);
                     }
                 }
 

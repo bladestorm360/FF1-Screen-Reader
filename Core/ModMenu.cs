@@ -287,6 +287,10 @@ namespace FFI_ScreenReader.Core
             IsOpen = true;
             currentIndex = 0;
 
+            // F8 and the controller Start button must leave the controller in the same state:
+            // MOD_MENU, so the D-pad / stick / LT drive the menu instead of acting underneath it.
+            ControllerRouter.SyncWithModMenu(true);
+
             // Skip section header at index 0
             if (items != null && items.Count > 1 && items[0] is SectionHeader)
                 currentIndex = 1;
@@ -317,6 +321,9 @@ namespace FFI_ScreenReader.Core
             if (!IsOpen) return;
 
             IsOpen = false;
+            // Every close path (keyboard, menu item, controller) returns the controller to NORMAL,
+            // also when no gamepad is connected (ControllerRouter.Update then returns early).
+            ControllerRouter.SyncWithModMenu(false);
             // Announce on every close path (keyboard Escape/F8, "Close Menu" item, controller B/Start).
             FFI_ScreenReaderMod.SpeakText(T("Mod menu closed"), interrupt: true);
             // Game input restored automatically — ControllerRouter.SuppressGameInput becomes false

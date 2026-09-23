@@ -1,4 +1,5 @@
 using FieldNonPlayer = Il2CppLast.Entity.Field.FieldNonPlayer;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
@@ -27,7 +28,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
 
             string npcName = EntityDetectionHelpers.GetEntityNameFromProperty(context.FieldEntity);
             if (string.IsNullOrEmpty(npcName) || npcName == "NPC")
-                npcName = EntityDetectionHelpers.CleanObjectName(context.GameObjectName, "NPC");
+                npcName = EntityDetectionHelpers.CleanObjectName(context.GameObjectName, T("NPC"));
             bool isShop = context.GameObjectNameLower.Contains("shop") ||
                           context.GameObjectNameLower.Contains("merchant");
             return DetectionResult.Detected(

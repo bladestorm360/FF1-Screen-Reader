@@ -1,3 +1,5 @@
+using static FFI_ScreenReader.Utils.ModTextTranslator;
+
 namespace FFI_ScreenReader.Core
 {
     /// <summary>
@@ -51,7 +53,7 @@ namespace FFI_ScreenReader.Core
                 case SDL3.SDL_GAMEPAD_BUTTON_SOUTH:
                     return family switch
                     {
-                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => "Cross",
+                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => T("Cross"),
                         ControllerFamily.Nintendo => "B",
                         _ => "A"
                     };
@@ -59,7 +61,7 @@ namespace FFI_ScreenReader.Core
                 case SDL3.SDL_GAMEPAD_BUTTON_EAST:
                     return family switch
                     {
-                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => "Circle",
+                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => T("Circle"),
                         ControllerFamily.Nintendo => "A",
                         _ => "B"
                     };
@@ -67,7 +69,7 @@ namespace FFI_ScreenReader.Core
                 case SDL3.SDL_GAMEPAD_BUTTON_WEST:
                     return family switch
                     {
-                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => "Square",
+                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => T("Square"),
                         ControllerFamily.Nintendo => "Y",
                         _ => "X"
                     };
@@ -75,7 +77,7 @@ namespace FFI_ScreenReader.Core
                 case SDL3.SDL_GAMEPAD_BUTTON_NORTH:
                     return family switch
                     {
-                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => "Triangle",
+                        ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => T("Triangle"),
                         ControllerFamily.Nintendo => "X",
                         _ => "Y"
                     };
@@ -84,23 +86,23 @@ namespace FFI_ScreenReader.Core
                     return family switch
                     {
                         ControllerFamily.Xbox360 => "Back",
-                        ControllerFamily.XboxOne => "View",
+                        ControllerFamily.XboxOne => T("View"),
                         ControllerFamily.PS3 => "Select",
                         ControllerFamily.PS4 => "Share",
                         ControllerFamily.PS5 => "Create",
-                        ControllerFamily.Nintendo => "Minus",
-                        _ => "View"
+                        ControllerFamily.Nintendo => T("Minus"),
+                        _ => T("View")
                     };
 
                 case SDL3.SDL_GAMEPAD_BUTTON_START:
                     return family switch
                     {
                         ControllerFamily.Xbox360 => "Start",
-                        ControllerFamily.XboxOne => "Menu",
+                        ControllerFamily.XboxOne => T("Menu"),
                         ControllerFamily.PS3 => "Start",
                         ControllerFamily.PS4 or ControllerFamily.PS5 => "Options",
-                        ControllerFamily.Nintendo => "Plus",
-                        _ => "Menu"
+                        ControllerFamily.Nintendo => T("Plus"),
+                        _ => T("Menu")
                     };
 
                 case SDL3.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
@@ -133,10 +135,10 @@ namespace FFI_ScreenReader.Core
                         _ => "RS"
                     };
 
-                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_UP: return "D-pad Up";
-                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_DOWN: return "D-pad Down";
-                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_LEFT: return "D-pad Left";
-                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return "D-pad Right";
+                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_UP: return T("D-pad Up");
+                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_DOWN: return T("D-pad Down");
+                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_LEFT: return T("D-pad Left");
+                case SDL3.SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return T("D-pad Right");
 
                 case SDL3.SDL_GAMEPAD_BUTTON_GUIDE:
                     return family switch
@@ -144,11 +146,11 @@ namespace FFI_ScreenReader.Core
                         ControllerFamily.Xbox360 => "Guide",
                         ControllerFamily.XboxOne => "Xbox",
                         ControllerFamily.PS3 or ControllerFamily.PS4 or ControllerFamily.PS5 => "PS",
-                        ControllerFamily.Nintendo => "Home",
+                        ControllerFamily.Nintendo => T("Home"),
                         _ => "Xbox"
                     };
 
-                default: return $"Button {button}";
+                default: return string.Format(T("Button {0}"), button);
             }
         }
 
@@ -185,7 +187,7 @@ namespace FFI_ScreenReader.Core
         {
             return GetFamily() switch
             {
-                ControllerFamily.Nintendo => "L Stick Click",
+                ControllerFamily.Nintendo => T("L Stick Click"),
                 _ => "L3"
             };
         }
@@ -194,7 +196,7 @@ namespace FFI_ScreenReader.Core
         {
             return GetFamily() switch
             {
-                ControllerFamily.Nintendo => "R Stick Click",
+                ControllerFamily.Nintendo => T("R Stick Click"),
                 _ => "R3"
             };
         }

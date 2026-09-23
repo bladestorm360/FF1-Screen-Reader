@@ -329,7 +329,7 @@ namespace FFI_ScreenReader.Patches
                             {
                                 BestiaryStateTracker.CachedHabitatNames = new List<string>();
                                 for (int i = 0; i < habitatList.Count; i++)
-                                    BestiaryStateTracker.CachedHabitatNames.Add(habitatList[i] ?? "Unknown location");
+                                    BestiaryStateTracker.CachedHabitatNames.Add(habitatList[i] ?? T("Unknown location"));
                             }
                         }
                         CoroutineManager.StartManaged(AnnounceMapView());
@@ -484,7 +484,7 @@ namespace FFI_ScreenReader.Patches
                 string announcement = BestiaryReader.ReadFormation(partyIndex, party);
 
                 if (partyList.Count > 1)
-                    announcement += $" ({partyIndex + 1} of {partyList.Count})";
+                    announcement += " " + string.Format(T("({0} of {1})"), partyIndex + 1, partyList.Count);
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }
@@ -636,7 +636,7 @@ namespace FFI_ScreenReader.Patches
                 // Prepend the monster name as the top navigable entry — it is auto-read on entry (below)
                 // and is the single source of the "you're now viewing this monster" announce.
                 var pbData = tracker.CurrentMonsterData?.pictureBookData;
-                string name = pbData != null && pbData.IsRelease ? pbData.MonsterName : "Unknown";
+                string name = pbData != null && pbData.IsRelease ? pbData.MonsterName : T("Unknown");
                 entries.Insert(0, new BestiaryStatEntry(T("Name"), name, BestiaryStatGroup.MonsterData));
 
                 BestiaryNavigationReader.Initialize(entries);

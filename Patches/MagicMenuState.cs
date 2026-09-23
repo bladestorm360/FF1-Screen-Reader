@@ -138,28 +138,32 @@ namespace FFI_ScreenReader.Patches
             _isTargetSelectionActive = false;
         }
 
-        // Fallback mapping for conditions with empty/missing MesIdName.
-        // Values are English keys into ModTextTranslator (localized at call time via T()).
-        private static readonly Dictionary<int, string> ConditionTypeFallbacks = new Dictionary<int, string>
+        // Fallback names for conditions with empty/missing MesIdName, localized at call time.
+        // Literal T() keys (not a lookup table) so tools/modtext_check.py sees every key.
+        private static string ConditionTypeFallback(int conditionType)
         {
-            { 4, "Critical" },        // Dying (low HP)
-            { 5, "KO" },              // UnableFight
-            { 6, "Silence" },
-            { 7, "Sleep" },
-            { 8, "Paralysis" },
-            { 9, "Blind" },
-            { 10, "Poison" },
-            { 11, "Stone" },           // Mineralization
-            { 12, "Confusion" },
-            { 16, "Slow" },
-            { 17, "Stop" },
-            { 32, "Aging" },
-            { 34, "Zombie" },
-            { 204, "Venom" },
-            { 404, "Doom" },
-            { 405, "Gradual Petrify" }, // SlowlyMineralization
-            { 406, "Curse" },
-        };
+            switch (conditionType)
+            {
+                case 4: return T("Critical");          // Dying (low HP)
+                case 5: return T("KO");                // UnableFight
+                case 6: return T("Silence");
+                case 7: return T("Sleep");
+                case 8: return T("Paralysis");
+                case 9: return T("Blind");
+                case 10: return T("Poison");
+                case 11: return T("Stone");            // Mineralization
+                case 12: return T("Confusion");
+                case 16: return T("Slow");
+                case 17: return T("Stop");
+                case 32: return T("Aging");
+                case 34: return T("Zombie");
+                case 204: return T("Venom");
+                case 404: return T("Doom");
+                case 405: return T("Gradual Petrify"); // SlowlyMineralization
+                case 406: return T("Curse");
+                default: return null;
+            }
+        }
 
         public static string GetConditionName(Condition condition)
         {
@@ -184,8 +188,9 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
 
-                if (ConditionTypeFallbacks.TryGetValue(condType, out string fallback))
-                    return T(fallback);
+                string fallback = ConditionTypeFallback(condType);
+                if (fallback != null)
+                    return fallback;
             }
             catch { } // IL2CPP message resolution may fail
 

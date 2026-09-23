@@ -4,6 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -264,10 +265,15 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Maps FF1 job ID to job name.
+        /// Maps FF1 job ID to job name: the game's own localized name (Job master data -> MessageManager)
+        /// first, then an English last-resort fallback.
         /// </summary>
         internal static string GetJobNameById(int jobId)
         {
+            string localized = GetLocalizedJobName(jobId);
+            if (!string.IsNullOrWhiteSpace(localized))
+                return localized;
+
             switch (jobId)
             {
                 case 1: return "Warrior";
@@ -282,8 +288,21 @@ namespace FFI_ScreenReader.Patches
                 case 10: return "Red Wizard";
                 case 11: return "White Wizard";
                 case 12: return "Black Wizard";
-                default: return $"Job {jobId}";
+                default: return string.Format(T("Job {0}"), jobId);
             }
+        }
+
+        private static string GetLocalizedJobName(int jobId)
+        {
+            try
+            {
+                var job = Il2CppLast.Data.Master.MasterManager.Instance?.GetData<Il2CppLast.Data.Master.Job>(jobId);
+                string mesId = job?.MesIdName;
+                if (string.IsNullOrEmpty(mesId)) return null;
+                string name = Il2CppLast.Management.MessageManager.Instance?.GetMessage(mesId, false);
+                return string.IsNullOrWhiteSpace(name) ? null : TextUtils.StripIconMarkup(name).Trim();
+            }
+            catch { return null; } // master data not loaded yet -> English fallback
         }
 
         private static int GetJobIdFromMasterData(int characterStatusId)

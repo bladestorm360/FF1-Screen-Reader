@@ -1,3 +1,5 @@
+using static FFI_ScreenReader.Utils.ModTextTranslator;
+
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
     /// <summary>
@@ -17,7 +19,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
                 int destMapId = EntityDetectionHelpers.GetGotoMapDestinationId(context.FieldEntity);
                 string destName = EntityDetectionHelpers.ResolveMapName(destMapId);
                 return DetectionResult.Detected(
-                    new MapExitEntity(context.FieldEntity, context.Position, "Exit", destMapId, destName));
+                    new MapExitEntity(context.FieldEntity, context.Position, T("Exit"), destMapId, destName));
             }
             return DetectionResult.NotHandled;
         }

@@ -187,13 +187,12 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetDisplayName()
         {
-            string status = IsOpened ? "Opened" : "Unopened";
-            return $"{status} {Name}";
+            return string.Format(IsOpened ? T("Opened {0}") : T("Unopened {0}"), Name);
         }
 
         protected override string GetEntityTypeName()
         {
-            return "Treasure Chest";
+            return T("Treasure Chest");
         }
     }
 
@@ -239,7 +238,7 @@ namespace FFI_ScreenReader.Field
 
             if (IsShop)
             {
-                details.Add("shop");
+                details.Add(T("shop"));
             }
 
             string detailStr = details.Count > 0 ? $" ({string.Join(", ", details)})" : "";
@@ -248,7 +247,7 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetEntityTypeName()
         {
-            return "NPC";
+            return T("NPC");
         }
     }
 
@@ -295,7 +294,7 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetEntityTypeName()
         {
-            return "Map Exit";
+            return T("Map Exit");
         }
     }
 
@@ -328,7 +327,7 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetEntityTypeName()
         {
-            return "Save Point";
+            return T("Save Point");
         }
     }
 
@@ -368,7 +367,25 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetEntityTypeName()
         {
-            return eventTypeName;
+            return LocalizeTypeName(eventTypeName);
+        }
+
+        /// <summary>
+        /// Spoken form of an event/trigger type. The raw English type stays the internal key
+        /// (ToLayerFilter matches EventTypeName == "ToLayer"); only the announcement is localized.
+        /// </summary>
+        internal static string LocalizeTypeName(string typeName)
+        {
+            switch (typeName)
+            {
+                case "Event": return T("Event");
+                case "Interactive Object": return T("Interactive Object");
+                case "Interactive": return T("Interactive");
+                case "Warp Tile": return T("Warp Tile");
+                case "ToLayer": return T("Layer transition");
+                case "Hidden Trigger": return T("Hidden Trigger");
+                default: return typeName;
+            }
         }
     }
 
@@ -397,7 +414,7 @@ namespace FFI_ScreenReader.Field
         public override bool BlocksPathing => false;
         public override bool IsAlive => true; // Synthetic, no backing FieldEntity
         protected override string GetDisplayName() => Name;
-        protected override string GetEntityTypeName() => triggerTypeName;
+        protected override string GetEntityTypeName() => EventEntity.LocalizeTypeName(triggerTypeName);
     }
 
     /// <summary>
@@ -436,7 +453,7 @@ namespace FFI_ScreenReader.Field
 
         protected override string GetEntityTypeName()
         {
-            return "Vehicle";
+            return T("Vehicle");
         }
 
         /// <summary>

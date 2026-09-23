@@ -6,6 +6,7 @@ using MelonLoader;
 using Il2CppInterop.Runtime.InteropTypes;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Patches
 {
@@ -151,7 +152,7 @@ namespace FFI_ScreenReader.Patches
                 if (cursorPos == emptyPos)
                 {
                     // True regardless of how pieceList is ordered.
-                    label = "empty";
+                    label = T("empty");
                 }
                 else
                 {
@@ -184,7 +185,7 @@ namespace FFI_ScreenReader.Patches
                 int cursorPos = IL2CppFieldReader.ReadInt32(activeControllerPtr, IL2CppOffsets.Puzzle.CursorPos);
                 int row = cursorPos / 4 + 1;
                 int col = cursorPos % 4 + 1;
-                FFI_ScreenReaderMod.SpeakText($"Row {row}, Column {col}", interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(string.Format(T("Row {0}, Column {1}"), row, col), interrupt: true);
             }
             catch (Exception ex)
             {

@@ -67,7 +67,7 @@ namespace FFI_ScreenReader.Field
             float distance = Vector3.Distance(playerPos, Position);
             string direction = FieldNavigationHelper.GetDirection(playerPos, Position);
             float steps = FieldNavigationHelper.DistanceToSteps(distance);
-            string stepLabel = Math.Abs(steps - 1f) < 0.1f ? "step" : "steps";
+            string stepLabel = Math.Abs(steps - 1f) < 0.1f ? T("step") : T("steps");
             string categoryName = GetCategoryDisplayName(waypointCategory);
             return $"{waypointName} ({categoryName}) ({steps:F1} {stepLabel} {direction})";
         }

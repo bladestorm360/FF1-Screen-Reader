@@ -1,3 +1,5 @@
+using static FFI_ScreenReader.Utils.ModTextTranslator;
+
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
     /// <summary>
@@ -16,7 +18,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
                 if (string.IsNullOrEmpty(entityName) || entityName == "GeneralEventObject")
                 {
                     entityName = EntityDetectionHelpers.ClassifyByDialogue(context.FieldEntity)
-                        ?? EntityDetectionHelpers.CleanObjectName(context.GameObjectName, "Event Trigger");
+                        ?? EntityDetectionHelpers.CleanObjectName(context.GameObjectName, T("Event Trigger"));
                 }
                 return DetectionResult.Detected(
                     new EventEntity(context.FieldEntity, context.Position, entityName, "Event"));

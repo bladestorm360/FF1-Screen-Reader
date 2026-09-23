@@ -8,6 +8,7 @@ using Il2CppLast.UI.Common.Library;
 using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Menus
 {
@@ -49,7 +50,7 @@ namespace FFI_ScreenReader.Menus
                 catch { }
             }
 
-            return $"Bestiary. Encountered: {encountered} of {total}";
+            return string.Format(T("Bestiary. Encountered: {0} of {1}"), encountered, total);
         }
 
         /// <summary>
@@ -165,7 +166,7 @@ namespace FFI_ScreenReader.Menus
                         }
                     }
 
-                    string value = details.Count > 0 ? string.Join(", ", details) : "None";
+                    string value = details.Count > 0 ? string.Join(", ", details) : T("None");
                     entries.Add(new BestiaryStatEntry(title, value, group));
                 }
                 catch (Exception ex)
@@ -249,14 +250,14 @@ namespace FFI_ScreenReader.Menus
                 }
 
                 if (names.Count == 0)
-                    return $"Formation {formationIndex + 1}: Empty";
+                    return string.Format(T("Formation {0}: {1}"), formationIndex + 1, T("Empty"));
 
-                return $"Formation {formationIndex + 1}: {string.Join(", ", names)}";
+                return string.Format(T("Formation {0}: {1}"), formationIndex + 1, string.Join(", ", names));
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Bestiary] Error reading formation: {ex.Message}");
-                return $"Formation {formationIndex + 1}: Error";
+                return string.Format(T("Formation {0}: {1}"), formationIndex + 1, T("Error"));
             }
         }
 
@@ -268,25 +269,27 @@ namespace FFI_ScreenReader.Menus
             try
             {
                 var masterManager = MasterManager.Instance;
-                if (masterManager == null) return $"Monster {monsterId}";
+                if (masterManager == null) return MonsterFallback(monsterId);
 
                 var monsterDict = masterManager.GetList<Monster>();
                 if (monsterDict == null || !monsterDict.ContainsKey(monsterId))
-                    return $"Monster {monsterId}";
+                    return MonsterFallback(monsterId);
 
                 var monster = monsterDict[monsterId];
-                if (monster == null) return $"Monster {monsterId}";
+                if (monster == null) return MonsterFallback(monsterId);
 
                 string mesId = monster.MesIdName;
-                if (string.IsNullOrEmpty(mesId)) return $"Monster {monsterId}";
+                if (string.IsNullOrEmpty(mesId)) return MonsterFallback(monsterId);
 
-                return GetGameMessage(mesId) ?? $"Monster {monsterId}";
+                return GetGameMessage(mesId) ?? MonsterFallback(monsterId);
             }
             catch
             {
-                return $"Monster {monsterId}";
+                return MonsterFallback(monsterId);
             }
         }
+
+        private static string MonsterFallback(int monsterId) => string.Format(T("Monster {0}"), monsterId);
 
         /// <summary>
         /// Read stealable and dropped items directly from Monster master data.
@@ -312,8 +315,8 @@ namespace FFI_ScreenReader.Menus
                     if (!string.IsNullOrEmpty(name))
                         dropNames.Add(name);
                 }
-                entries.Add(new BestiaryStatEntry("Dropped Items",
-                    dropNames.Count > 0 ? string.Join(", ", dropNames) : "None",
+                entries.Add(new BestiaryStatEntry(T("Dropped Items"),
+                    dropNames.Count > 0 ? string.Join(", ", dropNames) : T("None"),
                     BestiaryStatGroup.Items));
             }
             catch (Exception ex)
@@ -361,18 +364,18 @@ namespace FFI_ScreenReader.Menus
             {
                 var habitatNames = data.HabitatNameList;
                 if (habitatNames == null || habitatNames.Count == 0)
-                    return "No habitat data";
+                    return T("No habitat data");
 
                 if (mapIndex < 0 || mapIndex >= habitatNames.Count)
                     mapIndex = 0;
 
                 string name = habitatNames[mapIndex];
-                return !string.IsNullOrEmpty(name) ? name : "Unknown location";
+                return !string.IsNullOrEmpty(name) ? name : T("Unknown location");
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Bestiary] Error reading map name: {ex.Message}");
-                return "Error reading habitat";
+                return T("Error reading habitat");
             }
         }
 

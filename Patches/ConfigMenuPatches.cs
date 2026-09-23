@@ -6,6 +6,7 @@ using Il2CppLast.UI.KeyInput;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Menus;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 using UnityEngine;
 using Key = Il2CppSystem.Input.Key;
 using ConfigActualDetailsControllerBase_KeyInput = Il2CppLast.UI.KeyInput.ConfigActualDetailsControllerBase;
@@ -901,14 +902,14 @@ namespace FFI_ScreenReader.Patches
             if (Has(spriteName, "R3button")) return ControllerLabels.GetRightStickClickLabel();
             // The Menu (Start) button is repurposed by the mod for the mod menu and can't be remapped, so
             // the mini-map row (its only user) is announced as the mod menu rather than the physical button.
-            if (Has(spriteName, "Menubutton")) return "used for mod menu";
+            if (Has(spriteName, "Menubutton")) return T("used for mod menu");
             if (Has(spriteName, "Backbutton") || Has(spriteName, "Selectbutton") || Has(spriteName, "Viewbutton"))
                 return ControllerLabels.GetButtonLabel(SDL3.SDL_GAMEPAD_BUTTON_BACK);
             // The movement glyph (directional/D-pad icon). The mod repurposed the D-pad and right stick for
             // its own navigation, so only the left stick still moves the character — announce it as such.
             if (Has(spriteName, "Tenkeybutton") || Has(spriteName, "Dpadbutton")
                 || Has(spriteName, "Crossbutton") || Has(spriteName, "Directionbutton"))
-                return "Left Stick";
+                return T("Left Stick");
 
             return null;   // face buttons (A/B/X/Y) + unknowns: leave to the live read, never lock in
         }
@@ -1056,11 +1057,11 @@ namespace FFI_ScreenReader.Patches
         private static string MouseSpriteToLabel(string s)
         {
             if (string.IsNullOrEmpty(s) || !Has(s, "mouse")) return null;       // not a mouse glyph
-            if (Has(s, "mouse_rad") || Has(s, "wheel") || Has(s, "scroll")) return "Mouse Wheel";
-            if (Has(s, "mouse_l")) return "Left Mouse Button";
-            if (Has(s, "mouse_r")) return "Right Mouse Button";
-            if (Has(s, "mouse_c") || Has(s, "mouse_m")) return "Middle Mouse Button";
-            return "Mouse Button";   // a rebound extra button (gaming mouse) whose glyph we don't name explicitly
+            if (Has(s, "mouse_rad") || Has(s, "wheel") || Has(s, "scroll")) return T("Mouse Wheel");
+            if (Has(s, "mouse_l")) return T("Left Mouse Button");
+            if (Has(s, "mouse_r")) return T("Right Mouse Button");
+            if (Has(s, "mouse_c") || Has(s, "mouse_m")) return T("Middle Mouse Button");
+            return T("Mouse Button");   // a rebound extra button (gaming mouse) whose glyph we don't name explicitly
         }
 
         /// <summary>
@@ -1204,7 +1205,7 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 if (inst == null) return;
-                FFI_ScreenReaderMod.SpeakText(gamepad ? "Press a button." : "Press a key.", interrupt: true);
+                FFI_ScreenReaderMod.SpeakText(gamepad ? T("Press a button.") : T("Press a key."), interrupt: true);
             }
             catch (Exception ex)
             {

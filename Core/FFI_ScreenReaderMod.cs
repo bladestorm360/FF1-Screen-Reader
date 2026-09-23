@@ -681,7 +681,11 @@ namespace FFI_ScreenReader.Core
                 }
 
                 string name = charData.Name;
-                var param = charData.Parameter;
+                // In battle the live HP/status sit on the battle unit's own parameter
+                // (BattleUnitDataInfo.Parameter); OwnedCharacterData.Parameter is only written back at
+                // battle end (BattleController.SaveParameter -> FixedStatusInfo.SetCharacterParameter ->
+                // OwnedCharacterData.SetParameter). Same source the target reader uses for current HP.
+                Il2CppLast.Data.CharacterParameterBase param = FindBattleParameter(charData) ?? charData.Parameter;
                 if (param == null)
                 {
                     SpeakText(T("Character status not available"), interrupt: true);
@@ -689,7 +693,9 @@ namespace FFI_ScreenReader.Core
                 }
 
                 int currentHp = param.CurrentHP;
-                int maxHp = param.ConfirmedMaxHp();
+                int maxHp;
+                try { maxHp = param.ConfirmedMaxHp(); }
+                catch { maxHp = charData.Parameter != null ? charData.Parameter.ConfirmedMaxHp() : 0; }
                 string line = string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp);
 
                 // Append active status effects.
@@ -718,6 +724,32 @@ namespace FFI_ScreenReader.Core
                 MelonLogger.Warning($"[AnnounceCharacterStatus] Error: {ex.Message}");
                 SpeakText(T("Character status not available"), interrupt: true);
             }
+        }
+
+        /// <summary>
+        /// The live in-battle parameter of the given party member: the BattlePlayerData whose
+        /// ownedCharacterData has the same Id -> BattleUnitDataInfo.Parameter. Null outside battle or
+        /// when the unit can't be found (caller falls back to OwnedCharacterData.Parameter).
+        /// </summary>
+        private static Il2CppLast.Data.CharacterParameterBase FindBattleParameter(Il2CppLast.Data.User.OwnedCharacterData charData)
+        {
+            try
+            {
+                var units = Il2CppLast.Battle.BattlePlugManager.Instance()?.GetPlayerUnits();
+                if (units == null) return null;
+                int id = charData.Id;
+                for (int i = 0; i < units.Length; i++)
+                {
+                    var unit = units[i];
+                    if (unit?.ownedCharacterData != null && unit.ownedCharacterData.Id == id)
+                        return unit.BattleUnitDataInfo?.Parameter;
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[AnnounceCharacterStatus] Battle unit lookup failed: {ex.Message}");
+            }
+            return null;
         }
 
         #endregion

@@ -1,5 +1,6 @@
 using Il2CppLast.Entity.Field;
 using FieldMapObjectDefault = Il2CppLast.Entity.Field.FieldMapObjectDefault;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
@@ -41,7 +42,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
 
                 string name = EntityDetectionHelpers.GetEntityNameFromProperty(context.FieldEntity);
                 if (string.IsNullOrEmpty(name))
-                    name = EntityDetectionHelpers.CleanObjectName(context.GameObjectName, "Object");
+                    name = EntityDetectionHelpers.CleanObjectName(context.GameObjectName, T("Object"));
                 return DetectionResult.Detected(
                     new EventEntity(context.FieldEntity, context.Position, name, "Interactive"));
             }

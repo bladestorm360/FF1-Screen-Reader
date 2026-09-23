@@ -4,6 +4,7 @@ using HarmonyLib;
 using MelonLoader;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 using AbilityUseContentListController = Il2CppSerial.FF1.UI.KeyInput.AbilityUseContentListController;
 using ItemTargetSelectContentController = Il2CppLast.UI.KeyInput.ItemTargetSelectContentController;
@@ -201,7 +202,7 @@ namespace FFI_ScreenReader.Patches
                     {
                         int currentHp = parameter.currentHP;
                         int maxHp = parameter.ConfirmedMaxHp();
-                        announcement += $": HP: {currentHp}/{maxHp}";
+                        announcement += ": " + string.Format(T("HP: {0} / {1}"), currentHp, maxHp);
 
                         var conditionList = parameter.CurrentConditionList;
                         if (conditionList != null && conditionList.Count > 0)

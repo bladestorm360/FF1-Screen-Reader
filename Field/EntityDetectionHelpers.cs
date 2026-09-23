@@ -123,7 +123,7 @@ namespace FFI_ScreenReader.Field
             }
             catch
             {
-                return $"Map {destMapId}";
+                return string.Format(T("Map {0}"), destMapId);
             }
         }
 
@@ -146,7 +146,7 @@ namespace FFI_ScreenReader.Field
                     {
                         int gilAmount = Convert.ToInt32(gilValue);
                         if (gilAmount > 0)
-                            return $"{gilAmount} Gil";
+                            return string.Format(T("{0} Gil"), gilAmount);
                     }
                 }
 
@@ -165,7 +165,7 @@ namespace FFI_ScreenReader.Field
                                 string itemName = ResolveItemName(contentId);
                                 if (!string.IsNullOrEmpty(itemName))
                                     return itemName;
-                                return $"Item {contentId}";
+                                return string.Format(T("Item {0}"), contentId);
                             }
                         }
                     }
@@ -361,7 +361,7 @@ namespace FFI_ScreenReader.Field
                 string normalized = TextUtils.StripIconMarkup(text).ToLowerInvariant();
                 foreach (var (kw, label) in DialogueClassKeywords)
                 {
-                    if (normalized.Contains(kw)) return label;
+                    if (normalized.Contains(kw)) return LocalizeObjectClass(label);
                 }
 
                 // No keyword matched — log once per key so we can extend the list later.
@@ -374,6 +374,55 @@ namespace FFI_ScreenReader.Field
                 return null;
             }
             catch { return null; } // IL2CPP cast / message lookup may fail
+        }
+
+        /// <summary>
+        /// Spoken form of a dialogue-classifier label. The table keeps English labels (one per keyword,
+        /// language-independent); each is localized here at announce time.
+        /// </summary>
+        private static string LocalizeObjectClass(string label)
+        {
+            switch (label)
+            {
+                case "Grave Marker": return T("Grave Marker");
+                case "Gravestone": return T("Gravestone");
+                case "Tombstone": return T("Tombstone");
+                case "Tomb": return T("Tomb");
+                case "Sign": return T("Sign");
+                case "Bookcase": return T("Bookcase");
+                case "Bookshelf": return T("Bookshelf");
+                case "Altar": return T("Altar");
+                case "Statue": return T("Statue");
+                case "Throne": return T("Throne");
+                case "Boulder": return T("Boulder");
+                case "Rock": return T("Rock");
+                case "Crystal": return T("Crystal");
+                case "Orb": return T("Orb");
+                case "Pedestal": return T("Pedestal");
+                case "Plate": return T("Plate");
+                case "Barrel": return T("Barrel");
+                case "Crate": return T("Crate");
+                case "Pot": return T("Pot");
+                case "Vase": return T("Vase");
+                case "Jar": return T("Jar");
+                case "Bed": return T("Bed");
+                case "Table": return T("Table");
+                case "Chair": return T("Chair");
+                case "Piano": return T("Piano");
+                case "Painting": return T("Painting");
+                case "Mirror": return T("Mirror");
+                case "Clock": return T("Clock");
+                case "Lever": return T("Lever");
+                case "Switch": return T("Switch");
+                case "Button": return T("Button");
+                case "Chest": return T("Chest");
+                case "Gate": return T("Gate");
+                case "Ladder": return T("Ladder");
+                case "Stairs": return T("Stairs");
+                case "Well": return T("Well");
+                case "Fountain": return T("Fountain");
+                default: return label;
+            }
         }
 
         /// <summary>
@@ -390,7 +439,7 @@ namespace FFI_ScreenReader.Field
                     {
                         var objectId = objectIdProp.GetValue(propertyObj);
                         if (objectId != null && (int)objectId > 0)
-                            return $"Object {objectId}";
+                            return string.Format(T("Object {0}"), objectId);
                     }
                 }
                 catch { } // IL2CPP field may not exist on type
@@ -400,7 +449,7 @@ namespace FFI_ScreenReader.Field
             if (!string.IsNullOrEmpty(cleaned) && cleaned != "FieldMapObjectDefault")
                 return cleaned;
 
-            return "Interactive Object";
+            return T("Interactive Object");
         }
 
         /// <summary>

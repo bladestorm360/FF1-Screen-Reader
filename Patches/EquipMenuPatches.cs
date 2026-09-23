@@ -6,6 +6,7 @@ using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using Il2CppLast.Management;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // Type aliases for IL2CPP types
 using KeyInputEquipmentInfoWindowController = Il2CppLast.UI.KeyInput.EquipmentInfoWindowController;
@@ -161,13 +162,13 @@ namespace FFI_ScreenReader.Patches
             // Fallback to English slot names
             return slot switch
             {
-                EquipSlotType.Slot1 => "Right Hand",
-                EquipSlotType.Slot2 => "Left Hand",
-                EquipSlotType.Slot3 => "Head",
-                EquipSlotType.Slot4 => "Body",
-                EquipSlotType.Slot5 => "Accessory",
-                EquipSlotType.Slot6 => "Accessory 2",
-                _ => $"Slot {(int)slot}"
+                EquipSlotType.Slot1 => T("Right Hand"),
+                EquipSlotType.Slot2 => T("Left Hand"),
+                EquipSlotType.Slot3 => T("Head"),
+                EquipSlotType.Slot4 => T("Body"),
+                EquipSlotType.Slot5 => T("Accessory"),
+                EquipSlotType.Slot6 => T("Accessory 2"),
+                _ => string.Format(T("Slot {0}"), (int)slot)
             };
         }
     }
@@ -259,7 +260,7 @@ namespace FFI_ScreenReader.Patches
                 }
                 else
                 {
-                    announcement += ": Empty";
+                    announcement += ": " + T("Empty");
                 }
 
                 if (string.IsNullOrWhiteSpace(announcement))
@@ -417,7 +418,7 @@ namespace FFI_ScreenReader.Patches
                 if (string.IsNullOrWhiteSpace(itemName))
                 {
                     // This might be a "Remove" or empty entry
-                    itemName = "Remove";
+                    itemName = T("Remove");
                 }
 
                 // Strip icon markup from name
@@ -529,7 +530,7 @@ namespace FFI_ScreenReader.Patches
 
                 string announcement = GetDescriptionFromUI();
                 if (string.IsNullOrEmpty(announcement))
-                    announcement = "No description available";
+                    announcement = T("No description");
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

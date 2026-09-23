@@ -3,6 +3,7 @@ using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 using ShopController = Il2CppLast.UI.KeyInput.ShopController;
 using ShopInfoController = Il2CppLast.UI.KeyInput.ShopInfoController;
@@ -238,7 +239,7 @@ namespace FFI_ScreenReader.Patches
 
                 string announcement = ShopMenuTracker.GetDescriptionFromUI();
                 if (string.IsNullOrEmpty(announcement))
-                    announcement = "No description available";
+                    announcement = T("No description");
 
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

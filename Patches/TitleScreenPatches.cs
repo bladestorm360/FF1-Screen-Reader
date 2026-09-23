@@ -6,6 +6,7 @@ using MelonLoader;
 using UnityEngine;
 using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 using KeyInputTitleMenuCommandController = Il2CppLast.UI.KeyInput.TitleMenuCommandController;
 using TouchTitleMenuCommandController = Il2CppLast.UI.Touch.TitleMenuCommandController;
@@ -137,7 +138,7 @@ namespace FFI_ScreenReader.Patches
         }
 
         // Localized "Press any button" via the UiMessageConstants.MENU_TITLE_PRESS_TEXT static field.
-        // Falls back to the English literal.
+        // Falls back to the mod's own translated text.
         private static string GetPressText()
         {
             try
@@ -153,7 +154,7 @@ namespace FFI_ScreenReader.Patches
                 }
             }
             catch { } // constant lookup is best-effort
-            return "Press any button";
+            return T("Press any button");
         }
 
         public static void TitleMenuCommand_SetEnableMainMenu_Postfix(bool isEnable)

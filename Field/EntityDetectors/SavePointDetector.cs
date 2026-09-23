@@ -1,3 +1,5 @@
+using static FFI_ScreenReader.Utils.ModTextTranslator;
+
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
     /// <summary>
@@ -12,7 +14,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
         {
             if (context.GameObjectNameLower.Contains("save") || context.TypeName.Contains("Save"))
                 return DetectionResult.Detected(
-                    new SavePointEntity(context.FieldEntity, context.Position, "Save Point"));
+                    new SavePointEntity(context.FieldEntity, context.Position, T("Save Point")));
             return DetectionResult.NotHandled;
         }
     }

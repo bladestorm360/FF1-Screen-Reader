@@ -76,7 +76,7 @@ namespace FFI_ScreenReader.Menus
             MenuCommandId.Magic => T("Magic"),
             MenuCommandId.Equipment => T("Equipment"),
             MenuCommandId.Status => T("Status"),
-            MenuCommandId.Sort => T("Sort"),
+            MenuCommandId.Sort => T("Order"),   // the game's main-menu "Order" (MSG_SYSTEM_046), not the item menu's Sort
             MenuCommandId.Words => T("Words"),
             MenuCommandId.Config => T("Config"),
             MenuCommandId.Interruption => T("Interruption"),

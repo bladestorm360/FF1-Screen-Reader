@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 using MelonLoader;
 using FFI_ScreenReader.Field;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -213,7 +214,7 @@ namespace FFI_ScreenReader.Core
         public string GetNextWaypointName(string mapId)
         {
             int count = GetWaypointCountForMap(mapId) + 1;
-            return $"Waypoint {count}";
+            return string.Format(T("Waypoint {0}"), count);
         }
 
         private void RebuildEntityCache()

@@ -487,7 +487,7 @@ namespace FFI_ScreenReader.Patches
                 BattleMagicMenuState.IsActive = false;
                 BattleItemMenuState.IsActive = false;
 
-                string announcement = $"{characterName}'s turn";
+                string announcement = string.Format(T("{0}'s turn"), characterName);
                 // Turn announcements interrupt
                 FFI_ScreenReaderMod.SpeakText(announcement, interrupt: true);
             }

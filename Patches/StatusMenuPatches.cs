@@ -7,6 +7,7 @@ using FFI_ScreenReader.Core;
 using FFI_ScreenReader.Utils;
 using FFI_ScreenReader.Menus;
 using Il2CppLast.Management;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 // Type aliases for IL2CPP types - FF1 specific
 using KeyInputStatusWindowController = Il2CppLast.UI.KeyInput.StatusWindowController;
@@ -171,7 +172,7 @@ namespace FFI_ScreenReader.Patches
                 {
                     if (corps != null && corps.CharacterId == characterId)
                     {
-                        return corps.Id == CorpsId.Front ? "Front Row" : "Back Row";
+                        return corps.Id == CorpsId.Front ? T("Front Row") : T("Back Row");
                     }
                 }
             }
@@ -393,11 +394,11 @@ namespace FFI_ScreenReader.Patches
                         try { level = parameter.ConfirmedLevel(); }
                         catch { try { level = parameter.BaseLevel; } catch { } }
                         if (level > 0)
-                            announcement += $", Lv. {level}";
+                            announcement += ", " + string.Format(T("Level {0}"), level);
 
                         int currentHp = parameter.currentHP;
                         int maxHp = parameter.ConfirmedMaxHp();
-                        announcement += $", HP {currentHp}/{maxHp}";
+                        announcement += ", " + string.Format(T("HP {0}/{1}"), currentHp, maxHp);
                     }
                 }
                 catch (Exception paramEx)

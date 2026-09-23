@@ -9,3 +9,4 @@ release-notes-*.txt
 nul
 NUL
 NUL.*
+__pycache__/

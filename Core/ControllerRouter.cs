@@ -79,7 +79,13 @@ namespace FFI_ScreenReader.Core
                 && !BattleStateHelper.IsInBattle;
 
             if (!GamepadManager.IsAvailable)
+            {
+                // Gamepad gone (unplugged, or never present): release controller-owned state so a
+                // leftover MOD_MODE can't keep SuppressGameInput set and lock the keyboard out of the
+                // game. A mod menu that is still open stays open (keyboard can drive and close it).
+                ReleaseControllerOwnedState();
                 return;
+            }
 
             // Track that controller is being used
             for (int i = 0; i < SDL3.SDL_GAMEPAD_BUTTON_COUNT; i++)
@@ -116,6 +122,40 @@ namespace FFI_ScreenReader.Core
         {
             State = ControllerState.Normal;
             Array.Clear(consumedButtons, 0, consumedButtons.Length);
+        }
+
+        /// <summary>
+        /// Called every frame while no gamepad is available. MOD_MODE exists only for the controller,
+        /// so it is dropped; MOD_MENU is kept only while the mod menu is actually open (it mirrors the
+        /// menu, which the keyboard can still navigate and close). Cheap no-op once released.
+        /// </summary>
+        private static void ReleaseControllerOwnedState()
+        {
+            if (State == ControllerState.ModMode
+                || (State == ControllerState.ModMenu && !ModMenu.IsOpen))
+            {
+                MelonLogger.Msg($"[ControllerRouter] No gamepad: leaving {State}, game input restored");
+                State = ControllerState.Normal;
+            }
+
+            // Stale edge/consume state must not carry over to a reconnected controller.
+            leftTriggerWasActive = false;
+            wasLeftStickActive = false;
+            Array.Clear(consumedButtons, 0, consumedButtons.Length);
+        }
+
+        /// <summary>
+        /// Keeps the controller state in step with the mod menu however it was opened or closed
+        /// (F8 / Escape / "Close Menu" on the keyboard, Start / B on the controller). Opening puts the
+        /// router in MOD_MENU (D-pad, stick and LT drive the menu instead of acting underneath it);
+        /// closing returns it to NORMAL. Called from ModMenu.Open/Close.
+        /// </summary>
+        internal static void SyncWithModMenu(bool menuOpen)
+        {
+            if (menuOpen)
+                State = ControllerState.ModMenu;
+            else if (State == ControllerState.ModMenu)
+                State = ControllerState.Normal;
         }
 
         // =====================================================================

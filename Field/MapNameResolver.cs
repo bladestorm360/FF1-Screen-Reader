@@ -102,7 +102,7 @@ namespace FFI_ScreenReader.Field
             }
 
             // Fallback: Just show the map ID
-            string fallback = $"Map {destMapId}";
+            string fallback = string.Format(T("Map {0}"), destMapId);
             mapNameCache[destMapId] = fallback;
             return fallback;
         }

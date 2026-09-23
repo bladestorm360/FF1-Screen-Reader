@@ -241,9 +241,11 @@ namespace FFI_ScreenReader.Patches
 
         // HitType enum values (from dump.cs)
         private const int HITTYPE_MISS = 2;
+        private const int HITTYPE_ZERO = 3;          // a genuine 0-value result (see value-0 note below)
         private const int HITTYPE_RECOVERY = 4;      // HP recovery
         private const int HITTYPE_MP_HIT = 5;        // MP damage
         private const int HITTYPE_MP_RECOVERY = 6;   // MP recovery
+        private const int HITTYPE_RECOVERY_CONDITION = 7; // status cure (not emitted by FF1's calc, see below)
 
         /// <summary>
         /// Postfix for CreateDamageView - announces damage or healing.
@@ -269,39 +271,47 @@ namespace FFI_ScreenReader.Patches
                 string message;
                 if (hitTypeValue == HITTYPE_MISS)
                 {
-                    message = $"{targetName}: Miss";
+                    message = string.Format(T("{0}: Miss"), targetName);
                 }
                 else if (value == 0)
                 {
-                    // Buff/debuff spells (Protra, Invisira, Temper, Haste, Slow, etc.)
-                    // emit CreateDamageView with value=0 and a non-Miss hitType. The
-                    // actual condition application is announced by the
-                    // BattleConditionController.Add postfix — suppress here so we don't
-                    // speak a spurious "Miss" for every target the buff lands on.
-                    return;
+                    // Value-0 views, settled offline from FF1's calc code (docs/debug.md, 2026-09-23):
+                    //  - buff/debuff spells (AddConditionFunction -> CalcExecuteFF1.AddConditionExection)
+                    //    emit value 0 with HitType Hit (or Miss when resisted); the condition itself is
+                    //    announced by the BattleConditionController.Add postfix, so Hit stays silent here.
+                    //    FF1 status cures (RecoveryConditionFunction) also emit value 0 + Hit.
+                    //  - HitType Zero comes only from a genuine 0 result (DamageAggregater.CheckUndead:
+                    //    healing an undead target for 0; MagicAbsorptionFunction: 0 MP drained).
+                    //  - HitType RecoveryCondition is never produced by FF1's calc; handled for parity.
+                    if (hitTypeValue == HITTYPE_ZERO)
+                        message = string.Format(T("{0}: {1} damage"), targetName, 0);
+                    else if (hitTypeValue == HITTYPE_RECOVERY_CONDITION)
+                        message = string.Format(T("{0}: cured"), targetName);
+                    else
+                        return;
                 }
                 else if (hitTypeValue == HITTYPE_MP_RECOVERY)
                 {
                     // MP RECOVERY (Ether, Turbo Ether, etc.)
-                    message = $"{targetName}: Recovered {value} MP";
+                    message = string.Format(T("{0}: Recovered {1} MP"), targetName, value);
                 }
                 else if (hitTypeValue == HITTYPE_MP_HIT)
                 {
                     // MP DAMAGE (Osmose, Rasp, etc.)
-                    message = $"{targetName}: {value} MP damage";
+                    message = string.Format(T("{0}: {1} MP damage"), targetName, value);
                 }
                 else if (hitTypeValue == HITTYPE_RECOVERY || isRecovery)
                 {
                     // HP RECOVERY (Cure, Potion, etc.)
-                    message = $"{targetName}: Recovered {value} HP";
+                    message = string.Format(T("{0}: Recovered {1} HP"), targetName, value);
                 }
                 else
                 {
                     // HP DAMAGE — optionally prepend the multi-hit "{N}x" multiplier (kept terse; the
                     // " damage" suffix stays so damage/recovery/drain remain distinguishable).
                     message = (PreferencesManager.DamageDisplay == 1 && hitCount > 1)
-                        ? $"{targetName}: {hitCount}x{value} damage"
-                        : $"{targetName}: {value} damage";
+                        ? string.Format(T("{0}: {1}x{2} damage"), targetName, hitCount, value)
+                        : string.Format(T("{0}: {1} damage"), targetName, value);
                 }
 
                 // Damage/healing doesn't interrupt - queues after action announcement

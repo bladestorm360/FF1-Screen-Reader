@@ -165,7 +165,7 @@ namespace FFI_ScreenReader.Core
             // Controller routing + context state runs FIRST every frame.
             // ControllerRouter.Update computes IsFieldActive (used by audio, passthrough, etc.)
             // and handles gamepad state machine if a controller is connected.
-            KeyContext context = DetermineContext();
+            KeyContext context = DetermineContext(onDemand: false);
             ControllerRouter.Update(context);
 
             // Per-frame footstep tile-crossing poll (field-active gated, silent in vehicles).
@@ -225,7 +225,7 @@ namespace FFI_ScreenReader.Core
                 HandleFunctionKeyInput();
 
             // Determine active context
-            KeyContext activeContext = DetermineContext();
+            KeyContext activeContext = DetermineContext(onDemand: true);
             KeyModifier currentModifiers = GetCurrentModifiers();
 
             // Alt held with no registered Alt-binding → skip dispatch so Alt+U etc. don't
@@ -254,7 +254,13 @@ namespace FFI_ScreenReader.Core
                 || GamepadManager.IsKeyCodeHeld(KeyCode.RightAlt);
         }
 
-        private KeyContext DetermineContext()
+        /// <summary>
+        /// Determines the active key context.
+        /// <paramref name="onDemand"/> = true for a key press (may rescan the scene immediately);
+        /// false for the per-frame caller, which rescans for a missing FieldPlayerController at most
+        /// once every <see cref="FieldScanIntervalFrames"/> frames.
+        /// </summary>
+        private KeyContext DetermineContext(bool onDemand)
         {
             // The key-help / controls overlay (config controls + post-new-game) takes priority while shown.
             if (KeyHelpReader.IsScreenActive)
@@ -274,13 +280,18 @@ namespace FFI_ScreenReader.Core
             // Field keys only fire while actively on a field map with no menu open.
             // Otherwise fall through to Global so field/entity/waypoint/toggle hotkeys
             // are silent no-ops off-field, while Global info keys still work everywhere.
-            if (IsOnValidMap() && !MenuStateRegistry.AnyActive())
+            if (IsOnValidMap(onDemand) && !MenuStateRegistry.AnyActive())
                 return KeyContext.Field;
 
             return KeyContext.Global;
         }
 
-        private static bool IsOnValidMap()
+        // Per-frame scene-scan throttle: where no FieldPlayerController exists (title screen, battle
+        // intro, loading), the per-frame caller would otherwise run FindObjectOfType every frame.
+        private const int FieldScanIntervalFrames = 30;
+        private static int lastFieldScanFrame = -FieldScanIntervalFrames;
+
+        private static bool IsOnValidMap(bool onDemand)
         {
             // Self-heal the cache (like every other FieldPlayerController reader) so a cleared or
             // stale entry can't wedge the field context into Global and silently disable field hotkeys.
@@ -288,7 +299,16 @@ namespace FFI_ScreenReader.Core
             {
                 var pc = GameObjectCache.Get<Il2CppLast.Map.FieldPlayerController>();
                 if (pc == null)
+                {
+                    // A cache miss triggers a scene scan. Key presses scan immediately; the per-frame
+                    // caller scans at most once every FieldScanIntervalFrames frames (a field map that
+                    // appears is picked up within half a second, or at once on the next key press).
+                    int frame = Time.frameCount;
+                    if (!onDemand && frame - lastFieldScanFrame < FieldScanIntervalFrames)
+                        return false;
+                    lastFieldScanFrame = frame;
                     pc = GameObjectCache.Refresh<Il2CppLast.Map.FieldPlayerController>();
+                }
                 return pc?.fieldPlayer != null;
             }
             catch { }
@@ -354,10 +374,24 @@ namespace FFI_ScreenReader.Core
             }
         }
 
+        /// <summary>
+        /// Tab: fallback that clears a STUCK in-battle flag (battle ended without the end hooks firing).
+        /// Only clears when no live BattleController exists; during a real battle it does nothing, so a
+        /// Tab press mid-battle can no longer silence battle speech.
+        /// </summary>
         private static void HandleTabKey()
         {
-            if (BattleStateHelper.IsInBattle)
-                BattleStateHelper.ForceClearBattleState();
+            if (!BattleStateHelper.IsInBattle)
+                return;
+
+            if (BattleStateHelper.IsBattleControllerAlive())
+            {
+                MelonLogger.Msg("[Battle] Tab: battle is live (BattleController active), battle state kept");
+                return;
+            }
+
+            MelonLogger.Msg("[Battle] Tab: no live BattleController, clearing stuck battle state");
+            BattleStateHelper.ForceClearBattleState();
         }
 
         private bool IsInputFieldFocused()

@@ -557,7 +557,7 @@ namespace FFI_ScreenReader.Field
         private static string DescribePath(List<Vector3> worldPath)
         {
             if (worldPath == null || worldPath.Count < 2)
-                return "No movement needed";
+                return T("No movement needed");
 
             var segments = new List<string>();
             Vector3 currentDir = Vector3.zero;
@@ -601,10 +601,10 @@ namespace FFI_ScreenReader.Field
         {
             if (Mathf.Abs(dir.x) > 0.4f && Mathf.Abs(dir.y) > 0.4f)
             {
-                if (dir.y > 0 && dir.x > 0) return "Northeast";
-                if (dir.y > 0 && dir.x < 0) return "Northwest";
-                if (dir.y < 0 && dir.x > 0) return "Southeast";
-                if (dir.y < 0 && dir.x < 0) return "Southwest";
+                if (dir.y > 0 && dir.x > 0) return T("Northeast");
+                if (dir.y > 0 && dir.x < 0) return T("Northwest");
+                if (dir.y < 0 && dir.x > 0) return T("Southeast");
+                if (dir.y < 0 && dir.x < 0) return T("Southwest");
             }
 
             if (Mathf.Abs(dir.y) > Mathf.Abs(dir.x))

@@ -177,8 +177,28 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
+        /// True when an active BattleController exists in the scene, i.e. a battle is really running.
+        /// On-demand scene scan (FindObjectOfType skips inactive objects) — call from key handlers only,
+        /// never per frame.
+        /// </summary>
+        public static bool IsBattleControllerAlive()
+        {
+            try
+            {
+                var controller = UnityEngine.Object.FindObjectOfType<Il2CppLast.Battle.BattleController>();
+                return controller != null && controller.isActiveAndEnabled;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle] BattleController lookup failed: {ex.Message}");
+                // Unknown: treat as alive so a lookup failure never clears a real battle.
+                return true;
+            }
+        }
+
+        /// <summary>
         /// Force clears battle state. Used as fallback when normal clearing fails.
-        /// Called when Tab is pressed to open main menu (indicating player is on field, not in battle).
+        /// Called by the Tab key only after IsBattleControllerAlive() found no live battle.
         /// </summary>
         public static void ForceClearBattleState()
         {

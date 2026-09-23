@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEngine;
 using MelonLoader;
 using FFI_ScreenReader.Field;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core
 {
@@ -18,7 +19,6 @@ namespace FFI_ScreenReader.Core
         private int currentIndex = -1;
         private WaypointCategory currentCategory = WaypointCategory.All;
 
-        private static readonly string[] CategoryNames = WaypointEntity.GetCategoryNames();
         private static readonly int CategoryCount = Enum.GetValues(typeof(WaypointCategory)).Length;
 
         public WaypointEntity SelectedWaypoint =>
@@ -83,7 +83,7 @@ namespace FFI_ScreenReader.Core
             int nextVal = ((int)currentCategory + 1) % CategoryCount;
             currentCategory = (WaypointCategory)nextVal;
             RefreshList(mapId);
-            return CategoryNames[(int)currentCategory];
+            return CategoryName(currentCategory);
         }
 
         public string CyclePreviousCategory(string mapId)
@@ -91,30 +91,34 @@ namespace FFI_ScreenReader.Core
             int prevVal = ((int)currentCategory - 1 + CategoryCount) % CategoryCount;
             currentCategory = (WaypointCategory)prevVal;
             RefreshList(mapId);
-            return CategoryNames[(int)currentCategory];
+            return CategoryName(currentCategory);
         }
 
         public string FormatCurrentWaypoint()
         {
             var waypoint = SelectedWaypoint;
-            if (waypoint == null) return "No waypoints";
+            if (waypoint == null) return T("No waypoints");
 
             Vector3 playerPos = GetPlayerPosition();
             string description = waypoint.FormatDescription(playerPos);
 
             if (currentList.Count > 1)
-                description += $", {currentIndex + 1} of {currentList.Count}";
+                description += ", " + string.Format(T("{0} of {1}"), currentIndex + 1, currentList.Count);
 
             return description;
         }
 
         public string GetCategoryAnnouncement()
         {
-            string categoryName = CategoryNames[(int)currentCategory];
+            string categoryName = CategoryName(currentCategory);
             int count = currentList.Count;
-            string plural = count == 1 ? "waypoint" : "waypoints";
+            string plural = count == 1 ? T("waypoint") : T("waypoints");
             return $"{categoryName}: {count} {plural}";
         }
+
+        // Resolved per call (not cached) so the category names follow a mid-session language change.
+        private static string CategoryName(WaypointCategory category) =>
+            WaypointEntity.GetCategoryNames()[(int)category];
 
         public void ClearSelection()
         {

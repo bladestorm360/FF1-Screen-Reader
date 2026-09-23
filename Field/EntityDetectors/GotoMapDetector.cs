@@ -2,6 +2,7 @@ using Il2CppLast.Map;
 using GotoMapEventEntity = Il2CppLast.Entity.Field.GotoMapEventEntity;
 using PropertyEntity = Il2CppLast.Map.PropertyEntity;
 using PropertyTelepoPoint = Il2CppLast.Map.PropertyTelepoPoint;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Field.EntityDetectors
 {
@@ -34,7 +35,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
                     {
                         string name = EntityDetectionHelpers.GetEntityNameFromProperty(context.FieldEntity);
                         if (string.IsNullOrEmpty(name))
-                            name = "Warp Tile";
+                            name = T("Warp Tile");
                         return DetectionResult.Detected(
                             new EventEntity(context.FieldEntity, context.Position, name, "Warp Tile"));
                     }
@@ -49,7 +50,7 @@ namespace FFI_ScreenReader.Field.EntityDetectors
         {
             int destMapId = EntityDetectionHelpers.GetGotoMapDestinationId(context.FieldEntity);
             string destName = EntityDetectionHelpers.ResolveMapName(destMapId);
-            string exitName = !string.IsNullOrEmpty(destName) ? $"Exit to {destName}" : "Exit";
+            string exitName = !string.IsNullOrEmpty(destName) ? string.Format(T("Exit to {0}"), destName) : T("Exit");
             return new MapExitEntity(context.FieldEntity, context.Position, exitName, destMapId, destName);
         }
     }

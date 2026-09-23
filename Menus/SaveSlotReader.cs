@@ -2,6 +2,7 @@ using System;
 using MelonLoader;
 using UnityEngine;
 using static FFI_ScreenReader.Utils.TextUtils;
+using static FFI_ScreenReader.Utils.ModTextTranslator;
 using SaveContentController_KeyInput = Il2CppLast.UI.KeyInput.SaveContentController;
 using SaveContentController_Touch = Il2CppLast.UI.Touch.SaveContentController;
 using SaveSlotData = Il2CppLast.Management.SaveSlotData;
@@ -145,7 +146,7 @@ namespace FFI_ScreenReader.Menus
                 // Check if slot has data by checking SlotData
                 if (slotData == null)
                 {
-                    return $"{slotId}: Empty";
+                    return $"{slotId}: {T("Empty")}";
                 }
 
                 // Extract data from SlotData
@@ -196,7 +197,7 @@ namespace FFI_ScreenReader.Menus
 
                 if (!hasData)
                 {
-                    return $"{slotId}: Empty";
+                    return $"{slotId}: {T("Empty")}";
                 }
 
                 // Convert play time from seconds to hours:minutes
@@ -240,10 +241,10 @@ namespace FFI_ScreenReader.Menus
             // Fallback based on index
             // Index 0 = Autosave, Index 1 = Quicksave, Index 2+ = File (index - 1)
             if (slotIndex == 0)
-                return "Autosave";
+                return T("Autosave");
             if (slotIndex == 1)
-                return "Quicksave";
-            return $"File {slotIndex - 1}";
+                return T("Quicksave");
+            return string.Format(T("File {0}"), slotIndex - 1);
         }
 
         /// <summary>
@@ -267,12 +268,12 @@ namespace FFI_ScreenReader.Menus
                 announcement += ": " + characterName;
                 if (!string.IsNullOrEmpty(level))
                 {
-                    announcement += " Level " + level;
+                    announcement += " " + string.Format(T("Level {0}"), level);
                 }
             }
             else if (!string.IsNullOrEmpty(level))
             {
-                announcement += ": Level " + level;
+                announcement += ": " + string.Format(T("Level {0}"), level);
             }
 
             // Add location
@@ -284,7 +285,7 @@ namespace FFI_ScreenReader.Menus
             // Add play time
             if (!string.IsNullOrEmpty(hours) && !string.IsNullOrEmpty(minutes))
             {
-                announcement += $", Time {hours}:{minutes}";
+                announcement += ", " + string.Format(T("Time {0}:{1}"), hours, minutes);
             }
 
             return announcement;
