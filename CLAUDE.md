@@ -11,7 +11,7 @@
 7. **No FF3 Reference** - NEVER reference or search the ff3 codebase unless the user explicitly asks to port code from that mod.
 8. **Game-Specific Translations** - Translations are game-specific; NEVER copy or look up translation strings from another FF mod (phrasing and presentation differ per game, and are not likely to repeat). When a string has no existing translation, translate it live yourself and add a self-contained entry to this mod's `translation.json`.
 9. **No Release Notes In Repo** - NEVER commit release-notes files (e.g. `release-notes-V*.txt`). They are scratch files used only to publish changelogs at release time and are gitignored. This does NOT apply to `docs/release.md` (the release procedure doc), which is tracked.
-10. **Git: commit and push allowed** - It is OK for Claude to commit and push to this repo's remote (`ff1-screen-reader`, github.com/bladestorm360/FF1-Screen-Reader, branch `main`) without asking first (user, 2026-09-24).
+10. **Git: commit and push allowed** - It is OK for Claude to commit and push to this repo's remote (`ff1-screen-reader`, github.com/bladestorm360/FF1-Screen-Reader, branch `master`) without asking first (user, 2026-09-24).
 
 ## Coding Rules
 

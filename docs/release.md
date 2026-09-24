@@ -50,13 +50,13 @@ Zip naming: `FFI-Screen-ReaderV<version>.zip`, placed in `Releases\` (sibling of
 
 ```
 git tag V<version>
-git push ff1-screen-reader main
+git push ff1-screen-reader master
 git push ff1-screen-reader V<version>
 ```
 
-Remote name is `ff1-screen-reader` (not `origin`). Verify with `git remote -v` if unsure. Push `main` first so the branch points at the released commit (otherwise the tagged commit only reaches the remote via the tag ref, leaving remote `main` behind HEAD). Then push the tag.
+Remote name is `ff1-screen-reader` (not `origin`); the branch is `master` (renamed from `main` on 2026-09-24). Verify with `git remote -v` if unsure. Push `master` first so the branch points at the released commit (otherwise the tagged commit only reaches the remote via the tag ref, leaving remote `master` behind HEAD). Then push the tag.
 
-This is the **only** step in the release procedure that pushes `main` — and it's only authorized here, on the commit being tagged. Never push `main` outside of a release without an explicit ask.
+Pushing `master` outside a release is also fine (CLAUDE.md rule 10). Tags are only created and pushed here, on the commit being released.
 
 ### 5. Draft the changelog
 
@@ -75,7 +75,7 @@ Style (match `gh release view V1.3`):
 
 - Commit hashes, file paths, type names, method names, field names.
 - Internal refactors with no user-visible effect (e.g. "handler X removed and inlined into Y" — say nothing, or describe the *fix* it enabled).
-- Regressions you introduced mid-development that never reached a prior release. If V<previous> shipped fine and a bug existed only between V<previous> and V<current> on `main`, no user ever saw it; do not advertise the fix.
+- Regressions you introduced mid-development that never reached a prior release. If V<previous> shipped fine and a bug existed only between V<previous> and V<current> on `master`, no user ever saw it; do not advertise the fix.
 - Developer-internal numbering or counts ("19 of 20 states tracked"); say what *works* for the user.
 
 **Concrete contrast** — these came up while writing V1.3.1's notes:
