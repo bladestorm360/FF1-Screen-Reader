@@ -143,6 +143,7 @@ namespace FFI_ScreenReader.Patches
         public static void OnBattleStart()
         {
             IsInBattle = true;
+            BattleConditionRemovalPatches.ResetState();
         }
 
         /// <summary>

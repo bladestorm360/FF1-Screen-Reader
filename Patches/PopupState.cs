@@ -35,7 +35,7 @@ namespace FFI_ScreenReader.Patches
         public static int CommandListOffset { get; private set; }
 
         /// <summary>
-        /// True when the popup has its OWN focus reader (e.g. CommonPopup.UpdateFocus). Then the generic
+        /// True when the popup has its OWN focus reader (e.g. CommonPopup.SetCommandSelectCursor). Then the generic
         /// cursor reader must NOT also call ReadCurrentButton, or the button double-reads on navigation.
         /// </summary>
         public static bool HasOwnFocusReader { get; private set; }

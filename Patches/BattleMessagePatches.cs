@@ -14,6 +14,8 @@ using BattlePlayerData = Il2Cpp.BattlePlayerData;
 using BattleEnemyData = Il2CppLast.Battle.BattleEnemyData;
 using BattleBasicFunction = Il2CppLast.Battle.Function.BattleBasicFunction;
 using BattleConditionController = Il2CppLast.Battle.BattleConditionController;
+using BattleConditionFunction = Il2CppLast.Battle.BattleConditionFunction;
+using Condition = Il2CppLast.Data.Master.Condition;
 using HitType = Il2CppLast.Systems.HitType;
 using MessageManager = Il2CppLast.Management.MessageManager;
 using OwnedItemData = Il2CppLast.Data.User.OwnedItemData;
@@ -43,6 +45,9 @@ namespace FFI_ScreenReader.Patches
 
                 // BattleConditionController.Add is patched via declarative [HarmonyPatch] attribute
                 // on BattleConditionController_Add_Patch class (at bottom of file)
+
+                // Status removal ("X: Poison removed") — manual patch, see BattleConditionRemovalPatches.
+                BattleConditionRemovalPatches.ApplyPatches(harmony);
 
                 // Patch BattleCommandMessageController.SetMessage for system messages like "The party was defeated"
                 PatchBattleCommandMessage(harmony);
@@ -245,7 +250,6 @@ namespace FFI_ScreenReader.Patches
         private const int HITTYPE_RECOVERY = 4;      // HP recovery
         private const int HITTYPE_MP_HIT = 5;        // MP damage
         private const int HITTYPE_MP_RECOVERY = 6;   // MP recovery
-        private const int HITTYPE_RECOVERY_CONDITION = 7; // status cure (not emitted by FF1's calc, see below)
 
         /// <summary>
         /// Postfix for CreateDamageView - announces damage or healing.
@@ -279,14 +283,13 @@ namespace FFI_ScreenReader.Patches
                     //  - buff/debuff spells (AddConditionFunction -> CalcExecuteFF1.AddConditionExection)
                     //    emit value 0 with HitType Hit (or Miss when resisted); the condition itself is
                     //    announced by the BattleConditionController.Add postfix, so Hit stays silent here.
-                    //    FF1 status cures (RecoveryConditionFunction) also emit value 0 + Hit.
+                    //    FF1 status cures (RecoveryConditionFunction) also emit value 0 + Hit; the cure
+                    //    itself is announced by BattleConditionRemovalPatches ("X: Poison removed").
                     //  - HitType Zero comes only from a genuine 0 result (DamageAggregater.CheckUndead:
                     //    healing an undead target for 0; MagicAbsorptionFunction: 0 MP drained).
-                    //  - HitType RecoveryCondition is never produced by FF1's calc; handled for parity.
+                    //  - HitType RecoveryCondition (7) is never produced by FF1's calc, so it has no branch.
                     if (hitTypeValue == HITTYPE_ZERO)
                         message = string.Format(T("{0}: {1} damage"), targetName, 0);
-                    else if (hitTypeValue == HITTYPE_RECOVERY_CONDITION)
-                        message = string.Format(T("{0}: cured"), targetName);
                     else
                         return;
                 }
@@ -647,8 +650,8 @@ namespace FFI_ScreenReader.Patches
             {
                 if (battleUnitData == null) return;
 
-                // Get condition name from the unit's confirmed list (FF3 pattern)
-                string conditionName = null;
+                // Get the condition from the unit's confirmed list (FF3 pattern)
+                Condition confirmed = null;
                 try
                 {
                     var unitDataInfo = battleUnitData.BattleUnitDataInfo;
@@ -661,7 +664,7 @@ namespace FFI_ScreenReader.Patches
                             {
                                 if (condition != null && condition.Id == id)
                                 {
-                                    conditionName = MagicMenuState.GetConditionName(condition);
+                                    confirmed = condition;
                                     break;
                                 }
                             }
@@ -670,10 +673,7 @@ namespace FFI_ScreenReader.Patches
                 }
                 catch { } // IL2CPP condition list access may fail
 
-                // Fallback: master data lookup by ID
-                if (string.IsNullOrEmpty(conditionName))
-                    conditionName = BattleMessagePatches.GetConditionName(id);
-
+                string conditionName = ResolveConditionName(confirmed, id);
                 if (string.IsNullOrEmpty(conditionName)) return;
 
                 string targetName = BattleMessagePatches.GetUnitName(battleUnitData);
@@ -684,6 +684,174 @@ namespace FFI_ScreenReader.Patches
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Status] Error in Add postfix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Condition display name, shared by the Add ("X: Poison") and removal ("X: Poison removed")
+        /// announcements so both use the same wording: the condition object's own name first, then the
+        /// master-data lookup by id. Null for hidden/internal conditions (no name) — callers stay silent.
+        /// </summary>
+        internal static string ResolveConditionName(Condition condition, int id)
+        {
+            string name = condition != null ? MagicMenuState.GetConditionName(condition) : null;
+            if (string.IsNullOrEmpty(name))
+                name = BattleMessagePatches.GetConditionName(id);
+            return name;
+        }
+    }
+
+    /// <summary>
+    /// Announces status removal ("{unit}: {condition} removed") for cures, natural wear-off and revive.
+    ///
+    /// Hook (FF1, settled offline — docs/debug.md "Round 2"): the private predicate
+    /// <c>BattleConditionController.&lt;&gt;c__DisplayClass45_0.&lt;RemoveFunction&gt;b__0(BattleConditionFunction f)</c>
+    /// (RVA 0x3EC600, unique body: <c>f.condition.Id == id</c>). Its only caller is the removal loop of
+    /// <c>RemoveConditionFunction</c> (0x3DCC70), which runs when a condition has left the unit's
+    /// ConfirmedConditionList and removes that condition's BattleConditionFunction — the mirror of
+    /// <c>AddConditionFunction → Add</c>, which drives the "X: Poison" announcement. Every removal source
+    /// (item/spell cures via RecoveryConditionFunction.UpdateParameter, ConditionUntilType wear-off in
+    /// Recovery, Cancellation/ConflictCondition, InterruptRemoveCondition → Remove, battle-end cleanup)
+    /// ends in that loop. <c>BattleConditionController.Remove</c> itself is NOT used: in FF1 it is only
+    /// reached from InterruptRemoveCondition and BattleEndRecoveryCondition, so it misses cures and wear-off.
+    /// A removal can only be announced for a function Add created, so a status that never applied (negated
+    /// before the sync) never produces "X: Poison removed". The predicate runs only inside the removal loop
+    /// (a real removal), never per frame, unlike RemoveConditionFunction itself (called every frame).
+    ///
+    /// Silent for: battle-end cleanup (BattleEndRecoveryCondition scope), statuses cleared because the unit
+    /// is out of the fight (KO / Stone — game's own ConditionUtility.IsOutBattle), a condition that is still
+    /// present (stacked copy), conditions without a name, and a repeat of the same (unit, condition) in a frame.
+    /// </summary>
+    internal static class BattleConditionRemovalPatches
+    {
+        // BattleConditionFunction fields (dump.cs TypeDefIndex 9706)
+        private const int OFFSET_FUNCTION_UNIT = 0x10;       // <BattleUnitData>k__BackingField
+        private const int OFFSET_FUNCTION_CONDITION = 0x30;  // public Condition condition
+
+        private const int CONDITION_TYPE_KO = 5;
+
+        // True while BattleEndRecoveryCondition runs (victory / escape cleanup).
+        private static bool _battleEndCleanup;
+
+        // Same-frame (unit, condition) dedup.
+        private static int _dedupFrame = -1;
+        private static readonly HashSet<(IntPtr, int)> _spokenThisFrame = new HashSet<(IntPtr, int)>();
+
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                MethodInfo predicate = null;
+                foreach (var nested in typeof(BattleConditionController).GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    foreach (var m in nested.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    {
+                        if (!m.Name.Contains("RemoveFunction") || m.ReturnType != typeof(bool)) continue;
+                        var ps = m.GetParameters();
+                        if (ps.Length == 1 && ps[0].ParameterType.Name == "BattleConditionFunction")
+                        {
+                            predicate = m;
+                            break;
+                        }
+                    }
+                    if (predicate != null) break;
+                }
+
+                if (predicate != null)
+                {
+                    harmony.Patch(predicate, postfix: new HarmonyMethod(
+                        typeof(BattleConditionRemovalPatches).GetMethod(nameof(RemoveFunctionPredicate_Postfix), BindingFlags.Public | BindingFlags.Static)));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Battle Status] RemoveFunction predicate not found — status removal will not be announced");
+                }
+
+                var battleEnd = AccessTools.Method(typeof(BattleConditionController), "BattleEndRecoveryCondition");
+                if (battleEnd != null)
+                {
+                    harmony.Patch(battleEnd,
+                        prefix: new HarmonyMethod(typeof(BattleConditionRemovalPatches).GetMethod(nameof(BattleEndRecoveryCondition_Prefix), BindingFlags.Public | BindingFlags.Static)),
+                        postfix: new HarmonyMethod(typeof(BattleConditionRemovalPatches).GetMethod(nameof(BattleEndRecoveryCondition_Postfix), BindingFlags.Public | BindingFlags.Static)));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Battle Status] BattleEndRecoveryCondition not found");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Status] Error patching status removal: {ex.Message}");
+            }
+        }
+
+        public static void BattleEndRecoveryCondition_Prefix() => _battleEndCleanup = true;
+        public static void BattleEndRecoveryCondition_Postfix() => _battleEndCleanup = false;
+
+        /// <summary>Called on battle start so a missed postfix can never silence the next battle.</summary>
+        internal static void ResetState()
+        {
+            _battleEndCleanup = false;
+            _spokenThisFrame.Clear();
+            _dedupFrame = -1;
+        }
+
+        /// <summary>
+        /// Postfix on the RemoveFunction predicate. __0 = the BattleConditionFunction being tested;
+        /// __result = true for the function RemoveConditionFunction is about to remove.
+        /// </summary>
+        public static void RemoveFunctionPredicate_Postfix(BattleConditionFunction __0, bool __result)
+        {
+            try
+            {
+                if (!__result || __0 == null || _battleEndCleanup) return;
+
+                IntPtr fnPtr = __0.Pointer;
+                if (fnPtr == IntPtr.Zero) return;
+                IntPtr unitPtr = IL2CppFieldReader.ReadPointerSafe(fnPtr, OFFSET_FUNCTION_UNIT);
+                IntPtr conditionPtr = IL2CppFieldReader.ReadPointerSafe(fnPtr, OFFSET_FUNCTION_CONDITION);
+                if (unitPtr == IntPtr.Zero || conditionPtr == IntPtr.Zero) return;
+
+                var unit = new BattleUnitData(unitPtr);
+                var condition = new Condition(conditionPtr);
+                int id = condition.Id;
+
+                var param = unit.BattleUnitDataInfo?.Parameter;
+                if (param != null)
+                {
+                    // Statuses cleared because the unit dropped out of the fight (KO / Stone): silent.
+                    // A revive removes KO itself, so the unit is back in the fight and "KO removed" speaks.
+                    if (Il2CppLast.Systems.ConditionUtility.IsOutBattle(param)) return;
+
+                    var confirmedList = param.ConfirmedConditionList();
+                    if (confirmedList != null)
+                    {
+                        foreach (var c in confirmedList)
+                        {
+                            if (c == null) continue;
+                            if (c.Id == id) return;                               // still present (stacked copy)
+                            if (c.ConditionType == CONDITION_TYPE_KO) return;     // KO clearing other statuses
+                        }
+                    }
+                }
+
+                int frame = UnityEngine.Time.frameCount;
+                if (frame != _dedupFrame)
+                {
+                    _dedupFrame = frame;
+                    _spokenThisFrame.Clear();
+                }
+                if (!_spokenThisFrame.Add((unitPtr, id))) return;
+
+                string conditionName = BattleConditionController_Add_Patch.ResolveConditionName(condition, id);
+                if (string.IsNullOrEmpty(conditionName)) return;
+
+                string targetName = BattleMessagePatches.GetUnitName(unit);
+                FFI_ScreenReaderMod.SpeakText(string.Format(T("{0}: {1} removed"), targetName, conditionName), interrupt: false);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Battle Status] Error in removal postfix: {ex.Message}");
             }
         }
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using HarmonyLib;
 using MelonLoader;
@@ -416,8 +417,10 @@ namespace FFI_ScreenReader.Patches
     /// Re-announce the focused row when the item LIST or the item-use TARGET (re)gains focus — on initial
     /// entry AND on back-out from a deeper screen. The nav SelectContent patches only fire on cursor
     /// movement, so they're silent on (re)entry. The list controllers' state-entry <c>*Init()</c> methods
-    /// fire on both, so they arm a one-shot that the per-frame <c>UpdateController</c> consumes once the
-    /// list is genuinely built (self-retry), reusing the same announce helpers as navigation.
+    /// fire on both; each starts a short bounded read (up to MAX_FRAMES, one try per frame) that speaks
+    /// once the list is genuinely built, reusing the same announce helpers as navigation. No event exists
+    /// for "list populated", so this bounded retry replaces the old per-frame UpdateController consume
+    /// (round 2, 2026-09-24).
     /// </summary>
     public static class FieldItemReannouncePatches
     {
@@ -428,23 +431,23 @@ namespace FFI_ScreenReader.Patches
         private const int ITEM_USE_CONTENT_LIST = 0x40;   // List<ItemTargetSelectContentController>
         private const int ITEM_USE_SELECT_CURSOR = 0x50;
 
-        private static bool _pendingItemListAnnounce;
-        private static int _itemListFrames;
-        private static bool _pendingItemTargetAnnounce;
-        private static int _itemTargetFrames;
+        // Same cap the old per-frame consume used.
+        private const int MAX_FRAMES = 30;
+
+        // A newer Init supersedes a pending read.
+        private static int _itemListGen;
+        private static int _itemTargetGen;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
-            // Item list: arm on each list state-entry, consume in the per-frame UpdateController.
+            // Item list: each list state-entry starts a bounded read.
             Patch(harmony, typeof(KeyInputItemListController), "UseSelectInit", nameof(ItemList_Init_Postfix));
             Patch(harmony, typeof(KeyInputItemListController), "ImportantSelectInit", nameof(ItemList_Init_Postfix));
             Patch(harmony, typeof(KeyInputItemListController), "OrganizeSelectInit", nameof(ItemList_Init_Postfix));
-            Patch(harmony, typeof(KeyInputItemListController), "UpdateController", nameof(ItemList_Update_Postfix));
 
-            // Item-use target: arm on Single/All state-entry, consume in the per-frame UpdateController.
+            // Item-use target: Single/All state-entry starts a bounded read.
             Patch(harmony, typeof(KeyInputItemUseController), "SingleInit", nameof(ItemTarget_Init_Postfix));
             Patch(harmony, typeof(KeyInputItemUseController), "AllInit", nameof(ItemTarget_Init_Postfix));
-            Patch(harmony, typeof(KeyInputItemUseController), "UpdateController", nameof(ItemTarget_Update_Postfix));
         }
 
         private static void Patch(HarmonyLib.Harmony harmony, Type type, string method, string postfixName)
@@ -463,48 +466,48 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        public static void ItemList_Init_Postfix()
+        public static void ItemList_Init_Postfix(object __instance)
         {
-            _pendingItemListAnnounce = true;
-            _itemListFrames = 0;
+            var controller = __instance as KeyInputItemListController;
+            if (controller == null) return;
+            int gen = ++_itemListGen;
+            CoroutineManager.StartManaged(BoundedRead(() => gen == _itemListGen,
+                () => controller.gameObject != null && controller.gameObject.activeInHierarchy,
+                () => TryAnnounceItemListInitial(controller)));
         }
 
-        public static void ItemTarget_Init_Postfix()
+        public static void ItemTarget_Init_Postfix(object __instance)
         {
-            _pendingItemTargetAnnounce = true;
-            _itemTargetFrames = 0;
+            var controller = __instance as KeyInputItemUseController;
+            if (controller == null) return;
+            int gen = ++_itemTargetGen;
+            CoroutineManager.StartManaged(BoundedRead(() => gen == _itemTargetGen,
+                () => controller.gameObject != null && controller.gameObject.activeInHierarchy,
+                () => TryAnnounceItemTargetInitial(controller)));
         }
 
-        public static void ItemList_Update_Postfix(object __instance)
+        /// <summary>
+        /// One try per frame, starting the frame after the Init (as the old UpdateController consume did),
+        /// for at most MAX_FRAMES frames; frames where the controller is inactive don't count as tries,
+        /// but still end the read at 2×MAX_FRAMES so it can never linger.
+        /// </summary>
+        private static IEnumerator BoundedRead(Func<bool> stillCurrent, Func<bool> controllerActive, Func<bool> tryAnnounce)
         {
-            try
+            int tries = 0;
+            for (int frame = 0; frame < MAX_FRAMES * 2 && tries <= MAX_FRAMES; frame++)
             {
-                if (!_pendingItemListAnnounce) return;
-                var controller = __instance as KeyInputItemListController;
-                if (controller == null || !controller.gameObject.activeInHierarchy) return;
-
-                _itemListFrames++;
-                bool spoke = TryAnnounceItemListInitial(controller);
-                if (spoke || _itemListFrames > 30)
-                    _pendingItemListAnnounce = false;
+                yield return null;
+                if (!stillCurrent()) yield break;
+                bool active;
+                try { active = controllerActive(); }
+                catch { yield break; }   // controller destroyed
+                if (!active) continue;
+                tries++;
+                bool spoke;
+                try { spoke = tryAnnounce(); }
+                catch { spoke = false; }
+                if (spoke) yield break;
             }
-            catch { }
-        }
-
-        public static void ItemTarget_Update_Postfix(object __instance)
-        {
-            try
-            {
-                if (!_pendingItemTargetAnnounce) return;
-                var controller = __instance as KeyInputItemUseController;
-                if (controller == null || !controller.gameObject.activeInHierarchy) return;
-
-                _itemTargetFrames++;
-                bool spoke = TryAnnounceItemTargetInitial(controller);
-                if (spoke || _itemTargetFrames > 30)
-                    _pendingItemTargetAnnounce = false;
-            }
-            catch { }
         }
 
         private static bool TryAnnounceItemListInitial(KeyInputItemListController controller)

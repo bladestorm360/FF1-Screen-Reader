@@ -5207,19 +5207,19 @@
     "th": "{0}: ฟื้นฟู MP {1}",
     "pt": "{0}: recupera {1} PM"
   },
-  "{0}: cured": {
-    "en": "{0}: cured",
-    "ja": "{0}: 状態異常回復",
-    "fr": "{0} : soigné",
-    "it": "{0}: curato",
-    "de": "{0}: Zustand geheilt",
-    "es": "{0}: curado",
-    "ko": "{0}: 상태 회복",
-    "zht": "{0}：已治癒",
-    "zhc": "{0}：已治愈",
-    "ru": "{0}: исцеление",
-    "th": "{0}: รักษาแล้ว",
-    "pt": "{0}: curado"
+  "{0}: {1} removed": {
+    "en": "{0}: {1} removed",
+    "ja": "{0}: {1}解除",
+    "fr": "{0} : effet {1} dissipé",
+    "it": "{0}: effetto {1} rimosso",
+    "de": "{0}: {1} aufgehoben",
+    "es": "{0}: efecto {1} eliminado",
+    "ko": "{0}: {1} 해제",
+    "zht": "{0}：{1}解除",
+    "zhc": "{0}：{1}解除",
+    "ru": "{0}: снят эффект {1}",
+    "th": "{0}: {1} หายไป",
+    "pt": "{0}: efeito {1} removido"
   },
   "Cross": {
     "en": "Cross",

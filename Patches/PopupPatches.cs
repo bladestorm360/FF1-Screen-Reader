@@ -38,17 +38,18 @@ namespace FFI_ScreenReader.Patches
     {
         private static bool isPatched = false;
 
-        // UpdateFocus / UpdateCommand fire repeatedly while a popup is active, so each
-        // handler skips re-announcing when the cursor index hasn't changed. Reset to -1
-        // on popup close so reopening starts fresh.
+        // The popups' SetCommandSelectCursor also fires on open and on a click on the focused button, so
+        // each handler skips re-announcing when the cursor index hasn't changed. Reset to -1 on popup
+        // close so reopening starts fresh.
         private static int lastCommonPopupCursorIndex = -1;
         private static int lastGameOverSelectCursorIndex = -1;
         private static int lastGameOverLoadCursorIndex = -1;
 
-        // On a CommonPopup open, the message must be read BEFORE the focused button. UpdateFocus fires
-        // immediately (button) while the message read is one frame delayed, so it would otherwise read
-        // backwards ("No. Would you like to return to title screen?"). The open-read speaks
-        // "message. button" together and this flag suppresses the first UpdateFocus announce.
+        // On a CommonPopup open, the message must be read BEFORE the focused button. CommonPopup.Open calls
+        // SetCommandSelectCursor right after base Popup.Open (whose postfix sets this flag), so the button
+        // would be read at once while the message read is one frame delayed: backwards ("No. Would you
+        // like to return to title screen?"). The open-read speaks "message. button" together and this flag
+        // suppresses the open-time focus announce.
         private static bool _suppressNextCommonFocus = false;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
@@ -59,8 +60,8 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 TryPatchBasePopup(harmony);
-                TryPatchCommonPopupUpdateFocus(harmony);
-                TryPatchGameOverSelectPopupUpdateFocus(harmony);
+                TryPatchCommonPopupFocus(harmony);
+                TryPatchGameOverSelectPopupFocus(harmony);
                 TryPatchGameOverLoadPopup(harmony);
 
                 // Title screen patches (separate class)
@@ -104,51 +105,56 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        private static void TryPatchCommonPopupUpdateFocus(HarmonyLib.Harmony harmony)
+        private static void TryPatchCommonPopupFocus(HarmonyLib.Harmony harmony)
         {
             try
             {
+                // SetCommandSelectCursor (0x72A700) is the popup's own cursor-set: called from Open, the
+                // move callback (<UpdateSelect>b__2/b__4) and a click. It replaces the per-frame UpdateFocus
+                // hook (UpdateFocus runs at the top of every UpdateSelect; round 2, 2026-09-24).
                 Type popupType = typeof(KeyInputCommonPopup);
-                var updateFocusMethod = AccessTools.Method(popupType, "UpdateFocus");
+                var cursorSetMethod = AccessTools.Method(popupType, "SetCommandSelectCursor", Type.EmptyTypes);
 
-                if (updateFocusMethod != null)
+                if (cursorSetMethod != null)
                 {
-                    var postfix = typeof(PopupPatches).GetMethod(nameof(CommonPopup_UpdateFocus_Postfix),
+                    var postfix = typeof(PopupPatches).GetMethod(nameof(CommonPopup_FocusChanged_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(updateFocusMethod, postfix: new HarmonyMethod(postfix));
+                    harmony.Patch(cursorSetMethod, postfix: new HarmonyMethod(postfix));
                 }
                 else
                 {
-                    MelonLogger.Warning("[Popup] CommonPopup.UpdateFocus method not found");
+                    MelonLogger.Warning("[Popup] CommonPopup.SetCommandSelectCursor method not found");
                 }
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[Popup] Error patching CommonPopup.UpdateFocus: {ex.Message}");
+                MelonLogger.Warning($"[Popup] Error patching CommonPopup.SetCommandSelectCursor: {ex.Message}");
             }
         }
 
-        private static void TryPatchGameOverSelectPopupUpdateFocus(HarmonyLib.Harmony harmony)
+        private static void TryPatchGameOverSelectPopupFocus(HarmonyLib.Harmony harmony)
         {
             try
             {
+                // SetCommandSelectCursor (0x48E030): Open, ResetCursor, move callback, click. Replaces the
+                // per-frame UpdateFocus hook (round 2, 2026-09-24).
                 Type popupType = typeof(KeyInputGameOverSelectPopup);
-                var updateFocusMethod = AccessTools.Method(popupType, "UpdateFocus");
+                var cursorSetMethod = AccessTools.Method(popupType, "SetCommandSelectCursor", Type.EmptyTypes);
 
-                if (updateFocusMethod != null)
+                if (cursorSetMethod != null)
                 {
-                    var postfix = typeof(PopupPatches).GetMethod(nameof(GameOverSelectPopup_UpdateFocus_Postfix),
+                    var postfix = typeof(PopupPatches).GetMethod(nameof(GameOverSelectPopup_FocusChanged_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(updateFocusMethod, postfix: new HarmonyMethod(postfix));
+                    harmony.Patch(cursorSetMethod, postfix: new HarmonyMethod(postfix));
                 }
                 else
                 {
-                    MelonLogger.Warning("[Popup] GameOverSelectPopup.UpdateFocus method not found");
+                    MelonLogger.Warning("[Popup] GameOverSelectPopup.SetCommandSelectCursor method not found");
                 }
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[Popup] Error patching GameOverSelectPopup.UpdateFocus: {ex.Message}");
+                MelonLogger.Warning($"[Popup] Error patching GameOverSelectPopup.SetCommandSelectCursor: {ex.Message}");
             }
         }
 
@@ -156,18 +162,21 @@ namespace FFI_ScreenReader.Patches
         {
             try
             {
+                // SetCommandSelectCursor (0x6EDF30): ResetCursor (SetPopupData = open), SetData, the move
+                // callback, UpdateSelect's skip-disabled-command correction, click. Replaces the per-frame
+                // UpdateCommand hook (round 2, 2026-09-24).
                 Type loadPopupType = typeof(KeyInputGameOverLoadPopup);
-                var updateCommandMethod = AccessTools.Method(loadPopupType, "UpdateCommand");
+                var cursorSetMethod = AccessTools.Method(loadPopupType, "SetCommandSelectCursor", Type.EmptyTypes);
 
-                if (updateCommandMethod != null)
+                if (cursorSetMethod != null)
                 {
-                    var postfix = typeof(PopupPatches).GetMethod(nameof(GameOverLoadPopup_UpdateCommand_Postfix),
+                    var postfix = typeof(PopupPatches).GetMethod(nameof(GameOverLoadPopup_FocusChanged_Postfix),
                         BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(updateCommandMethod, postfix: new HarmonyMethod(postfix));
+                    harmony.Patch(cursorSetMethod, postfix: new HarmonyMethod(postfix));
                 }
                 else
                 {
-                    MelonLogger.Warning("[Popup] GameOverLoadPopup.UpdateCommand method not found");
+                    MelonLogger.Warning("[Popup] GameOverLoadPopup.SetCommandSelectCursor method not found");
                 }
 
                 Type controllerType = typeof(KeyInputGameOverPopupController);
@@ -370,7 +379,7 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        public static void CommonPopup_UpdateFocus_Postfix(object __instance)
+        public static void CommonPopup_FocusChanged_Postfix(object __instance)
         {
             try
             {
@@ -422,111 +431,84 @@ namespace FFI_ScreenReader.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[Popup] Error in UpdateFocus postfix: {ex.Message}");
+                MelonLogger.Warning($"[Popup] Error in CommonPopup focus postfix: {ex.Message}");
             }
         }
 
-        public static void GameOverSelectPopup_UpdateFocus_Postfix(object __instance)
+        public static void GameOverSelectPopup_FocusChanged_Postfix(object __instance)
+        {
+            var popup = __instance as KeyInputGameOverSelectPopup;
+            if (popup == null) return;
+            IntPtr popupPtr = popup.Pointer;
+            if (popupPtr == IntPtr.Zero) return;
+            if (!ReadGameOverButton(popupPtr, IL2CppOffsets.Popup.GameOverSelectCursor, IL2CppOffsets.Popup.GameOverCommandList,
+                    ref lastGameOverSelectCursorIndex))
+                CoroutineManager.StartManaged(RetryGameOverButton(popupPtr, IL2CppOffsets.Popup.GameOverSelectCursor,
+                    IL2CppOffsets.Popup.GameOverCommandList, isLoadPopup: false));
+        }
+
+        public static void GameOverLoadPopup_FocusChanged_Postfix(object __instance)
+        {
+            var popup = __instance as KeyInputGameOverLoadPopup;
+            if (popup == null) return;
+            IntPtr popupPtr = popup.Pointer;
+            if (popupPtr == IntPtr.Zero) return;
+            if (!ReadGameOverButton(popupPtr, IL2CppOffsets.Popup.GameOverLoadSelectCursor, IL2CppOffsets.Popup.GameOverLoadCommandList,
+                    ref lastGameOverLoadCursorIndex))
+                CoroutineManager.StartManaged(RetryGameOverButton(popupPtr, IL2CppOffsets.Popup.GameOverLoadSelectCursor,
+                    IL2CppOffsets.Popup.GameOverLoadCommandList, isLoadPopup: true));
+        }
+
+        /// <summary>
+        /// Speaks the game-over popup's focused button when its index changed. Returns false only when the
+        /// button text is not set yet (the cursor can be set before the popup's texts, e.g. at open); the
+        /// index is then NOT stored, so the caller's short retry can still speak it.
+        /// </summary>
+        private static bool ReadGameOverButton(IntPtr popupPtr, int cursorOffset, int listOffset, ref int lastIndex)
         {
             try
             {
-                if (__instance == null) return;
+                IntPtr cursorPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, cursorOffset);
+                if (cursorPtr == IntPtr.Zero) return true;
+                int cursorIndex = new GameCursor(cursorPtr).Index;
+                if (cursorIndex == lastIndex) return true;
 
-                var popup = __instance as KeyInputGameOverSelectPopup;
-                if (popup == null) return;
-
-                IntPtr popupPtr = popup.Pointer;
-                if (popupPtr == IntPtr.Zero) return;
-
-                IntPtr cursorPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverSelectCursor);
-                if (cursorPtr == IntPtr.Zero)
-                    return;
-
-                var cursor = new GameCursor(cursorPtr);
-                int cursorIndex = cursor.Index;
-
-                if (cursorIndex == lastGameOverSelectCursorIndex)
-                    return;
-                lastGameOverSelectCursorIndex = cursorIndex;
-
-                IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverCommandList);
-                if (listPtr == IntPtr.Zero)
-                    return;
-
+                IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, listOffset);
+                if (listPtr == IntPtr.Zero) return false;
                 int size = IL2CppFieldReader.ReadListSize(listPtr);
-                if (cursorIndex < 0 || cursorIndex >= size)
-                    return;
+                if (cursorIndex < 0 || cursorIndex >= size) return false;
 
                 IntPtr commandPtr = IL2CppFieldReader.ReadListElement(listPtr, cursorIndex);
-                if (commandPtr == IntPtr.Zero) return;
-
+                if (commandPtr == IntPtr.Zero) return false;
                 IntPtr textPtr = IL2CppFieldReader.ReadPointerSafe(commandPtr, IL2CppOffsets.Popup.CommonCommandText);
-                if (textPtr == IntPtr.Zero) return;
+                if (textPtr == IntPtr.Zero) return false;
 
-                var textComponent = new UnityEngine.UI.Text(textPtr);
-                string buttonText = textComponent.text;
+                string buttonText = new UnityEngine.UI.Text(textPtr).text;
+                if (string.IsNullOrWhiteSpace(buttonText)) return false;
 
-                if (!string.IsNullOrWhiteSpace(buttonText))
-                {
-                    buttonText = TextUtils.StripIconMarkup(buttonText.Trim());
-                    FFI_ScreenReaderMod.SpeakText(buttonText, interrupt: true);
-                }
+                lastIndex = cursorIndex;
+                FFI_ScreenReaderMod.SpeakText(TextUtils.StripIconMarkup(buttonText.Trim()), interrupt: true);
+                return true;
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[Popup] Error in GameOverSelectPopup UpdateFocus postfix: {ex.Message}");
+                MelonLogger.Warning($"[Popup] Error reading game-over button: {ex.Message}");
+                return true;
             }
         }
 
-        public static void GameOverLoadPopup_UpdateCommand_Postfix(object __instance)
+        // Frames a game-over button read may wait for the popup's button text (open only).
+        private const int GAME_OVER_BUTTON_MAX_FRAMES = 3;
+
+        private static IEnumerator RetryGameOverButton(IntPtr popupPtr, int cursorOffset, int listOffset, bool isLoadPopup)
         {
-            try
+            for (int i = 0; i < GAME_OVER_BUTTON_MAX_FRAMES; i++)
             {
-                if (__instance == null) return;
-
-                var popup = __instance as KeyInputGameOverLoadPopup;
-                if (popup == null) return;
-
-                IntPtr popupPtr = popup.Pointer;
-                if (popupPtr == IntPtr.Zero) return;
-
-                IntPtr cursorPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverLoadSelectCursor);
-                if (cursorPtr == IntPtr.Zero)
-                    return;
-
-                var cursor = new GameCursor(cursorPtr);
-                int cursorIndex = cursor.Index;
-
-                if (cursorIndex == lastGameOverLoadCursorIndex)
-                    return;
-                lastGameOverLoadCursorIndex = cursorIndex;
-
-                IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.GameOverLoadCommandList);
-                if (listPtr == IntPtr.Zero)
-                    return;
-
-                int size = IL2CppFieldReader.ReadListSize(listPtr);
-                if (cursorIndex < 0 || cursorIndex >= size)
-                    return;
-
-                IntPtr commandPtr = IL2CppFieldReader.ReadListElement(listPtr, cursorIndex);
-                if (commandPtr == IntPtr.Zero) return;
-
-                IntPtr textPtr = IL2CppFieldReader.ReadPointerSafe(commandPtr, IL2CppOffsets.Popup.CommonCommandText);
-                if (textPtr == IntPtr.Zero) return;
-
-                var textComponent = new UnityEngine.UI.Text(textPtr);
-                string buttonText = textComponent.text;
-
-                if (!string.IsNullOrWhiteSpace(buttonText))
-                {
-                    buttonText = TextUtils.StripIconMarkup(buttonText.Trim());
-                    FFI_ScreenReaderMod.SpeakText(buttonText, interrupt: true);
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Popup] Error in GameOverLoadPopup UpdateCommand postfix: {ex.Message}");
+                yield return null;
+                bool done = isLoadPopup
+                    ? ReadGameOverButton(popupPtr, cursorOffset, listOffset, ref lastGameOverLoadCursorIndex)
+                    : ReadGameOverButton(popupPtr, cursorOffset, listOffset, ref lastGameOverSelectCursorIndex);
+                if (done) yield break;
             }
         }
 
@@ -600,9 +582,9 @@ namespace FFI_ScreenReader.Patches
                 var commonPopup = __instance.TryCast<KeyInputCommonPopup>();
                 if (commonPopup != null)
                 {
-                    // Read message + focused button together (message first); suppress the first
-                    // UpdateFocus so the button isn't spoken before the message. CommonPopup has its own
-                    // UpdateFocus reader, so the generic cursor reader must not also read the button.
+                    // Read message + focused button together (message first); suppress the open-time
+                    // focus announce so the button isn't spoken before the message. CommonPopup has its own
+                    // focus reader, so the generic cursor reader must not also read the button.
                     _suppressNextCommonFocus = true;
                     lastCommonPopupCursorIndex = -1;
                     PopupState.SetActive("CommonPopup", commonPopup.Pointer, IL2CppOffsets.Popup.CommonCommandList,
@@ -622,7 +604,7 @@ namespace FFI_ScreenReader.Patches
                 var gameOver = __instance.TryCast<KeyInputGameOverSelectPopup>();
                 if (gameOver != null)
                 {
-                    // Has its own UpdateFocus reader — don't let the generic reader also read the button.
+                    // Has its own focus reader — don't let the generic reader also read the button.
                     HandlePopupDetected("GameOverSelectPopup", gameOver.Pointer, IL2CppOffsets.Popup.GameOverCommandList,
                         () => ReadGameOverSelectPopup(gameOver.Pointer), hasOwnFocusReader: true);
                     return;
@@ -736,7 +718,7 @@ namespace FFI_ScreenReader.Patches
                 IntPtr cursorPtr = IL2CppFieldReader.ReadPointerSafe(popupPtr, IL2CppOffsets.Popup.CommonSelectCursor);
                 if (cursorPtr == IntPtr.Zero) return null;
                 int idx = new GameCursor(cursorPtr).Index;
-                lastCommonPopupCursorIndex = idx;   // so UpdateFocus won't re-announce the same button
+                lastCommonPopupCursorIndex = idx;   // so the focus reader won't re-announce the same button
                 string btn = ReadButtonFromCommandList(popupPtr, IL2CppOffsets.Popup.CommonCommandList, idx);
                 return string.IsNullOrWhiteSpace(btn) ? null : TextUtils.StripIconMarkup(btn);
             }

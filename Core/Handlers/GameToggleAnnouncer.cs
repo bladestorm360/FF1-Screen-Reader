@@ -1,54 +1,84 @@
 using System;
+using System.Reflection;
+using HarmonyLib;
 using MelonLoader;
+using FFI_ScreenReader.Patches;
 using static FFI_ScreenReader.Utils.ModTextTranslator;
 
 namespace FFI_ScreenReader.Core.Handlers
 {
     /// <summary>
-    /// Per-frame poller for the two game-side toggles the player can flip from many sources:
-    /// random encounters (R3 in-game / cheat menu) and auto-dash / walk/run (F1 in-game /
-    /// L3 in-game / cheat menu / config menu). Announces only when the value changes inside
-    /// active field gameplay; map transitions and menus silently reset the seed so the next
-    /// valid poll doesn't false-announce a context shift as a toggle.
+    /// Announces the two game-side field toggles when the player flips them on the field: random
+    /// encounters and auto-dash (walk/run).
+    ///
+    /// Event-driven (round 2, 2026-09-24; replaces a per-frame poll of both flags). Hooks the CLIENT
+    /// setters, which are separate, unique bodies (the data-class setter CheatSettingsData
+    /// .set_IsEnableEncount shares its body with 22 setters):
+    ///  - Last.Management.CheatSettingsClient.SetIsEnableEncount(bool) — RVA 0x6D3BC0
+    ///  - Last.Management.ConfigClient.SetIsAutoDash(int)             — RVA 0x9AD550
+    /// Callers: FieldMap.UpdatePlayerStatePlay (the field toggle keys), the config menu
+    /// (ConfigActualDetailsControllerBase) and, for encounters, the save load (SaveSlotManager
+    /// .GotoLoadSaveData). The prefix records the old value; the postfix speaks only for a real change
+    /// made while the main game is in its Player state (SubSceneManagerMainGame.State.Player = 3 — the
+    /// only state whose update, FieldMap.UpdatePlayer, runs UpdatePlayerStatePlay). A config-menu change
+    /// (state Menu) or a save load therefore stays silent; the config menu reads its own row.
     /// </summary>
     internal static class GameToggleAnnouncer
     {
-        private static bool? lastEncounter;
-        private static int? lastAutoDash;
+        // Old value captured by the prefix; null when it could not be read (then the postfix is silent).
+        private static bool? _encounterBefore;
+        private static int? _autoDashBefore;
 
-        internal static void Poll()
+        public static void ApplyPatches(HarmonyLib.Harmony harmony)
+        {
+            Patch(harmony, typeof(Il2CppLast.Management.CheatSettingsClient), "SetIsEnableEncount", typeof(bool),
+                nameof(SetIsEnableEncount_Prefix), nameof(SetIsEnableEncount_Postfix));
+            Patch(harmony, typeof(Il2CppLast.Management.ConfigClient), "SetIsAutoDash", typeof(int),
+                nameof(SetIsAutoDash_Prefix), nameof(SetIsAutoDash_Postfix));
+        }
+
+        private static void Patch(HarmonyLib.Harmony harmony, Type type, string method, Type argType, string prefix, string postfix)
         {
             try
             {
-                // Out-of-context (loading, menus, battle, scene transition): silently re-seed
-                // so we never report a state shift caused by entering/leaving a context.
-                if (!ControllerRouter.IsFieldActive)
+                var target = AccessTools.Method(type, method, new[] { argType });
+                if (target == null)
                 {
-                    lastEncounter = null;
-                    lastAutoDash = null;
+                    MelonLogger.Warning($"[GameToggleAnnouncer] {type.Name}.{method} not found");
                     return;
                 }
+                harmony.Patch(target,
+                    prefix: new HarmonyMethod(typeof(GameToggleAnnouncer).GetMethod(prefix, BindingFlags.Public | BindingFlags.Static)),
+                    postfix: new HarmonyMethod(typeof(GameToggleAnnouncer).GetMethod(postfix, BindingFlags.Public | BindingFlags.Static)));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[GameToggleAnnouncer] Error patching {type.Name}.{method}: {ex.Message}");
+            }
+        }
 
-                var ud = Il2CppLast.Management.UserDataManager.Instance();
-                if (ud == null) return;
-
-                var cheat = ud.CheatSettingsData;
+        // ── Encounters (CheatSettingsClient.SetIsEnableEncount) ──
+        public static void SetIsEnableEncount_Prefix()
+        {
+            _encounterBefore = null;
+            try
+            {
+                var cheat = Il2CppLast.Management.UserDataManager.Instance()?.CheatSettingsData;
                 if (cheat != null)
-                {
-                    bool e = cheat.IsEnableEncount;
-                    if (lastEncounter.HasValue && lastEncounter.Value != e)
-                        FFI_ScreenReaderMod.SpeakText(e ? T("Encounters on") : T("Encounters off"), interrupt: true);
-                    lastEncounter = e;
-                }
+                    _encounterBefore = cheat.IsEnableEncount;
+            }
+            catch { } // unreadable → stay silent
+        }
 
-                var cfg = ud.Config;
-                if (cfg != null)
-                {
-                    int a = cfg.IsAutoDash;
-                    if (lastAutoDash.HasValue && lastAutoDash.Value != a)
-                        FFI_ScreenReaderMod.SpeakText(a != 0 ? T("Run") : T("Walk"), interrupt: true);
-                    lastAutoDash = a;
-                }
+        public static void SetIsEnableEncount_Postfix(bool __0)
+        {
+            try
+            {
+                bool? before = _encounterBefore;
+                _encounterBefore = null;
+                if (!before.HasValue || before.Value == __0) return;   // not a real change
+                if (!GameStatePatches.IsFieldPlayerState()) return;    // config menu / save load
+                FFI_ScreenReaderMod.SpeakText(__0 ? T("Encounters on") : T("Encounters off"), interrupt: true);
             }
             catch (Exception ex)
             {
@@ -56,10 +86,33 @@ namespace FFI_ScreenReader.Core.Handlers
             }
         }
 
-        internal static void Reset()
+        // ── Auto-dash / walk-run (ConfigClient.SetIsAutoDash) ──
+        public static void SetIsAutoDash_Prefix()
         {
-            lastEncounter = null;
-            lastAutoDash = null;
+            _autoDashBefore = null;
+            try
+            {
+                var cfg = Il2CppLast.Management.UserDataManager.Instance()?.Config;
+                if (cfg != null)
+                    _autoDashBefore = cfg.IsAutoDash;
+            }
+            catch { } // unreadable → stay silent
+        }
+
+        public static void SetIsAutoDash_Postfix(int __0)
+        {
+            try
+            {
+                int? before = _autoDashBefore;
+                _autoDashBefore = null;
+                if (!before.HasValue || (before.Value != 0) == (__0 != 0)) return;   // not a real change
+                if (!GameStatePatches.IsFieldPlayerState()) return;                  // config menu
+                FFI_ScreenReaderMod.SpeakText(__0 != 0 ? T("Run") : T("Walk"), interrupt: true);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[GameToggleAnnouncer] {ex.Message}");
+            }
         }
     }
 }

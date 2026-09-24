@@ -189,13 +189,35 @@ namespace FFI_ScreenReader.Patches
                     }
                 }
 
-                // Patch 6: LibraryMenuController.UpdateController
-                var updateControllerMethod = AccessTools.Method(
-                    typeof(LibraryMenuController_KeyInput), "UpdateController");
-                if (updateControllerMethod != null)
+                // Patch 6: minimap open/close in the list. LibraryMenuController.ChangeState is inlined
+                // (no direct callers), but every state switch calls SetupEnlargedMapKeyHelp (→ map) or
+                // SetupKeyHelp (→ list) just before writing selectState, so both schedule a one-frame-late
+                // compare of selectState. Replaces the per-frame UpdateController postfix (round 2).
+                foreach (var keyHelpMethod in new[] { "SetupKeyHelp", "SetupEnlargedMapKeyHelp" })
                 {
-                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(UpdateController_Postfix));
-                    harmony.Patch(updateControllerMethod, postfix: new HarmonyMethod(postfix));
+                    var method = AccessTools.Method(typeof(LibraryMenuController_KeyInput), keyHelpMethod);
+                    if (method != null)
+                    {
+                        var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(KeyHelpSetup_Postfix));
+                        harmony.Patch(method, postfix: new HarmonyMethod(postfix));
+                    }
+                    else
+                    {
+                        MelonLogger.Warning($"[Bestiary] LibraryMenuController.{keyHelpMethod} not found");
+                    }
+                }
+
+                // Patch 6b: formation view ready — ArBattleTopController.InitMonsterPartyList (called from its
+                // SetActive) fills monsterPartyList; replaces the 3-second FindObjectOfType poll.
+                var initPartyMethod = AccessTools.Method(typeof(ArBattleTopController), "InitMonsterPartyList");
+                if (initPartyMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(BestiaryManualPatches), nameof(InitMonsterPartyList_Postfix));
+                    harmony.Patch(initPartyMethod, postfix: new HarmonyMethod(postfix));
+                }
+                else
+                {
+                    MelonLogger.Warning("[Bestiary] ArBattleTopController.InitMonsterPartyList not found");
                 }
 
                 // Patch 7: ArBattleTopController.ChangeMonsterParty
@@ -432,36 +454,51 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        // Formation entry announce pending: set on ChangeState(5), cleared by whichever event reads it first
+        // (the entry check below, or InitMonsterPartyList when the party list is filled later).
+        private static bool _formationAnnouncePending;
+
+        /// <summary>
+        /// Formation view entered (ChangeState 5). One check a frame later: if the party list is already
+        /// filled, read it now; otherwise the InitMonsterPartyList postfix reads it when the game fills it.
+        /// Event-driven replacement for the old 3-second FindObjectOfType poll (round 2, 2026-09-24).
+        /// </summary>
         private static IEnumerator AnnounceFormation()
         {
-            float elapsed = 0f;
+            _formationAnnouncePending = true;
+            yield return null;
 
-            while (elapsed < 3f)
+            try
             {
-                yield return null;
-                elapsed += Time.deltaTime;
-
-                try
+                if (!_formationAnnouncePending || !BestiaryStateTracker.IsInFormation) yield break;
+                var controller = UnityEngine.Object.FindObjectOfType<ArBattleTopController>();
+                if (controller == null) yield break;   // not created yet — InitMonsterPartyList will read
+                var partyList = controller.monsterPartyList;
+                if (partyList != null && partyList.Count > 0)
                 {
-                    var controller = UnityEngine.Object.FindObjectOfType<ArBattleTopController>();
-                    if (controller != null)
-                    {
-                        var partyList = controller.monsterPartyList;
-                        if (partyList != null && partyList.Count > 0)
-                        {
-                            ReadCurrentFormation(controller);
-                            yield break;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MelonLogger.Warning($"[Bestiary] Error polling formation: {ex.Message}");
-                    break;
+                    _formationAnnouncePending = false;
+                    ReadCurrentFormation(controller);
                 }
             }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Bestiary] Error reading formation: {ex.Message}");
+            }
+        }
 
-            FFI_ScreenReaderMod.SpeakText(T("Formation view"), true);
+        /// <summary>ArBattleTopController.InitMonsterPartyList postfix: the formation list is now filled.</summary>
+        public static void InitMonsterPartyList_Postfix(ArBattleTopController __instance)
+        {
+            try
+            {
+                if (!_formationAnnouncePending || !BestiaryStateTracker.IsInFormation || __instance == null) return;
+                _formationAnnouncePending = false;
+                ReadCurrentFormation(__instance);   // handles an empty list ("No formations available")
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Bestiary] Error in InitMonsterPartyList patch: {ex.Message}");
+            }
         }
 
         private static void ReadCurrentFormation(ArBattleTopController controller)
@@ -678,11 +715,28 @@ namespace FFI_ScreenReader.Patches
         // Patch 6: Map change (list view minimap)
         // ─────────────────────────────────────────────────────────────────────────
 
-        public static void UpdateController_Postfix(LibraryMenuController_KeyInput __instance)
+        /// <summary>
+        /// SetupKeyHelp / SetupEnlargedMapKeyHelp postfix. Both run inside the (inlined) state switch just
+        /// before selectState is written (and also on list open / cursor moves, where the state does not
+        /// change), so compare the state one frame later.
+        /// </summary>
+        public static void KeyHelpSetup_Postfix(LibraryMenuController_KeyInput __instance)
+        {
+            if (__instance == null || !BestiaryStateTracker.IsInList) return;
+            CoroutineManager.StartManaged(DeferredSelectStateCheck(__instance));
+        }
+
+        private static IEnumerator DeferredSelectStateCheck(LibraryMenuController_KeyInput controller)
+        {
+            yield return null;
+            CheckSelectStateChange(controller);
+        }
+
+        private static void CheckSelectStateChange(LibraryMenuController_KeyInput __instance)
         {
             try
             {
-                if (!BestiaryStateTracker.IsInList) return;
+                if (__instance == null || !BestiaryStateTracker.IsInList) return;
 
                 int currentState = (int)__instance.selectState;
 
@@ -716,7 +770,7 @@ namespace FFI_ScreenReader.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[Bestiary] Error in UpdateController patch: {ex.Message}");
+                MelonLogger.Warning($"[Bestiary] Error in map state check: {ex.Message}");
             }
         }
 

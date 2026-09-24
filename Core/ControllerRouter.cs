@@ -263,8 +263,7 @@ namespace FFI_ScreenReader.Core
 
         private static void OpenModMenu()
         {
-            State = ControllerState.ModMenu;
-            ModMenu.Open(); // speaks "Mod menu" + first item
+            ModMenu.Open(); // speaks "Mod menu" + first item; SyncWithModMenu(true) sets MOD_MENU
         }
 
         /// <summary>
@@ -281,8 +280,7 @@ namespace FFI_ScreenReader.Core
 
         private static void CloseModMenu()
         {
-            State = ControllerState.Normal;
-            ModMenu.Close(); // speaks "Mod menu closed"
+            ModMenu.Close(); // speaks "Mod menu closed"; SyncWithModMenu(false) sets NORMAL
         }
 
         // =====================================================================

@@ -34,16 +34,5 @@ namespace FFI_ScreenReader.Utils
             if (!string.IsNullOrEmpty(text))
                 FFI_ScreenReaderMod.SpeakText(text, interrupt: interrupt);
         }
-
-        /// <summary>
-        /// Coroutine that waits the specified number of seconds, then speaks the result of textGetter.
-        /// </summary>
-        public static IEnumerator DelayedSpeakSeconds(float seconds, Func<string> textGetter, bool interrupt = false)
-        {
-            yield return new UnityEngine.WaitForSeconds(seconds);
-            string text = textGetter();
-            if (!string.IsNullOrEmpty(text))
-                FFI_ScreenReaderMod.SpeakText(text, interrupt: interrupt);
-        }
     }
 }

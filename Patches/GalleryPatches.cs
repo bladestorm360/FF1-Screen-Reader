@@ -115,38 +115,46 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        // Entry announce state (round 2, 2026-09-24 — replaces a 2-second poll). "Gallery" is spoken one
+        // frame after entry; the focused entry follows as soon as SetFocusContent has reported it — read
+        // here if it already has, otherwise by the SetFocusContent postfix when it does.
+        private static bool _entryHeaderSpoken;
+
         private static IEnumerator AnnounceGalleryEntry()
         {
+            _entryHeaderSpoken = false;
             yield return null;
             FFI_ScreenReaderMod.SpeakText(T("Gallery"), true);
+            _entryHeaderSpoken = true;
+            TryAnnounceEntryItem();
+        }
 
-            float elapsed = 0f;
-            while (elapsed < 2f)
+        /// <summary>
+        /// Speaks the cached focused entry after the "Gallery" header, then ends the entry suppression so
+        /// navigation announces normally. Returns false (suppression kept) until an entry can be read.
+        /// </summary>
+        private static bool TryAnnounceEntryItem()
+        {
+            try
             {
-                yield return null;
-                elapsed += Time.deltaTime;
+                if (!GalleryStateTracker.SuppressContentChange || !_entryHeaderSpoken) return false;
+                IntPtr focusedPtr = GalleryStateTracker.CachedFocusedPtr;
+                if (focusedPtr == IntPtr.Zero ||
+                    !GalleryReader.ReadContentFromPointer(focusedPtr, out int number, out string name))
+                    return false;
 
-                try
-                {
-                    IntPtr focusedPtr = GalleryStateTracker.CachedFocusedPtr;
-                    if (focusedPtr != IntPtr.Zero &&
-                        GalleryReader.ReadContentFromPointer(focusedPtr, out int number, out string name))
-                    {
-                        string entry = GalleryReader.ReadListEntry(number, name);
-                        if (!string.IsNullOrEmpty(entry))
-                            FFI_ScreenReaderMod.SpeakText(entry, false);
-                        GalleryStateTracker.SuppressContentChange = false;
-                        yield break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MelonLogger.Warning($"[Gallery] Error announcing entry item: {ex.Message}");
-                    break;
-                }
+                GalleryStateTracker.SuppressContentChange = false;
+                string entry = GalleryReader.ReadListEntry(number, name);
+                if (!string.IsNullOrEmpty(entry))
+                    FFI_ScreenReaderMod.SpeakText(entry, false);
+                return true;
             }
-
-            GalleryStateTracker.SuppressContentChange = false;
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Gallery] Error announcing entry item: {ex.Message}");
+                GalleryStateTracker.SuppressContentChange = false;
+                return true;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────────
@@ -171,7 +179,9 @@ namespace FFI_ScreenReader.Patches
 
                 if (GalleryStateTracker.SuppressContentChange)
                 {
+                    // Entry: cache the focus; once "Gallery" has been spoken, this read ends the entry.
                     GalleryStateTracker.CachedFocusedPtr = ptr;
+                    TryAnnounceEntryItem();
                     return;
                 }
 

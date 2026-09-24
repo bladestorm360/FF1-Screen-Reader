@@ -24,13 +24,14 @@ namespace FFI_ScreenReader.Patches
     {
         private static bool isPatched = false;
 
-        // One-shot: set when the spell list state is (re)entered (UseListInit/ForgetInit), consumed by the
-        // per-frame UpdateController reader once the list is built. Announces the focused spell when the
-        // list (re)gains focus — on initial entry AND on returning from a spell's target — since SetCursor
-        // only fires on movement and never speaks the focused slot on (re)entry.
-        private static bool pendingInitialSpellAnnounce;
-        // Frames the consume has waited for the list to be ready; caps the self-retry.
-        private static int initialSpellAnnounceFrames;
+        // Spell-list (re)entry read (UseListInit/ForgetInit → bounded coroutine; round 2, 2026-09-24,
+        // replaces the per-frame AbilityContentListController.UpdateController postfix). Announces the
+        // focused spell when the list (re)gains focus — on initial entry AND on returning from a spell's
+        // target — since SetCursor only fires on movement and never speaks the focused slot on (re)entry.
+        // A newer entry supersedes a pending read; state 0 (None) cancels it.
+        private static int initialSpellReadGen;
+        // Same cap the old per-frame consume used.
+        private const int INITIAL_SPELL_MAX_FRAMES = 30;
 
         private const int OFFSET_SELECT_CURSOR = IL2CppOffsets.MagicMenu.SelectCursor;
         private const int OFFSET_CONTENT_LIST = IL2CppOffsets.MagicMenu.ContentList;
@@ -40,6 +41,7 @@ namespace FFI_ScreenReader.Patches
         private const int OFFSET_ON_CANCEL = IL2CppOffsets.MagicMenu.OnCancel;
         private const int OFFSET_STATUS_CONTROLLER = IL2CppOffsets.AbilityWindow.StatusController;
         private const int OFFSET_TARGET_DATA = IL2CppOffsets.AbilityWindow.TargetData;
+        private const int OFFSET_LIST_CONTROLLER = IL2CppOffsets.AbilityWindow.ListController;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
         {
@@ -48,7 +50,6 @@ namespace FFI_ScreenReader.Patches
 
             try
             {
-                TryPatchUpdateController(harmony);
                 TryPatchSetCursor(harmony);
                 TryPatchWindowController(harmony);
                 TryPatchSetActive(harmony);
@@ -65,33 +66,6 @@ namespace FFI_ScreenReader.Patches
         }
 
         #region Patch Registration
-
-        private static void TryPatchUpdateController(HarmonyLib.Harmony harmony)
-        {
-            try
-            {
-                Type controllerType = typeof(AbilityContentListController);
-
-                var updateControllerMethod = controllerType.GetMethod("UpdateController",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                    null, Type.EmptyTypes, null);
-
-                if (updateControllerMethod != null)
-                {
-                    var postfix = typeof(MagicMenuPatches).GetMethod(nameof(UpdateController_Postfix),
-                        BindingFlags.Public | BindingFlags.Static);
-                    harmony.Patch(updateControllerMethod, postfix: new HarmonyMethod(postfix));
-                }
-                else
-                {
-                    MelonLogger.Warning("[Magic Menu] UpdateController method not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[Magic Menu] Failed to patch UpdateController: {ex.Message}");
-            }
-        }
 
         private static void TryPatchSetCursor(HarmonyLib.Harmony harmony)
         {
@@ -240,77 +214,73 @@ namespace FFI_ScreenReader.Patches
                 if (state == 0)
                 {
                     MagicMenuState.ResetState();
-                    pendingInitialSpellAnnounce = false;
+                    initialSpellReadGen++;   // cancel a pending (re)entry read
                 }
             }
             catch { } // State reset is best-effort
         }
 
         /// <summary>Postfix for AbilityWindowController.UseListInit — entering the Use spell list.</summary>
-        public static void UseListInit_Postfix() => ArmInitialSpellAnnounce();
+        public static void UseListInit_Postfix(object __instance) => BeginSpellListEntry(__instance);
 
         /// <summary>Postfix for AbilityWindowController.ForgetInit — entering the Forget spell list.</summary>
-        public static void ForgetInit_Postfix() => ArmInitialSpellAnnounce();
+        public static void ForgetInit_Postfix(object __instance) => BeginSpellListEntry(__instance);
 
-        /// <summary>Arms the one-shot focused-spell announce; the UpdateController consume speaks it.</summary>
-        private static void ArmInitialSpellAnnounce()
+        /// <summary>
+        /// Spell list (re)entry. Starting the frame after the Init (when the old per-frame UpdateController
+        /// postfix first ran), each frame while the list controller is active: mark the spell list focused
+        /// (so SetCursor navigation announces), resolve the character (for charges) from the window's own
+        /// status controller, and try the focused-spell announce until the list is genuinely built — at most
+        /// INITIAL_SPELL_MAX_FRAMES tries (the old consume cap). No event exists for "list populated".
+        /// </summary>
+        private static void BeginSpellListEntry(object windowInstance)
         {
-            pendingInitialSpellAnnounce = true;
-            initialSpellAnnounceFrames = 0;
+            var window = windowInstance as AbilityWindowController;
+            if (window == null) return;
+            int gen = ++initialSpellReadGen;
+            CoroutineManager.StartManaged(SpellListEntryRoutine(window, gen));
         }
 
-        public static void UpdateController_Postfix(object __instance)
+        private static System.Collections.IEnumerator SpellListEntryRoutine(AbilityWindowController window, int gen)
         {
-            try
+            int tries = 0;
+            for (int frame = 0; frame < INITIAL_SPELL_MAX_FRAMES * 2 && tries <= INITIAL_SPELL_MAX_FRAMES; frame++)
             {
-                if (__instance == null)
-                    return;
+                yield return null;
+                if (gen != initialSpellReadGen) yield break;
 
-                var controller = __instance as AbilityContentListController;
-                if (controller == null || !controller.gameObject.activeInHierarchy)
-                    return;
-
-                if (!MagicMenuState.IsSpellListActive)
-                    MagicMenuState.OnSpellListFocused();
-
-                if (MagicMenuState.CurrentCharacter == null)
+                bool done = false;
+                try
                 {
-                    try
+                    IntPtr windowPtr = window.Pointer;
+                    if (windowPtr == IntPtr.Zero) yield break;
+                    IntPtr listPtr = IL2CppFieldReader.ReadPointerSafe(windowPtr, OFFSET_LIST_CONTROLLER);
+                    if (listPtr == IntPtr.Zero) continue;
+                    var controller = new AbilityContentListController(listPtr);
+                    if (controller.gameObject == null || !controller.gameObject.activeInHierarchy)
+                        continue;   // not shown yet — doesn't count as a try
+
+                    tries++;
+                    if (!MagicMenuState.IsSpellListActive)
+                        MagicMenuState.OnSpellListFocused();
+
+                    if (MagicMenuState.CurrentCharacter == null)
                     {
-                        var windowController = UnityEngine.Object.FindObjectOfType<AbilityWindowController>();
-                        if (windowController != null)
+                        IntPtr statusControllerPtr = IL2CppFieldReader.ReadPointerSafe(windowPtr, OFFSET_STATUS_CONTROLLER);
+                        if (statusControllerPtr != IntPtr.Zero)
                         {
-                            IntPtr windowPtr = windowController.Pointer;
-                            if (windowPtr != IntPtr.Zero)
-                            {
-                                IntPtr statusControllerPtr = IL2CppFieldReader.ReadPointer(windowPtr, OFFSET_STATUS_CONTROLLER);
-                                if (statusControllerPtr != IntPtr.Zero)
-                                {
-                                    IntPtr charPtr = IL2CppFieldReader.ReadPointer(statusControllerPtr, OFFSET_TARGET_DATA);
-                                    if (charPtr != IntPtr.Zero)
-                                        MagicMenuState.CurrentCharacter = new OwnedCharacterData(charPtr);
-                                }
-                            }
+                            IntPtr charPtr = IL2CppFieldReader.ReadPointerSafe(statusControllerPtr, OFFSET_TARGET_DATA);
+                            if (charPtr != IntPtr.Zero)
+                                MagicMenuState.CurrentCharacter = new OwnedCharacterData(charPtr);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        MelonLogger.Warning($"[Magic Menu] Error getting character: {ex.Message}");
-                    }
-                }
 
-                // Initial-focus announce: once the spell list is built, speak the focused spell once.
-                // UpdateController runs every frame, so this self-retries until the list is genuinely ready
-                // (populated + the focused slot has a real ability) and only then consumes the one-shot.
-                if (pendingInitialSpellAnnounce)
-                {
-                    initialSpellAnnounceFrames++;
-                    bool spoke = TryAnnounceInitialSpell(controller);
-                    if (spoke || initialSpellAnnounceFrames > 30)
-                        pendingInitialSpellAnnounce = false;
+                    done = TryAnnounceInitialSpell(controller);
                 }
+                catch { } // IL2CPP field reads may fail transiently — retry next frame
+
+                if (done) yield break;
             }
-            catch { } // IL2CPP field reads may fail transiently
         }
 
         /// <summary>

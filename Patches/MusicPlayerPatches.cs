@@ -134,39 +134,48 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
+        // Entry announce state (round 2, 2026-09-24 — replaces a 2-second poll). "Music Player" is spoken
+        // one frame after entry; the focused song follows as soon as SetFocus has reported it — read here if
+        // it already has, otherwise by the SetFocus postfix when it does.
+        private static bool _entryHeaderSpoken;
+        private static bool _entryPending;
+
         private static IEnumerator AnnounceMusicPlayerEntry()
         {
+            _entryHeaderSpoken = false;
+            _entryPending = true;
             yield return null;
             FFI_ScreenReaderMod.SpeakText(T("Music Player"), true);
+            _entryHeaderSpoken = true;
+            TryAnnounceEntrySong();
+        }
 
-            float elapsed = 0f;
-
-            while (elapsed < 2f)
+        /// <summary>
+        /// Speaks the cached focused song after the "Music Player" header, then ends the entry suppression
+        /// so navigation announces normally. No-op until an entry can be read.
+        /// </summary>
+        private static void TryAnnounceEntrySong()
+        {
+            try
             {
-                yield return null;
-                elapsed += Time.deltaTime;
+                if (!_entryPending || !_entryHeaderSpoken || !MusicPlayerStateTracker.SuppressContentChange) return;
+                IntPtr focusedPtr = MusicPlayerStateTracker.CachedFocusedPtr;
+                if (focusedPtr == IntPtr.Zero ||
+                    !MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx, out int playTime))
+                    return;
 
-                try
-                {
-                    IntPtr focusedPtr = MusicPlayerStateTracker.CachedFocusedPtr;
-                    if (focusedPtr != IntPtr.Zero &&
-                        MusicPlayerReader.ReadContentFromPointer(focusedPtr, out string name, out int bgmId, out int idx, out int playTime))
-                    {
-                        string entry = MusicPlayerReader.ReadSongEntry(name, bgmId, idx, playTime);
-                        if (!string.IsNullOrEmpty(entry))
-                            FFI_ScreenReaderMod.SpeakText(entry, false);
-                        MusicPlayerStateTracker.SuppressContentChange = false;
-                        yield break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MelonLogger.Warning($"[MusicPlayer] Error announcing entry song: {ex.Message}");
-                    break;
-                }
+                _entryPending = false;
+                MusicPlayerStateTracker.SuppressContentChange = false;
+                string entry = MusicPlayerReader.ReadSongEntry(name, bgmId, idx, playTime);
+                if (!string.IsNullOrEmpty(entry))
+                    FFI_ScreenReaderMod.SpeakText(entry, false);
             }
-
-            MusicPlayerStateTracker.SuppressContentChange = false;
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[MusicPlayer] Error announcing entry song: {ex.Message}");
+                _entryPending = false;
+                MusicPlayerStateTracker.SuppressContentChange = false;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────────
@@ -187,6 +196,8 @@ namespace FFI_ScreenReader.Patches
                             MusicPlayerStateTracker.CachedFocusedPtr = __instance.Pointer;
                     }
                     catch { }
+                    // Entry: once "Music Player" has been spoken, this read ends the entry suppression.
+                    TryAnnounceEntrySong();
                     return;
                 }
 

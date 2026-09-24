@@ -245,15 +245,12 @@ namespace FFI_ScreenReader.Patches
                 // Patch ShowWindow: tracks show/hide and resets the per-session flags.
                 PatchShowWindow(harmony, controllerType);
 
-                // EnemysUpdate/PlayerUpdate: the state-machine update for each single-target state, which
-                // fires for EVERY single-target open (including plain Attack, which never calls ShowWindow
-                // or SetActiveCursor) and identifies the side directly. Reads the initial focus once.
-                PatchTargetMethod(harmony, controllerType, "EnemysUpdate", nameof(EnemysUpdate_Postfix));
-                PatchTargetMethod(harmony, controllerType, "PlayerUpdate", nameof(PlayerUpdate_Postfix));
-
-                // Target STATE-entry hooks: re-arm the one-shot initial-target reader on every target entry
-                // so RE-ENTERING a target (e.g. selecting Attack again same turn) re-announces the focus.
-                // ShowWindow(true)/SetCommandData no longer carry that for in-turn re-entry.
+                // Target STATE-entry hooks (EnemysInit 0x446160 / PlayerInit 0x448D80): the state machine runs
+                // Init on EVERY single-target entry (StateMachine.Change always runs init, same state too),
+                // including plain Attack (which never calls ShowWindow or SetActiveCursor) and re-entry in the
+                // same turn. Init itself sets selectCursor.Index (= prevEnemyIndex / prevPlayerIndex) and
+                // positions the cursor from the target list, so the initial focus is read right here — this
+                // replaces the old per-frame EnemysUpdate/PlayerUpdate postfixes (round 2, 2026-09-24).
                 PatchTargetMethod(harmony, controllerType, "EnemysInit", nameof(EnemysInit_Postfix));
                 PatchTargetMethod(harmony, controllerType, "PlayerInit", nameof(PlayerInit_Postfix));
             }
@@ -315,9 +312,8 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Prefix for ShowWindow - tracks show/hide and bounds a target session (re-arms the one-shot
-        /// initial-focus reader). The read itself is driven by EnemysUpdate/PlayerUpdate, which fire for
-        /// Attack too — ShowWindow does not.
+        /// Prefix for ShowWindow - tracks show/hide; hide cancels a pending initial-target read. The read
+        /// itself is driven by EnemysInit/PlayerInit, which fire for Attack too — ShowWindow does not.
         /// </summary>
         public static void ShowWindow_Prefix(object __instance, bool isShow)
         {
@@ -325,19 +321,14 @@ namespace FFI_ScreenReader.Patches
             {
                 BattleTargetState.SetTargetSelectionActive(isShow);
 
-                if (isShow)
-                {
-                    // Open = a new target session — re-arm the one-shot initial-focus reader.
-                    defaultTargetAnnounced = false;
-                }
-                else
+                if (!isShow)
                 {
                     // Hide = the actor committed / target torn down. Close the command-announce window
-                    // (suppresses the handoff "Attack" bursts). Do NOT re-arm the initial-focus reader on
-                    // close: re-arming there lets EnemysUpdate re-announce the target after the window
-                    // closed (the stray "Goblin A" re-read seen in the logs).
+                    // (suppresses the handoff "Attack" bursts) and drop any pending initial-target read so
+                    // it can't speak after the window closed (the stray "Goblin A" re-read seen in the logs).
                     commandTurnReady = false;
                     cachedTargetController = null;
+                    targetReadGen++;
                 }
             }
             catch (Exception ex)
@@ -346,49 +337,60 @@ namespace FFI_ScreenReader.Patches
             }
         }
 
-        // One-shot guard: the per-frame Update trigger reads the initial focus once per target session
-        // (re-armed by ShowWindow open/close and each SetCommandData). Set true after a successful read.
-        private static bool defaultTargetAnnounced;
+        // Generation of the initial-target read: bumped by every EnemysInit/PlayerInit (a newer entry
+        // supersedes a pending read) and by ShowWindow(false) (window closed — drop a pending read).
+        private static int targetReadGen;
 
-        /// <summary>Postfix for EnemysUpdate - announces the initially-focused enemy target on open.</summary>
-        public static void EnemysUpdate_Postfix(object __instance) => ReadInitialTarget(__instance, isEnemy: true);
+        // Frames a pending initial-target read may wait for the cursor + list (only if Init ran before
+        // they were ready; normally the read succeeds inside the Init postfix itself).
+        private const int TARGET_READ_MAX_FRAMES = 10;
 
-        /// <summary>Postfix for PlayerUpdate - announces the initially-focused ally target on open.</summary>
-        public static void PlayerUpdate_Postfix(object __instance) => ReadInitialTarget(__instance, isEnemy: false);
+        /// <summary>Postfix for EnemysInit — announces the initially-focused enemy target on entry.</summary>
+        public static void EnemysInit_Postfix(object __instance) => BeginInitialTargetRead(__instance, isEnemy: true);
 
-        /// <summary>Postfix for EnemysInit - re-arm the one-shot so re-entering enemy targeting re-reads.</summary>
-        public static void EnemysInit_Postfix()
+        /// <summary>Postfix for PlayerInit — announces the initially-focused ally target on entry.</summary>
+        public static void PlayerInit_Postfix(object __instance) => BeginInitialTargetRead(__instance, isEnemy: false);
+
+        /// <summary>
+        /// Reads the focused target at single-target state entry. Init has already set the cursor index,
+        /// so this normally speaks at once; if the cursor/list are not ready yet, a short bounded retry
+        /// (TARGET_READ_MAX_FRAMES, started from this event) waits for them. All-target states use other
+        /// Init methods, so they never reach here.
+        /// </summary>
+        private static void BeginInitialTargetRead(object instance, bool isEnemy)
         {
-            defaultTargetAnnounced = false;
+            int gen = ++targetReadGen;
+            if (TryReadInitialTarget(instance, isEnemy)) return;
+            CoroutineManager.StartManaged(RetryInitialTargetRead(instance, isEnemy, gen));
         }
 
-        /// <summary>Postfix for PlayerInit - re-arm the one-shot so re-entering ally targeting re-reads.</summary>
-        public static void PlayerInit_Postfix()
+        private static IEnumerator RetryInitialTargetRead(object instance, bool isEnemy, int gen)
         {
-            defaultTargetAnnounced = false;
+            for (int i = 0; i < TARGET_READ_MAX_FRAMES; i++)
+            {
+                yield return null;
+                if (gen != targetReadGen) yield break;   // superseded by a newer entry, or window closed
+                if (TryReadInitialTarget(instance, isEnemy)) yield break;
+            }
         }
 
         /// <summary>
-        /// Reads the focused target once when a single-target state opens. EnemysUpdate/PlayerUpdate run
-        /// every frame while in their state and identify the side directly, so this needs no state read and
-        /// self-retries (returns without arming the flag) until the cursor + list are ready. After the read
-        /// the per-frame call is a single bool check. All-target states use other Update methods, so they
-        /// never reach here.
+        /// Announces the focused target if the cursor + target list are ready. Returns true once it spoke
+        /// (or can never speak for this instance), false to retry.
         /// </summary>
-        private static void ReadInitialTarget(object instance, bool isEnemy)
+        private static bool TryReadInitialTarget(object instance, bool isEnemy)
         {
             try
             {
                 var controller = instance as BattleTargetSelectController;
 
-                if (defaultTargetAnnounced) return;
                 if (controller == null || controller.gameObject == null)
-                    return;
+                    return true;
 
                 // Attack's targeting path presents an INACTIVE controller (magic/item present an active
-                // one), so do NOT require activeInHierarchy — these Update methods only run while genuinely
-                // targeting, and the list/cursor validity below gates the announce. If THIS controller is
-                // inactive, prefer an active instance (in case it's a stale leftover) and fall back to it.
+                // one), so do NOT require activeInHierarchy — Init only runs on a genuine target entry, and
+                // the list/cursor validity below gates the announce. If THIS controller is inactive, prefer
+                // an active instance (in case it's a stale leftover) and fall back to it.
                 if (!controller.gameObject.activeInHierarchy)
                 {
                     var active = UnityEngine.Object.FindObjectOfType<BattleTargetSelectController>();
@@ -397,33 +399,33 @@ namespace FFI_ScreenReader.Patches
                 }
 
                 IntPtr ptr = controller.Pointer;
-                if (ptr == IntPtr.Zero) return;
+                if (ptr == IntPtr.Zero) return true;
 
                 IntPtr cursorPtr = IL2CppFieldReader.ReadPointer(ptr, IL2CppOffsets.BattleTarget.SelectCursor);
-                if (cursorPtr == IntPtr.Zero) return;
+                if (cursorPtr == IntPtr.Zero) return false;
                 int index = new GameCursor(cursorPtr).Index;
-                if (index < 0) return;
+                if (index < 0) return false;
 
                 if (isEnemy)
                 {
                     var list = ReadEnemyList(ptr, IL2CppOffsets.BattleTarget.EnemyDataList);   // 0x38
                     if (list == null || list.Count == 0) list = ReadEnemyList(ptr, IL2CppOffsets.BattleTarget.TargetEnamyList); // 0x90
-                    if (list == null || index >= list.Count) return; // not ready — next Update frame retries
-                    defaultTargetAnnounced = true;
+                    if (list == null || index >= list.Count) return false; // not ready — bounded retry
                     AnnounceEnemyTarget(list, index);
                 }
                 else
                 {
                     var list = ReadPlayerList(ptr, IL2CppOffsets.BattleTarget.PlayerDataList);  // 0x30
                     if (list == null || list.Count == 0) list = ReadPlayerList(ptr, IL2CppOffsets.BattleTarget.TargetPlayerList); // 0x88
-                    if (list == null || index >= list.Count) return; // not ready — next Update frame retries
-                    defaultTargetAnnounced = true;
+                    if (list == null || index >= list.Count) return false; // not ready — bounded retry
                     AnnouncePlayerTarget(list, index);
                 }
+                return true;
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Battle Target] Error reading initial target: {ex.Message}");
+                return true;
             }
         }
 
@@ -465,8 +467,6 @@ namespace FFI_ScreenReader.Patches
                 // Open the window before any early-return below: a same-character re-entry (e.g. after
                 // canceling target back to the command menu) is still that actor's input turn.
                 commandTurnReady = true;
-                // Re-arm the one-shot initial-target reader so this turn's target announces.
-                defaultTargetAnnounced = false;
 
                 int characterId = data.Id;
                 // Always track the current actor (used by AnnounceCharacterStatus / H key),
@@ -965,7 +965,7 @@ namespace FFI_ScreenReader.Patches
             commandTurnReady = false;
             lastAnnouncedCmdMesId = null;
             commandReannouncePending = false;
-            defaultTargetAnnounced = false;
+            targetReadGen++;   // drop any pending initial-target read
             BattleCommandState.CurrentActor = null;
         }
     }

@@ -56,13 +56,13 @@ namespace FFI_ScreenReader.Patches
     /// <summary>
     /// Minimal class for battle pause menu support.
     /// State detection via BattlePauseState (direct memory read).
-    /// Popup button reading handled by PopupPatches.CommonPopup_UpdateFocus_Postfix.
+    /// Popup button reading handled by PopupPatches.CommonPopup_FocusChanged_Postfix.
     /// </summary>
     public static class BattlePausePatches
     {
         /// <summary>
         /// Apply battle pause menu patches.
-        /// Note: CommonPopup.UpdateFocus is now patched in PopupPatches.cs for all popup button reading.
+        /// Note: CommonPopup.SetCommandSelectCursor is patched in PopupPatches.cs for all popup button reading.
         /// State clearing for Return to Title is handled by TitleMenuCommandController.SetEnableMainMenu.
         /// </summary>
         public static void ApplyPatches(HarmonyLib.Harmony harmony)

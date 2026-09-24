@@ -152,10 +152,6 @@ namespace FFI_ScreenReader.Core
             // Poll SDL gamepad state every frame
             GamepadManager.Update();
 
-            // Light per-frame poll for the two game-side toggles (encounters / auto-dash) —
-            // announces on change so menu/controller toggles all surface through the screen reader.
-            GameToggleAnnouncer.Poll();
-
             // Suppress Unity legacy Input when mod is consuming.
             // Safe because mod reads keyboard via GetAsyncKeyState (unaffected by ResetInputAxes).
             // This + InputSystemManager patches = complete game keyboard suppression.

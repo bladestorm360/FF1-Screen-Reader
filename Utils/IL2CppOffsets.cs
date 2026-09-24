@@ -66,6 +66,15 @@ namespace FFI_ScreenReader.Utils
 
             /// <summary>KeyInput.EquipmentCommandController.contents (List&lt;EquipmentCommandView&gt;)</summary>
             public const int EquipContentList = 0x30;
+
+            /// <summary>KeyInput.ItemWindowController.commandController (ItemCommandController)</summary>
+            public const int ItemWindowCommandController = 0x38;
+
+            /// <summary>KeyInput.EquipmentWindowController.commandController (EquipmentCommandController)</summary>
+            public const int EquipWindowCommandController = 0x38;
+
+            /// <summary>Serial.FF1 AbilityWindowController.commandController (AbilityCommandController)</summary>
+            public const int MagicWindowCommandController = 0x48;
         }
 
         /// <summary>
@@ -145,6 +154,9 @@ namespace FFI_ScreenReader.Utils
 
             /// <summary>OwnedCharacterData targetData (on AbilityCharaStatusController)</summary>
             public const int TargetData = 0x48;
+
+            /// <summary>AbilityContentListController listController (the spell list)</summary>
+            public const int ListController = 0x58;
         }
 
         /// <summary>

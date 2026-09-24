@@ -189,8 +189,11 @@ namespace FFI_ScreenReader.Core
             // Command bars (field/item/equip): announce the initially-focused command on open
             CommandBarPatches.ApplyPatches(harmony);
 
-            // Game state patches (config menu bestiary dispatch)
+            // Game state patches (config menu bestiary dispatch, library return, main-game state)
             GameStatePatches.ApplyPatches(harmony);
+
+            // Field toggles (encounters / walk-run) — client-setter hooks, no per-frame poll
+            Handlers.GameToggleAnnouncer.ApplyPatches(harmony);
 
             // Extras menu patches (bestiary, music player, gallery)
             try { BestiaryManualPatches.ApplyPatches(harmony); }
@@ -302,10 +305,10 @@ namespace FFI_ScreenReader.Core
                 LoggerInstance.Msg($"[ComponentCache] Scene loaded: {scene.name}");
 
                 // The "Title" scene loads at the START of the title load (too early to speak) on every
-                // entry — boot and return-to-title. Kick off a bounded wait that speaks the press prompt
-                // only once its Text is actually on screen (per the MelonLoader log analysis).
+                // entry — boot and return-to-title. Arm the press-prompt announce; the SystemIndicator.Hide
+                // postfix speaks it once TitleWindowController.UpdateNone shows the prompt.
                 if (scene.name == "Title")
-                    CoroutineManager.StartManaged(TitleScreenPatches.WaitForPressPromptThenSpeak());
+                    TitleScreenPatches.ArmPressPrompt();
 
                 // Check if we're leaving a battle scene
                 bool wasInBattle = previousSceneName.Contains("Battle");
@@ -340,8 +343,10 @@ namespace FFI_ScreenReader.Core
                 // Reset movement state for new map
                 MovementSoundPatches.ResetState();
 
-                // Reset game-toggle poller cache so cross-save load doesn't spuriously announce
-                Handlers.GameToggleAnnouncer.Reset();
+                // The main-game state tracked for the field-toggle announcements must not survive a
+                // return to title (the next MainGame instance reports its own states).
+                if (scene.name == "Title")
+                    GameStatePatches.ResetMainGameState();
 
                 // Reset location message tracker (but NOT lastAnnouncedMapId —
                 // battle transitions change scenes without changing maps)
@@ -681,11 +686,11 @@ namespace FFI_ScreenReader.Core
                 }
 
                 string name = charData.Name;
-                // In battle the live HP/status sit on the battle unit's own parameter
-                // (BattleUnitDataInfo.Parameter); OwnedCharacterData.Parameter is only written back at
-                // battle end (BattleController.SaveParameter -> FixedStatusInfo.SetCharacterParameter ->
-                // OwnedCharacterData.SetParameter). Same source the target reader uses for current HP.
-                Il2CppLast.Data.CharacterParameterBase param = FindBattleParameter(charData) ?? charData.Parameter;
+                // CurrentActor is the battle unit's own OwnedCharacterData, and its Parameter IS the live
+                // battle parameter: BattleStatusControl.CreateBattlePlayerData (0x8649E0) assigns
+                // BattleUnitDataInfo.Parameter = ownedCharacterData.parameter (the same object, field 0x78).
+                // Only at battle end does OwnedCharacterData.SetParameter replace it with a copy.
+                var param = charData.Parameter;
                 if (param == null)
                 {
                     SpeakText(T("Character status not available"), interrupt: true);
@@ -693,9 +698,7 @@ namespace FFI_ScreenReader.Core
                 }
 
                 int currentHp = param.CurrentHP;
-                int maxHp;
-                try { maxHp = param.ConfirmedMaxHp(); }
-                catch { maxHp = charData.Parameter != null ? charData.Parameter.ConfirmedMaxHp() : 0; }
+                int maxHp = param.ConfirmedMaxHp();
                 string line = string.Format(T("{0}: {1}/{2} HP"), name, currentHp, maxHp);
 
                 // Append active status effects.
@@ -724,32 +727,6 @@ namespace FFI_ScreenReader.Core
                 MelonLogger.Warning($"[AnnounceCharacterStatus] Error: {ex.Message}");
                 SpeakText(T("Character status not available"), interrupt: true);
             }
-        }
-
-        /// <summary>
-        /// The live in-battle parameter of the given party member: the BattlePlayerData whose
-        /// ownedCharacterData has the same Id -> BattleUnitDataInfo.Parameter. Null outside battle or
-        /// when the unit can't be found (caller falls back to OwnedCharacterData.Parameter).
-        /// </summary>
-        private static Il2CppLast.Data.CharacterParameterBase FindBattleParameter(Il2CppLast.Data.User.OwnedCharacterData charData)
-        {
-            try
-            {
-                var units = Il2CppLast.Battle.BattlePlugManager.Instance()?.GetPlayerUnits();
-                if (units == null) return null;
-                int id = charData.Id;
-                for (int i = 0; i < units.Length; i++)
-                {
-                    var unit = units[i];
-                    if (unit?.ownedCharacterData != null && unit.ownedCharacterData.Id == id)
-                        return unit.BattleUnitDataInfo?.Parameter;
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[AnnounceCharacterStatus] Battle unit lookup failed: {ex.Message}");
-            }
-            return null;
         }
 
         #endregion
@@ -885,7 +862,7 @@ namespace FFI_ScreenReader.Core
                 // ShouldSuppress() validates controller is still active (auto-resets stuck flags)
 
                 // Popup with buttons - read button text via PopupPatches, UNLESS the popup has its own
-                // UpdateFocus reader (e.g. CommonPopup), which would otherwise double-read the button.
+                // focus reader (e.g. CommonPopup), which would otherwise double-read the button.
                 if (PopupState.ShouldSuppress())
                 {
                     if (!PopupState.HasOwnFocusReader)
@@ -944,7 +921,7 @@ namespace FFI_ScreenReader.Core
                 if (MusicPlayerStateTracker.IsInMusicPlayer) return;
                 if (GalleryStateTracker.IsInGallery) return;
 
-                // Command bars (Item/Equip/Magic) — their UpdateController announces the focused command
+                // Command bars (Item/Equip/Magic) — CommandBarPatches announces the focused command
                 // with index; suppress the generic reader so it doesn't double. Checked here (after the
                 // list-phase ShouldSuppress checks) so heavy list scrolling never pays the FindObjectOfType.
                 if (CommandBarPatches.IsCommandBarActive()) return;

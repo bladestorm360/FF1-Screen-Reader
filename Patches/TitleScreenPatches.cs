@@ -18,17 +18,25 @@ namespace FFI_ScreenReader.Patches
     /// Title-screen accessibility: speaks the "Press any button" prompt whenever it appears, and clears
     /// menu states when the main menu enables.
     ///
-    /// The prompt is spoken from FFI_ScreenReaderMod.OnSceneLoaded when the "Title" Unity scene loads —
-    /// that scene IS the press-any-button screen (distinct from "TitleScreen" = the main menu), and it
-    /// loads on EVERY appearance (boot AND return-to-title). The text is the localized
-    /// MENU_TITLE_PRESS_TEXT constant (reading the rendered Text never vocalized in earlier attempts;
-    /// the constant is reliable). Prior method-hook triggers (SystemIndicator.Hide / InitShortcutCommand /
-    /// SetEnableStartObject) were boot-only or never fired on return — confirmed via the MelonLoader log.
+    /// Event-driven (round 2, 2026-09-24; replaces a 0.15 s FindObjectOfType poll):
+    ///  - ARM: FFI_ScreenReaderMod.OnSceneLoaded calls <see cref="ArmPressPrompt"/> when the "Title" Unity
+    ///    scene loads — it loads on EVERY appearance (boot AND return-to-title).
+    ///  - SPEAK: the prompt is shown by KeyInput TitleWindowController.UpdateNone (0x7D82A0), which calls
+    ///    SystemIndicator.Hide() (0x4FF4A0) and in the same branch SafeActiveSet(view.startParent, true).
+    ///    A postfix on SystemIndicator.Hide, while armed, reads startText one frame later (after the
+    ///    activation). Other Hide callers (SceneTitleScreen.CreateInstance during the title load, field
+    ///    loads) find the prompt still inactive, so they stay silent and keep the arm.
+    ///  - DISARM: prompt spoken, main menu enabled (SetEnableMainMenu(true)), or the title controller gone.
+    /// The old "Hide never fired on return" note came from an arm on the boot-only SplashController
+    /// (commit 3fe2e3a); the scene-load arm fires on every title visit.
     /// </summary>
     public static class TitleScreenPatches
     {
-        // Set true when the title main menu enables (the press-any-button screen has been dismissed) —
-        // a hard stop for the prompt poll. Reset at the start of each poll (each "Title" scene load).
+        // Armed on each "Title" scene load; cleared once the prompt is spoken or the title is left.
+        private static bool _pressPromptArmed = false;
+        // Saw the TitleWindowController during this visit (so a later miss means the title was left).
+        private static bool _titleControllerSeen = false;
+        // Set true when the title main menu enables (the press-any-button screen has been dismissed).
         private static bool _titleMainMenuShown = false;
 
         public static void ApplyPatches(HarmonyLib.Harmony harmony)
@@ -36,11 +44,65 @@ namespace FFI_ScreenReader.Patches
             try
             {
                 TryPatchTitleMenuCommand(harmony);
+                TryPatchSystemIndicatorHide(harmony);
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[Title] Error applying patches: {ex.Message}");
             }
+        }
+
+        private static void TryPatchSystemIndicatorHide(HarmonyLib.Harmony harmony)
+        {
+            try
+            {
+                Type indicatorType = null;
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        indicatorType = asm.GetType("Il2CppLast.Systems.Indicator.SystemIndicator");
+                        if (indicatorType != null) break;
+                    }
+                    catch { } // assembly may not expose types
+                }
+                if (indicatorType == null)
+                {
+                    MelonLogger.Warning("[Title] SystemIndicator type not found");
+                    return;
+                }
+
+                var hide = AccessTools.Method(indicatorType, "Hide", Type.EmptyTypes);
+                if (hide == null)
+                {
+                    MelonLogger.Warning("[Title] SystemIndicator.Hide not found");
+                    return;
+                }
+                harmony.Patch(hide, postfix: new HarmonyMethod(
+                    typeof(TitleScreenPatches).GetMethod(nameof(SystemIndicator_Hide_Postfix), BindingFlags.Public | BindingFlags.Static)));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Title] Error patching SystemIndicator.Hide: {ex.Message}");
+            }
+        }
+
+        /// <summary>Arms the press-prompt announce for this title visit (called on the "Title" scene load).</summary>
+        public static void ArmPressPrompt()
+        {
+            _pressPromptArmed = true;
+            _titleControllerSeen = false;
+            _titleMainMenuShown = false;
+            // One check right away as well, in case the prompt is already up (normally it is not: the
+            // scene loads seconds before UpdateNone shows the prompt, so this stays silent and armed).
+            CoroutineManager.StartManaged(SpeakPressPromptIfShown());
+        }
+
+        /// <summary>SystemIndicator.Hide postfix: while armed, check the prompt one frame later.</summary>
+        public static void SystemIndicator_Hide_Postfix()
+        {
+            if (!_pressPromptArmed) return;
+            CoroutineManager.StartManaged(SpeakPressPromptIfShown());
         }
 
         private static void TryPatchTitleMenuCommand(HarmonyLib.Harmony harmony)
@@ -80,60 +142,49 @@ namespace FFI_ScreenReader.Patches
         }
 
         /// <summary>
-        /// Started when the "Title" scene loads (the start of the multi-second title LOAD — too early to
-        /// speak). Polls until the press-prompt Text (TitleWindowView.startText) is actually on screen
-        /// (gameObject.activeInHierarchy), then speaks its REAL displayed text — which is empty during the
-        /// load and set only when the prompt renders. Reading at that moment fixes the timing AND the text
-        /// (the earlier live read failed because it read too early when the label was empty). Falls back to
-        /// the MENU_TITLE_PRESS_TEXT constant if the visible label is empty. Bounded one-shot (exits on
-        /// speak or timeout); fires on boot and return-to-title (both load the "Title" scene).
+        /// One frame after a SystemIndicator.Hide while armed (UpdateNone activates view.startParent right
+        /// after its Hide call): if the press-prompt Text (TitleWindowView.startText) is on screen, speak its
+        /// REAL displayed text (empty during the load, set when the prompt renders; falls back to the
+        /// MENU_TITLE_PRESS_TEXT constant) and disarm. Not shown yet → stay armed for the next Hide.
         /// </summary>
-        public static IEnumerator WaitForPressPromptThenSpeak()
+        private static IEnumerator SpeakPressPromptIfShown()
         {
-            _titleMainMenuShown = false;   // fresh title visit
-            bool everFound = false;        // saw the TitleWindowController at least once
+            yield return null;
 
-            // Bounded entirely by the three exit conditions below (prompt read, main menu shown, or the
-            // title controller gone) — no arbitrary timeout. The press-any-button always resolves to one
-            // of these, so the poll lives only across the boot-load / return-to-title window.
-            while (true)
+            try
             {
-                yield return new WaitForSeconds(0.15f);
+                if (!_pressPromptArmed) yield break;
+                if (_titleMainMenuShown) { _pressPromptArmed = false; yield break; }
 
-                try
+                // One lookup per Hide event (not a poll). The controller exists only during the title visit:
+                // missing before it was seen = still loading (stay armed); missing after = title left.
+                var ctrl = UnityEngine.Object.FindObjectOfType<TitleWindowController>();
+                if (ctrl == null)
                 {
-                    // Stop 1: the user pressed past the prompt to the main menu (prompt dismissed).
-                    if (_titleMainMenuShown) yield break;
-
-                    // Stop 2: the TitleWindowController exists ONLY during the title visit (destroyed when
-                    // gameplay starts). Re-find it each tick: keep waiting while it hasn't appeared yet
-                    // (still loading), but STOP once it's gone after having been found — this keeps the poll
-                    // out of the gameplay sequence entirely.
-                    var ctrl = UnityEngine.Object.FindObjectOfType<TitleWindowController>();
-                    if (ctrl == null)
-                    {
-                        if (everFound) yield break;   // left the title → stop polling
-                        continue;                      // not instantiated yet during the load
-                    }
-                    everFound = true;
-
-                    IntPtr viewPtr = IL2CppFieldReader.ReadPointerSafe(ctrl.Pointer, IL2CppOffsets.Popup.TitleViewKeyInput);
-                    if (viewPtr == IntPtr.Zero) continue;
-                    IntPtr textPtr = IL2CppFieldReader.ReadPointerSafe(viewPtr, IL2CppOffsets.Popup.TitleViewStartText);
-                    if (textPtr == IntPtr.Zero) continue;
-
-                    var startText = new UnityEngine.UI.Text(textPtr);
-                    if (startText.gameObject == null || !startText.gameObject.activeInHierarchy) continue;
-
-                    // The press prompt is on screen now — read its actual displayed text.
-                    string raw = startText.text;
-                    string text = !string.IsNullOrWhiteSpace(raw) ? TextUtils.StripIconMarkup(raw.Trim()) : GetPressText();
-                    MelonLogger.Msg($"[Title] press prompt shown, text='{raw}'");
-                    if (!string.IsNullOrWhiteSpace(text))
-                        FFI_ScreenReaderMod.SpeakText(text, interrupt: false);
+                    if (_titleControllerSeen) _pressPromptArmed = false;
                     yield break;
                 }
-                catch { } // transient read failure — keep polling
+                _titleControllerSeen = true;
+
+                IntPtr viewPtr = IL2CppFieldReader.ReadPointerSafe(ctrl.Pointer, IL2CppOffsets.Popup.TitleViewKeyInput);
+                if (viewPtr == IntPtr.Zero) yield break;
+                IntPtr textPtr = IL2CppFieldReader.ReadPointerSafe(viewPtr, IL2CppOffsets.Popup.TitleViewStartText);
+                if (textPtr == IntPtr.Zero) yield break;
+
+                var startText = new UnityEngine.UI.Text(textPtr);
+                if (startText.gameObject == null || !startText.gameObject.activeInHierarchy) yield break;
+
+                // The press prompt is on screen now — read its actual displayed text.
+                _pressPromptArmed = false;
+                string raw = startText.text;
+                string text = !string.IsNullOrWhiteSpace(raw) ? TextUtils.StripIconMarkup(raw.Trim()) : GetPressText();
+                MelonLogger.Msg($"[Title] press prompt shown, text='{raw}'");
+                if (!string.IsNullOrWhiteSpace(text))
+                    FFI_ScreenReaderMod.SpeakText(text, interrupt: false);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[Title] press prompt read failed: {ex.Message}");
             }
         }
 
@@ -163,7 +214,8 @@ namespace FFI_ScreenReader.Patches
             {
                 if (isEnable)
                 {
-                    _titleMainMenuShown = true;   // press-any-button dismissed → stop the prompt poll
+                    _titleMainMenuShown = true;   // press-any-button dismissed
+                    _pressPromptArmed = false;
                     MenuStateRegistry.ResetAll();
                     BattleResultPatches.ClearAllBattleMenuFlags();
                 }
