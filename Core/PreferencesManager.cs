@@ -63,7 +63,10 @@ namespace FFI_ScreenReader.Core
             prefExpCounterVolume = prefsCategory.CreateEntry<int>("ExpCounterVolume", 50, "EXP Counter Volume", "Volume for EXP counter tick (0-100)");
 
             prefEnemyHPDisplay = prefsCategory.CreateEntry<int>("EnemyHPDisplay", 0, "Enemy HP Display", "0=Numbers, 1=Percentage, 2=Hidden");
-            prefDamageDisplay = prefsCategory.CreateEntry<int>("DamageDisplay", 0, "Multi-hit Damage", "0=Total only, 1=With hit count (e.g. 14x1552 damage)");
+            // Stored as "MultiHitDamage" (default: with hit count, matching FF2-FF5) rather than the old
+            // "DamageDisplay" entry, which MelonPreferences had already written into every install with
+            // the old "Total only" default, so everyone moves to the new default once.
+            prefDamageDisplay = prefsCategory.CreateEntry<int>("MultiHitDamage", 1, "Multi-hit Damage", "0=Total only, 1=With hit count (e.g. 14x1552 damage)");
         }
 
         #region Toggle Getters (single source of truth — read directly by menu, loops, gameplay)
@@ -90,7 +93,7 @@ namespace FFI_ScreenReader.Core
         public static int BeaconVolume => prefBeaconVolume?.Value ?? 50;
         public static int ExpCounterVolume => prefExpCounterVolume?.Value ?? 50;
         public static int EnemyHPDisplay => prefEnemyHPDisplay?.Value ?? 0;
-        public static int DamageDisplay => prefDamageDisplay?.Value ?? 0;
+        public static int DamageDisplay => prefDamageDisplay?.Value ?? 1;
 
         #endregion
 
