@@ -93,3 +93,13 @@ All rows are **not yet verified in game**. Details, hooks, RVAs and reasoning: `
 | Field toggles "Encounters on/off", "Run"/"Walk" | Spoken from the game's client setters, only for a real change on the field (Player state); config-menu changes and save loads stay silent (was a per-frame poll) | `GameToggleAnnouncer`, `GameStatePatches.IsFieldPlayerState` |
 | Config row re-read after a popup / the bestiary | Popup close reads at once; bestiary return reads when the menu fades back in (was a per-frame `UpdateController` consume) | `ConfigController_SetActive_Patch`, `GameStatePatches` |
 | Mod-menu controller state | Removed a duplicate state write (`ModMenu.Open/Close` already sync it) | `ControllerRouter.OpenModMenu/CloseModMenu` |
+
+## Map data extraction and event coverage (2026-10-03) — status
+
+Details: `docs/debug.md` → "Map data extraction and event coverage (2026-10-03)".
+
+| Item | Status | Where |
+|------|--------|-------|
+| Map data extractor | Done (offline): every object, script, collision and tile layer of every FF1 map in `FFPR/tools/mapdump/`; the audit finds every playable event and interactive object listed | `FFPR/tools/dump_map_objects.py`, `audit_events.py` |
+| Scenery | Not yet verified in game: events and objects with no action, script or message are no longer listed (149 objects) | `Field/FieldEntityState.cs`, `EventTriggerDetector`, `InteractiveEntityDetector` |
+| Vehicle-hidden entities | Not yet verified in game: counted as present (parity with FF2–FF5; FF1's data has no vehicle-only trigger) | `Field/FieldEntityState.cs`, `EntityDetectionContext`, `NavigableEntity.IsAlive`, `PathfindingFilter` |

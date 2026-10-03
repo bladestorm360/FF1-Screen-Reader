@@ -287,6 +287,20 @@ In-game checks:
 4. Normalization on: L3 + R3 → "Stick click normalization off", with no encounter or walk/run toggle.
 5. Back, then L3 or R3 with normalization on → the mod-mode toggles still work.
 
+## Map data extraction and event coverage (2026-10-03)
+
+Not yet verified in game. The user asked for a map data extractor for FF1, to check event coverage the same way as FF2–FF5.
+
+**Extractor.** `FFPR/tools/dump_map_objects.py ff1` reads every `map_*.bundle` and writes `FFPR/tools/mapdump/ff1_objects.jsonl` (every object of every entity group, `entity_default` and the conditional `ev_*` groups: 4426 objects on 129 sub-maps), `ff1_scripts.jsonl` (556 event scripts), `ff1_submaps.json` and `ff1_grids.json` (collision and tile layers). `FFPR/tools/dump_masters.py ff1` writes the master tables and English/Japanese messages. `FFPR/tools/audit_events.py ff1` mirrors this detector chain over the dump: every event that runs a script and every object that runs a script or shows a message is listed. FF1 has no hidden-passage layers, so the hidden-passage routing added to FF3–FF5 does not apply.
+
+**Vehicle-hidden entities.** `FieldController.ChangeTransportationSwitchEntity` runs for every entity on each `SetEventEntityGroup` and `ChangeTransportation`; for an entity whose `Property.TargetTransportationIdList` lacks the current transportation it calls `CacheActive(4)` (bit 4 of `cacheActiveEnable` / `cacheActiveFlag` records the object's own active state) and `Hide(0)`, which is `GameObject.SetActive(false)`. Decompiled from the FF5 project; the same call sequence and cache index are in FF1 (`tools/callees.py`, `lea edx, [r8+4]`). New `Field/FieldEntityState`: `IsHiddenByVehicle` (inactive, parent active, target list non-empty, cache bit 4 set with the cached state active) and `IsPresent`. `EntityDetectionContext.IsActive`, `NavigableEntity.IsAlive` and the pathfinding filter use them, and the filter lets a vehicle-hidden entity through. FF1 has no vehicle-only trigger in its data (only scenery tied to vehicles), so this is parity with FF2–FF5 and changes nothing visible today.
+
+**Scenery removed.** `FieldEntityState.IsScenery`: an Event, Entity, AnimEntity or TransportationEventAction whose `PropertyEvent` has `ActionId` 0, `ScriptId` 0 and no `PropertyTalk.MessageKey` does nothing when checked or touched. `EventTriggerDetector` and `InteractiveEntityDetector` skip it; vehicles (`PropertyTransportation`), exits, chests, save points, NPCs and layer changes are classified earlier and are not affected. In FF1 this drops 149 objects (Sunstream, teleport-square visuals beside their warp events, speech bubbles, crystal glows). User decision, 2026-10-03, for all five mods.
+
+In-game checks:
+1. Flying Fortress: each teleport square is listed once, as its warp event ("Warp to 2F" and so on), not twice.
+2. Decorative objects (Sunstream, speech bubbles) are gone from Events; anything that reacts when checked is still there.
+
 ---
 
 ## Known Limitations

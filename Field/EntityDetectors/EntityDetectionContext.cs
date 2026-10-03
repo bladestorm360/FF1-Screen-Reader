@@ -61,7 +61,9 @@ namespace FFI_ScreenReader.Field.EntityDetectors
 
             GameObjectNameLower = GameObjectName.ToLower();
 
-            try { IsActive = fieldEntity.gameObject.activeInHierarchy; }
+            // Present in the scene, or hidden by the game only while the player is in another
+            // vehicle (FieldEntityState.IsHiddenByVehicle)
+            try { IsActive = fieldEntity.gameObject.activeInHierarchy || FieldEntityState.IsHiddenByVehicle(fieldEntity); }
             catch { IsActive = true; } // Assume active if hierarchy check fails
 
             try { IsEventTrigger = fieldEntity.TryCast<EventTriggerEntity>() != null; }

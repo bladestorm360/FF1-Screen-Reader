@@ -14,6 +14,10 @@ namespace FFI_ScreenReader.Field.EntityDetectors
         {
             if (context.IsEventTrigger)
             {
+                // Scenery: events with no action, script or message
+                if (FieldEntityState.IsScenery(context.FieldEntity))
+                    return DetectionResult.Skip;
+
                 string entityName = EntityDetectionHelpers.GetEntityNameFromProperty(context.FieldEntity);
                 if (string.IsNullOrEmpty(entityName) || entityName == "GeneralEventObject")
                 {

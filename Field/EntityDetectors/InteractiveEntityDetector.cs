@@ -15,6 +15,10 @@ namespace FFI_ScreenReader.Field.EntityDetectors
 
         public DetectionResult TryDetect(EntityDetectionContext context)
         {
+            // Scenery: map objects with no action, script or message
+            if (FieldEntityState.IsScenery(context.FieldEntity))
+                return DetectionResult.Skip;
+
             // FieldMapObjectDefault - generic interactive objects (buildings, misc objects)
             var mapObjectDefault = context.FieldEntity.TryCast<FieldMapObjectDefault>();
             if (mapObjectDefault != null)

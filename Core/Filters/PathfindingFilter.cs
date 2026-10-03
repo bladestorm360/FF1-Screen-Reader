@@ -48,6 +48,11 @@ namespace FFI_ScreenReader.Core.Filters
             if (!IsEntityValid(entity))
                 return false;
 
+            // A vehicle-only trigger hidden for the current vehicle is not a walking target:
+            // it is reached by boarding its vehicle, so the walking path test does not apply.
+            if (FieldEntityState.IsHiddenByVehicle(entity.GameEntity as Il2CppLast.Entity.Field.FieldEntity))
+                return true;
+
             if (context.PlayerController == null)
                 return false;
 
